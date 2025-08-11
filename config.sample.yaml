@@ -1,31 +1,152 @@
-listen: ":53"
-timeout_sec: 2
-interval_sec: 3
-rise: 2
-fall: 2
-jitter_ms: 600
-cooldown_sec: 25
-edns_buf: 1232
-log_queries: true
-
+# breathgslb global settings
+listen: ":53"                 # port only; server binds udp4/udp6/tcp4/tcp6 automatically
+timeout_sec: 5                # per health probe
+interval_sec: 8               # base interval between probe rounds
+rise: 2                       # successes to mark UP
+fall: 4                       # failures to mark DOWN
+jitter_ms: 600                # add 0..600ms jitter to each interval
+cooldown_sec: 25              # minimum seconds between state flips (per A/AAAA family)
+edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6 without frag)
+log_queries: true             # log queries and health transitions
 log_file: "/var/log/breathgslb/breathgslb.log"
 
 zones:
+  #
+  # ZONE 1 — gslb-sitetest.akadata.ltd. (apex answers are GSLB-controlled)
+  #
   - name: "gslb-sitetest.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]
+    ns: ["ns-gslb.akadata.ltd."]        # parent must delegate to this NS, with glue A/AAAA
     admin: "hostmaster.akadata.ltd."
     ttl_soa: 60
     ttl_answer: 20
 
-    a_healthy: ["217.155.241.55"]
-    aaaa_healthy: ["2a02:8012:bc57::1"]
+    # Health-driven apex addresses
+    a_healthy:      ["217.155.241.55"]                         # e.g., home/Zen v4
+    aaaa_healthy:   ["2a02:8012:bc57::1"]                      # e.g., home/Zen v6
+    a_fallback:     ["13.41.102.86"]                           # e.g., AWS v4
+    aaaa_fallback:  ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]   # e.g., AWS v6
 
-    a_fallback: ["198.51.100.10"]
-    aaaa_fallback: ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]
+    # Optional ALIAS at apex (only used if no A/AAAA lists are set)
+    # alias: "status.akadata.ltd."
 
     health:
       host_header: "gslb-sitetest.akadata.ltd"
-      sni: "gslb-sitetest.akadata.ltd"
-      path: "/health"
-      insecure_tls: false   # set true temporarily if using self-signed
+      sni:         "gslb-sitetest.akadata.ltd"
+      path:        "/health"
+      insecure_tls: false
 
+    # Shared/static records served authoritatively
+
+    # TXT at apex (omit name => apex). Multiple strings supported.
+    txt:
+      - text:
+          - "google-site-verification=Ge2Ewklz6s4_jHy6bawlp3w-LWUWljX8y2nyy2p6a5Q"
+        ttl: 300
+      - name: "_dmarc.gslb-sitetest.akadata.ltd."
+        text:
+          - "v=DMARC1; p=quarantine; rua=mailto:postmaster@akadata.ltd"
+        ttl: 900
+
+    # MX at apex (use FQDN for Exchange)
+    mx:
+      - preference: 1
+        exchange: "aspmx.l.google.com."
+        ttl: 300
+      - preference: 5
+        exchange: "alt1.aspmx.l.google.com."
+        ttl: 300
+      - preference: 5
+        exchange: "alt2.aspmx.l.google.com."
+        ttl: 300
+      - preference: 10
+        exchange: "alt3.aspmx.l.google.com."
+        ttl: 300
+      - preference: 10
+        exchange: "alt4.aspmx.l.google.com."
+        ttl: 300
+
+    # CAA at apex
+    caa:
+      - flag: 128
+        tag: "issue"
+        value: "letsencrypt.org"
+        ttl: 900
+      - flag: 0
+        tag: "iodef"
+        value: "mailto:abuse@akadata.ltd"
+        ttl: 900
+
+    # RP (Responsible Person) at apex
+    rp:
+      mbox: "hostmaster.akadata.ltd."
+      txt:  "contact.akadata.ltd."
+      ttl: 900
+
+    # SSHFP examples (owner omitted => apex). Algorithm: 1=RSA,3=ECDSA,4=Ed25519; Type: 1=SHA1,2=SHA256
+    sshfp:
+      - algorithm: 4
+        type: 2
+        fingerprint: "9F3C0B1E6A1D8A9B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6"
+        ttl: 300
+      - algorithm: 3
+        type: 2
+        fingerprint: "A1B2C3D4E5F60718293A4B5C6D7E8F90123456789ABCDEF0123456789ABCDEF0"
+        ttl: 300
+
+    # SRV example pointing to the apex target (so GSLB applies indirectly)
+    srv:
+      - name: "_sips._tcp.gslb-sitetest.akadata.ltd."
+        priority: 10
+        weight: 60
+        port: 443
+        target: "gslb-sitetest.akadata.ltd."
+        ttl: 60
+
+    # NAPTR example mapping to the SRV above (SIPS+D2T)
+    naptr:
+      - name: "gslb-sitetest.akadata.ltd."
+        order: 100
+        preference: 10
+        flags: "S"
+        services: "SIPS+D2T"
+        regexp: ""
+        replacement: "_sips._tcp.gslb-sitetest.akadata.ltd."
+        ttl: 60
+
+  #
+  # ZONE 2 — articles.akadata.ltd. (demonstrates ALIAS synth)
+  #
+  - name: "articles.akadata.ltd."
+    ns: ["ns-gslb.akadata.ltd."]
+    admin: "hostmaster.akadata.ltd."
+    ttl_soa: 60
+    ttl_answer: 60
+
+    tsig:
+      seed_env: "BREATH_TSIG_SEED"      # optional; derive deterministically from this env var
+      default_algorithm: "hmac-sha256"
+      keys:
+        - name: "gslb-xfr."             # TSIG key name (owner form, trailing dot)
+          algorithm: "hmac-sha256"      # optional; defaults to above
+          secret: ""                    # if empty → derive from seed; if no seed → random per start
+          allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
+
+
+    # No explicit A/AAAA lists here; ALIAS will synthesize A/AAAA from target
+    alias: "status.akadata.ltd."
+
+    health:
+      host_header: "articles.akadata.ltd"
+      sni:         "articles.akadata.ltd"
+      path:        "/health"
+      insecure_tls: false
+
+    # Shared records at apex
+    txt:
+      - text: ["openai-domain-verification=dv-EXAMPLE"]
+        ttl: 300
+    caa:
+      - flag: 128
+        tag: "issue"
+        value: "letsencrypt.org"
+        ttl: 900
