@@ -1,0 +1,388 @@
+# BreathGSLB
+
+A tiny, self‑contained **authoritative GSLB** (Global Server Load‑Balancer) that answers A/AAAA (and friends) based on live HTTPS health checks, with **flap damping**, **local/private views**, **SIGHUP reload**, **file logging**, **EDNS(0)** controls, and **DNSSEC (alpha)** signing.
+
+> Purpose
+>
+> Many teams run one reliable but modest host (e.g., cloud VM) and one fast but occasionally flaky host (e.g., FTTP at a site). BreathGSLB keeps service reachable: prefer the fast site when healthy; automatically fall back to the reliable site; optionally serve private RFC1918/ULA addresses to local clients. Simple, faithful, reproducible.
+
+---
+
+## Features (current)
+
+* **Master → Standby → Fallback** tiers per family (IPv4/IPv6) with independent health.
+* **Local view**: serve **rfc\_**\* (RFC1918) or **ula\_**\* answers to clients in configured CIDRs; otherwise serve public.
+* **Per‑tier private answers** (`*_private`) for on‑LAN clients.
+* **Health checking** over HTTPS with SNI/Host overrides; **rise/fall**, **cooldown**, and jittered intervals.
+* **EDNS(0) buffer** size control; responds to **ECS** (`+subnet` in dig) for local view selection.
+* **Shared records**: `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`; ALIAS‑like synth via target lookup.
+* **DNSSEC (alpha)**: in‑process signing of answers & DNSKEY; minimal NSEC for NXRRSET at apex.
+* **Hot reload**: `SIGHUP` (systemd `ExecReload=` or OpenRC `reload`).
+* **Logging**: to file (default `/var/log/breathgslb/breathgslb.log`) + stderr.
+* **Binding control**: `listen`, `listen_addrs`, or named `interfaces` (multi‑bind TCP+UDP, v4+v6).
+
+> Not a recursive resolver; not a full authoritative platform. It answers for the zones you delegate to it.
+
+---
+
+## Quick start
+
+### Build
+
+* **Alpine (musl):**
+
+  ```sh
+  apk add go
+  cd breathgslb
+  go build -trimpath -ldflags "-s -w" -o breathgslb
+  ```
+* **Arch Linux:**
+
+  ```sh
+  pacman -S go
+  cd breathgslb
+  go build -trimpath -ldflags "-s -w" -o breathgslb
+  ```
+* **Windows (cross-compile from Linux):**
+
+  ```sh
+  GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o breathgslb.exe
+  ```
+
+### Minimal run
+
+```sh
+./breathgslb -config /etc/breathgslb/config.yaml
+```
+
+Open UDP/TCP 53 on the chosen interface(s).
+
+---
+
+## Configuration (YAML)
+
+### Top-level keys
+
+```yaml
+listen: ":53"                     # optional; default port 53 if omitted
+listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets (overrides interfaces)
+interfaces: ["eth0", "ppp0"]            # derive IPs from interface(s) and bind there
+
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+cooldown_sec: 25                 # minimum time between up/down flips per family
+jitter_ms: 500                   # randomize probe interval a little
+edns_buf: 1232
+log_queries: true
+log_file: "/var/log/breathgslb/breathgslb.log"
+
+zones:
+  - name: "gslb-sitetest.akadata.ltd."
+    ns:   ["ns-gslb.akadata.ltd."]
+    admin: "hostmaster.akadata.ltd."
+    ttl_soa: 60
+    ttl_answer: 20
+
+    # View: "global" (default) or "local"
+    serve: "local"
+    private_allow_when_isolated: true  # serve private even if health is down
+
+    # Public answers (by tier)
+    a_master:        ["217.155.241.55"]
+    aaaa_master:     ["2a02:8012:bc57::1"]
+    a_standby:       ["13.41.102.86"]
+    aaaa_standby:    ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]
+    a_fallback:      ["192.0.2.30"]
+    aaaa_fallback:   ["2001:db8:2::30"]
+
+    # Private answers for local sources (served only if client IP in matching rfc_/ula_ CIDRs)
+    a_master_private:    ["172.16.0.1"]
+    aaaa_master_private: ["fd00:1::1"]
+
+    # Local source ranges per tier (RFC1918 + ULA, multiple CIDRs allowed)
+    rfc_master:    ["172.16.0.0/24", "10.1.10.0/24"]
+    ula_master:    ["fd00:1::/64"]
+    rfc_standby:   []
+    ula_standby:   []
+    rfc_fallback:  []
+    ula_fallback:  []
+
+    # Shared/static records at apex (or use per-name via `name:`)
+    txt:
+      - text: ["google-site-verification=..."]
+      - text: ["Breath Technology - a DNS Zone by BreathGSLB - In YHVH we trust"]
+    mx:
+      - preference: 1  exchange: "aspmx.l.google.com."
+      - preference: 5  exchange: "alt1.aspmx.l.google.com."
+      - preference: 5  exchange: "alt2.aspmx.l.google.com."
+      - preference: 10 exchange: "alt3.aspmx.l.google.com."
+      - preference: 10 exchange: "alt4.aspmx.l.google.com."
+    caa:
+      - flag: 128 tag: "issue" value: "letsencrypt.org"
+      - flag: 0   tag: "iodef" value: "mailto:abuse@akadata.ltd"
+    rp:
+      mbox: "hostmaster.akadata.ltd."   # email as host.name.
+      txt:  "contact.akadata.ltd."
+    sshfp:
+      - algorithm: 1  type: 1  fingerprint: "..."
+    srv:
+      - name: "_sip._tcp" priority: 10 weight: 10 port: 5060 target: "sip.example.net."
+    naptr:
+      - name: "@" order: 10 preference: 100 flags: "s" services: "SIP+D2T" regexp: "" replacement: "_sip._tcp.example.net."
+
+    # Health checking (HTTPS)
+    health:
+      host_header: "gslb-sitetest.akadata.ltd"
+      sni:         "gslb-sitetest.akadata.ltd"
+      path: "/health"
+      insecure_tls: false
+
+    # DNSSEC (alpha):
+    dnssec:
+      enable: true
+      zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+38151"   # without .key/.private
+      ksk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+12218"
+```
+
+### Notes
+
+* If `listen_addrs` is set, it **overrides** `interfaces`.
+* If neither is set, BreathGSLB binds all addresses on UDP/TCP 53 for v4+v6.
+* Apex‑only answers are supported today (owner name equals the zone). Per‑name records for shared types are supported via the `name:` field.
+
+---
+
+## Health, flaps & softening
+
+* **Probes**: HTTPS `GET https://<ip>[/path]` with optional `Host` and `SNI` overrides.
+* **rise/fall**: consecutive successes/failures needed to change state.
+* **cooldown\_sec**: minimum dwell time between state flips per family.
+* **jitter\_ms**: random sleep added to `interval_sec` to avoid thundering herds.
+* The tier order is **master → standby → fallback** per family. Local view can serve `*_private` regardless of health if `private_allow_when_isolated: true`.
+
+---
+
+## EDNS & ECS
+
+* `edns_buf` defaults to **1232** (works well over typical MTUs).
+* ECS is consumed when present; `dig +subnet=172.16.0.1/24 A zone` demonstrates local/private answers if `serve: "local"` and RFC/ULA CIDRs match.
+
+---
+
+## DNSSEC (alpha)
+
+BreathGSLB can sign answers in‑process. Today’s support covers:
+
+* DNSKEY RRset at apex (signed with **KSK**)
+* All answer RRsets (signed with **ZSK**)
+* Minimal **NSEC** for NXRRSET (apex)
+
+### Generate keys (BIND tools)
+
+```sh
+mkdir -p /etc/breathgslb/keys && cd /etc/breathgslb/keys
+# KSK (flags 257) and ZSK (flags 256); algorithm 13 (ECDSA P‑256)
+dnssec-keygen -a ECDSAP256SHA256 -f KSK -n ZONE gslb-sitetest.akadata.ltd
+dnssec-keygen -a ECDSAP256SHA256      -n ZONE gslb-sitetest.akadata.ltd
+# Use the "K...+013+<id>" prefixes in config, without .key/.private extensions
+chown -R breathgslb:breathgslb /etc/breathgslb/keys
+chmod 0640 /etc/breathgslb/keys/*
+```
+
+### Enable in config
+
+See `dnssec:` block in the YAML above, then **reload**.
+
+### Test signing
+
+```sh
+dig @ns-gslb.akadata.ltd +dnssec zone A +norecurse
+# Or validate using delv with a trust anchor
+dnssec-dsfromkey -2 /etc/breathgslb/keys/K<zone>...ksk.key \
+| awk '{printf "trust-anchors{\n\"%s\" initial-ds %s %s %s %s;\n};\n", $1,$4,$5,$6,$7}' >/etc/breathgslb/anchor.conf
+
+delv @ns-gslb.akadata.ltd -a /etc/breathgslb/anchor.conf zone A +vtrace
+```
+
+> To achieve full validation by public resolvers (8.8.8.8, 1.1.1.1), publish a **DS** at the parent (your registrar/registry). Until then, some resolvers may SERVFAIL when the DO bit is set.
+
+### Roadmap (DNSSEC)
+
+* Complete NSEC/NSEC3 coverage for NXDOMAIN.
+* Optional in‑memory/auto‑rotated keys and disk emission.
+
+---
+
+## TSIG (roadmap)
+
+* Goal: **memory‑only** HMAC keys with rotation for zone transfer and administrative ops, plus optional disk emission for interoperability.
+* Planned config shape:
+
+  ```yaml
+  tsig:
+    enabled: true
+    rotation_minutes: 1440
+    algorithms: ["hmac-sha256"]
+    persist: "memory"   # or "disk"
+    directory: "/etc/breathgslb/tsig"  # used when persist: disk
+  ```
+* Current status: TSIG acceptance/enforcement not enabled yet.
+
+---
+
+## Service management
+
+### systemd unit
+
+```ini
+[Unit]
+Description=BreathGSLB authoritative DNS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=breathgslb
+Group=breathgslb
+ExecStart=/usr/local/bin/breathgslb -config /etc/breathgslb/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+LimitNOFILE=65536
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### OpenRC script (Alpine)
+
+```sh
+#!/sbin/openrc-run
+name="BreathGSLB"
+description="Authoritative GSLB DNS"
+command="/usr/local/bin/breathgslb"
+command_args="-config /etc/breathgslb/config.yaml"
+command_user="breathgslb:breathgslb"
+pidfile="/run/breathgslb.pid"
+supervisor="supervise-daemon"
+output_log="/var/log/breathgslb/breathgslb.log"
+error_log="/var/log/breathgslb/breathgslb.log"
+
+depend(){ need net }
+start_pre(){ checkpath -d -o breathgslb:breathgslb -m 0755 /var/log/breathgslb }
+reload(){ ebegin "Reloading BreathGSLB" ; pkill -HUP -x breathgslb ; eend $? }
+```
+
+### Least‑privileged user (Alpine)
+
+```sh
+addgroup -S breathgslb
+adduser -S -D -H -G breathgslb -s /sbin/nologin breathgslb
+install -d -o breathgslb -g breathgslb -m 0755 /var/log/breathgslb
+```
+
+---
+
+## Firewall (nftables snippet)
+
+Inside your `input` chain:
+
+```nft
+ip saddr 0.0.0.0/0 udp dport 53 accept
+ip6 saddr ::/0      udp dport 53 accept
+ip saddr 0.0.0.0/0  tcp dport 53 ct state new,established accept
+ip6 saddr ::/0      tcp dport 53 ct state new,established accept
+```
+
+Adjust by interface if required (e.g., restrict to `ppp0`).
+
+---
+
+## Testing
+
+* Ask the authoritative directly:
+
+  ```sh
+  dig @ns-gslb.akadata.ltd A zone +norecurse
+  dig @ns-gslb.akadata.ltd AAAA zone +dnssec +norecurse
+  dig @ns-gslb.akadata.ltd TXT zone +norecurse
+  dig @ns-gslb.akadata.ltd +subnet=172.16.0.1/24 A zone +norecurse  # ECS/local view
+  ```
+* Trace from roots:
+
+  ```sh
+  dig +trace AAAA zone
+  ```
+* Validation with `delv` as shown in DNSSEC section.
+
+> If a public resolver returns only NS/SOA shortly after a restart, it is likely building cache. Query the auth nameserver directly or allow TTLs to elapse.
+
+---
+
+## Troubleshooting
+
+* **SERVFAIL with +dnssec on public resolvers:** publish a DS at the parent; until then, use `delv -a anchor.conf` for local validation.
+* **Google Public DNS slow to pick up answers:** it may back off after timeouts. Ask the auth directly during maintenance windows.
+* **AAAA returns also A at an upstream:** that’s upstream behavior; ask your auth directly to verify.
+* **No answers for TXT:** ensure multiple TXT records are listed as separate map items under `txt:`.
+* **Health never UP:** confirm HTTPS path, SNI/Host, and that certs match. Try `curl -ik https://IP/health --resolve host:443:IP`.
+* **Reload didn’t apply:** check logs; ensure `SIGHUP` reached the process (`ExecReload`/OpenRC `reload`).
+
+---
+
+## Packaging & releases
+
+* Provide prebuilt archives for Alpine/Arch/Windows/macOS (amd64 + arm64). Static builds are simple (`CGO_ENABLED=0` for Linux if desired). Checksums + signatures recommended.
+
+---
+
+## License
+
+**Recommendation: MIT License** for the core project.
+
+* Permissive, simple, widely understood.
+* Compatible with the `miekg/dns` BSD‑style license.
+
+> A dual‑track model (similar spirit to HAProxy Community vs Enterprise) can be introduced later. If releasing advanced GEO features freely as well, keep a **single MIT** codebase and differentiate via packaging/support rather than licensing.
+
+Add a `LICENSE` file with:
+
+```text
+MIT License
+
+Copyright (c) 2025 AKADATA LIMITED
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## Roadmap
+
+* **Persistence (hash‑based)**: stable pick across multi‑RR answers.
+* **Weighted RR/round‑robin** within each tier.
+* **Full DNSSEC (NSEC3, full NXDOMAIN)** and optional auto‑rotation of keys with disk export.
+* **TSIG**: in‑memory rotating secrets + disk emission.
+* **GEO**: optional country/continent policy via MaxMind (mmdb) or simple CIDR tables.
+* **Status endpoint**: JSON snapshot of health state and served tier for observability.
+
+---
+
+Give thanks, ship simply, and keep it easy to operate. Glory to YHVH.

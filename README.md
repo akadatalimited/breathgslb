@@ -254,6 +254,11 @@ chmod 0640 /etc/breathgslb/config.yaml
 
 # allow binding to :53 without root
 setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
+apk add libcap
+setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
+install -d -o breathgslb -g breathgslb -m 0755 /var/log/breathgslb
+install -d -o breathgslb -g breathgslb -m 0755  /etc/breathgslb/keys
+chown -R breathgslb:breathgslb /etc/breathgslb/keys  # if DNSSEC keys live here
 ```
 
 **Arch (systemd)**

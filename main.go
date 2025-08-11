@@ -1,11 +1,15 @@
-// minimal-gslb/main.go (+reload +DNSSEC alpha)
-// Tiny authoritative DNS with health-based A/AAAA answers, flap damping,
-// jittered checks, cooldown, dual-stack listeners, optional file logging,
-// shared records (TXT/MX/CAA/RP/SSHFP/SRV/NAPTR), ALIAS synth, **SIGHUP reload**, and
-// **DNSSEC (alpha)**: online RRSIG for positive RRsets and DNSKEY; NSEC for
-// existing names (NXRRSET). NSEC3 and full NXDOMAIN proofs planned next.
+// minimal-gslb/main.go (+reload +DNSSEC alpha +master/standby/fallback +local RFC1918/ULA view)
+// Tiny authoritative DNS with health-based answers, flap damping, jittered checks,
+// cooldown, dual-stack listeners, optional file logging, shared records (TXT/MX/CAA/RP/SSHFP/SRV/NAPTR),
+// ALIAS synth, **SIGHUP reload**, and **DNSSEC (alpha)**.
 //
-// EDNS buffer size is honored (edns_buf). DO-bit triggers DNSSEC material.
+// New in this revision:
+// - Tiered addresses: master → standby → fallback (per A/AAAA)
+// - Local view by source: per-tier RFC1918 (rfc_*) and ULA (ula_*) CIDRs
+// - Per-tier health (master & standby) with rise/fall & cooldown
+// - Optional per-tier private answers (*_private) served only to local sources
+// - Backwards-compatible EDNS buffer handling and DNSSEC signing
+// NOTE: Deterministic persistence (hash-based pick) will be added in the next patch.
 //
 // Build:   go build -trimpath -ldflags "-s -w" -o breathgslb
 // Run:     ./breathgslb -config /etc/breathgslb/config.yaml
@@ -50,16 +54,17 @@ type HealthConfig struct {
 // ---- DNSSEC config ----
 
 type DNSSECZoneConfig struct {
-	Enable   bool   `yaml:"enable"`
-	ZSKFile  string `yaml:"zsk_keyfile,omitempty"` // BIND-style prefix without extension or full path without extension; we'll add .key and .private
-	KSKFile  string `yaml:"ksk_keyfile,omitempty"` // if empty, ZSKFile is used for both
-	// Future: NSEC3 parameters
+	Enable  bool   `yaml:"enable"`
+	ZSKFile string `yaml:"zsk_keyfile,omitempty"` // BIND-style prefix without extension
+	KSKFile string `yaml:"ksk_keyfile,omitempty"` // if empty, ZSKFile is used for both
 }
 
 // Config is the top-level YAML.
 type Config struct {
-	Listen      string `yaml:"listen"`        // e.g. ":53" or "0.0.0.0:5353" (port is extracted; dual-stack bind is used)
-	Zones       []Zone `yaml:"zones"`
+	Listen       string   `yaml:"listen"`
+	ListenAddrs  []string `yaml:"listen_addrs,omitempty"`
+	Interfaces   []string `yaml:"interfaces,omitempty"`
+	Zones        []Zone   `yaml:"zones"`
 
 	TimeoutSec  int  `yaml:"timeout_sec"`
 	IntervalSec int  `yaml:"interval_sec"`
@@ -69,11 +74,10 @@ type Config struct {
 	LogQueries  bool `yaml:"log_queries"`
 
 	// Softening knobs
-	JitterMs    int    `yaml:"jitter_ms"`    // random 0..JitterMs added to each interval
-	CooldownSec int    `yaml:"cooldown_sec"` // minimum time between state flips per family
+	JitterMs    int    `yaml:"jitter_ms"`
+	CooldownSec int    `yaml:"cooldown_sec"`
 
-	// Optional file logging (cross-platform). If empty, default is /var/log/breathgslb/breathgslb.log;
-	// if creation fails, falls back to ./breathgslb.log
+	// Optional file logging
 	LogFile     string `yaml:"log_file"`
 }
 
@@ -115,7 +119,7 @@ type SSHFPRecord struct {
 }
 
 type SRVRecord struct {
-	Name     string `yaml:"name"` // owner name (e.g., _sip._tcp.example.com.)
+	Name     string `yaml:"name"`
 	Priority uint16 `yaml:"priority"`
 	Weight   uint16 `yaml:"weight"`
 	Port     uint16 `yaml:"port"`
@@ -124,31 +128,53 @@ type SRVRecord struct {
 }
 
 type NAPTRRecord struct {
-	Name       string `yaml:"name"`
-	Order      uint16 `yaml:"order"`
-	Preference uint16 `yaml:"preference"`
-	Flags      string `yaml:"flags"`
-	Services   string `yaml:"services"`
-	Regexp     string `yaml:"regexp"`
+	Name        string `yaml:"name"`
+	Order       uint16 `yaml:"order"`
+	Preference  uint16 `yaml:"preference"`
+	Flags       string `yaml:"flags"`
+	Services    string `yaml:"services"`
+	Regexp      string `yaml:"regexp"`
 	Replacement string `yaml:"replacement"`
-	TTL        uint32 `yaml:"ttl,omitempty"`
+	TTL         uint32 `yaml:"ttl,omitempty"`
 }
 
 // Zone defines a single authoritative child zone served here.
 type Zone struct {
-	Name        string   `yaml:"name"`       // FQDN with trailing dot
-	NS          []string `yaml:"ns"`         // FQDNs with trailing dots
-	Admin       string   `yaml:"admin"`      // hostmaster email as hostmaster.example.com.
-	TTLSOA      uint32   `yaml:"ttl_soa"`
-	TTLAnswer   uint32   `yaml:"ttl_answer"`
+	Name      string   `yaml:"name"`       // FQDN with trailing dot
+	NS        []string `yaml:"ns"`         // FQDNs with trailing dots
+	Admin     string   `yaml:"admin"`      // hostmaster email as hostmaster.example.com.
+	TTLSOA    uint32   `yaml:"ttl_soa"`
+	TTLAnswer uint32   `yaml:"ttl_answer"`
 
-	// Health-based addresses
-	AHealthy     []string `yaml:"a_healthy"`
-	AAAAHealthy  []string `yaml:"aaaa_healthy"`
-	AFallback    []string `yaml:"a_fallback"`
-	AAAAFallback []string `yaml:"aaaa_fallback"`
+	// View control
+	Serve                    string `yaml:"serve,omitempty"` // "global" | "local" (default: global)
+	PrivateAllowWhenIsolated bool   `yaml:"private_allow_when_isolated,omitempty"`
 
-	// Optional ALIAS-like target (synthesizes A/AAAA from target if no A/AAAA given)
+	// Tiered public answers
+	AMaster      []string `yaml:"a_master,omitempty"`
+	AAAAMaster   []string `yaml:"aaaa_master,omitempty"`
+	AStandby     []string `yaml:"a_standby,omitempty"`
+	AAAAStandby  []string `yaml:"aaaa_standby,omitempty"`
+	AFallback    []string `yaml:"a_fallback,omitempty"`
+	AAAAFallback []string `yaml:"aaaa_fallback,omitempty"`
+
+	// Optional per-tier private answers (served only to local source ranges)
+	AMasterPrivate      []string `yaml:"a_master_private,omitempty"`
+	AAAAMasterPrivate   []string `yaml:"aaaa_master_private,omitempty"`
+	AStandbyPrivate     []string `yaml:"a_standby_private,omitempty"`
+	AAAAStandbyPrivate  []string `yaml:"aaaa_standby_private,omitempty"`
+	AFallbackPrivate    []string `yaml:"a_fallback_private,omitempty"`
+	AAAAFallbackPrivate []string `yaml:"aaaa_fallback_private,omitempty"`
+
+	// Per-tier local source ranges (RFC1918 and ULA)
+	RFCMaster  []string `yaml:"rfc_master,omitempty"`
+	ULAMaster  []string `yaml:"ula_master,omitempty"`
+	RFCStandby []string `yaml:"rfc_standby,omitempty"`
+	ULAStandby []string `yaml:"ula_standby,omitempty"`
+	RFCFallback []string `yaml:"rfc_fallback,omitempty"`
+	ULAFallback []string `yaml:"ula_fallback,omitempty"`
+
+	// Optional ALIAS-like target when no explicit A/AAAA (unchanged)
 	Alias string `yaml:"alias,omitempty"`
 
 	// Shared/static records
@@ -160,57 +186,81 @@ type Zone struct {
 	SRV   []SRVRecord   `yaml:"srv,omitempty"`
 	NAPTR []NAPTRRecord `yaml:"naptr,omitempty"`
 
-	Health HealthConfig    `yaml:"health"`
+	Health HealthConfig      `yaml:"health"`
 	DNSSEC *DNSSECZoneConfig `yaml:"dnssec,omitempty"`
 }
 
-// state tracks per-zone health and damping counters.
+// ---- state: per-tier, per-family ----
+
+type famState struct {
+	up         bool
+	rise, fall int
+	lastChange time.Time
+}
+
+type tierState struct {
+	v4 famState
+	v6 famState
+}
+
 type state struct {
-	mu sync.RWMutex
-
-	v4Up, v6Up           bool
-	v4Rise, v4Fall       int
-	v6Rise, v6Fall       int
-	cooldown             time.Duration
-	lastV4Change         time.Time
-	lastV6Change         time.Time
+	mu       sync.RWMutex
+	cooldown time.Duration
+	master   tierState
+	standby  tierState
 }
 
-func (s *state) snapshot() (v4, v6 bool) {
-	s.mu.RLock(); defer s.mu.RUnlock(); return s.v4Up, s.v6Up
+func (s *state) snapshot() (mV4, mV6, sV4, sV6 bool) {
+	s.mu.RLock(); defer s.mu.RUnlock()
+	return s.master.v4.up, s.master.v6.up, s.standby.v4.up, s.standby.v6.up
 }
-func (s *state) setV4(obsUp bool, riseTarget, fallTarget int) {
+
+func (s *state) set(tier string, ipv6 bool, obsUp bool, riseTarget, fallTarget int) {
 	s.mu.Lock(); defer s.mu.Unlock()
-	if obsUp { s.v4Rise++; s.v4Fall = 0 } else { s.v4Fall++; s.v4Rise = 0 }
-	proposed := s.v4Up
-	if s.v4Rise >= riseTarget { proposed = true }
-	if s.v4Fall >= fallTarget { proposed = false }
-	if proposed != s.v4Up && time.Since(s.lastV4Change) >= s.cooldown { s.v4Up = proposed; s.lastV4Change = time.Now() }
-}
-func (s *state) setV6(obsUp bool, riseTarget, fallTarget int) {
-	s.mu.Lock(); defer s.mu.Unlock()
-	if obsUp { s.v6Rise++; s.v6Fall = 0 } else { s.v6Fall++; s.v6Rise = 0 }
-	proposed := s.v6Up
-	if s.v6Rise >= riseTarget { proposed = true }
-	if s.v6Fall >= fallTarget { proposed = false }
-	if proposed != s.v6Up && time.Since(s.lastV6Change) >= s.cooldown { s.v6Up = proposed; s.lastV6Change = time.Now() }
+	var f *famState
+	if tier == "master" {
+		if ipv6 { f = &s.master.v6 } else { f = &s.master.v4 }
+	} else { // standby
+		if ipv6 { f = &s.standby.v6 } else { f = &s.standby.v4 }
+	}
+	if obsUp { f.rise++; f.fall = 0 } else { f.fall++; f.rise = 0 }
+	proposed := f.up
+	if f.rise >= riseTarget { proposed = true }
+	if f.fall >= fallTarget { proposed = false }
+	if proposed != f.up && time.Since(f.lastChange) >= s.cooldown {
+		f.up = proposed
+		f.lastChange = time.Now()
+	}
 }
 
 // ---- DNSSEC runtime structures ----
 
 type dnssecKeys struct {
 	enabled bool
-	zsk    *dns.DNSKEY
+	zsk     *dns.DNSKEY
 	zskPriv crypto.Signer
-	ksk    *dns.DNSKEY // may equal zsk
+	ksk     *dns.DNSKEY // may equal zsk
 	kskPriv crypto.Signer
 }
 
 // zoneIndex tracks owner names and type bitmaps for NSEC.
 
 type zoneIndex struct {
-	names []string                              // sorted, lowercased FQDNs
-	types map[string]map[uint16]bool            // owner -> set of rrtypes present
+	names []string
+	types map[string]map[uint16]bool
+}
+
+// parsed local CIDRs per tier
+
+type parsedCIDRs struct {
+	rfc []*net.IPNet
+	ula []*net.IPNet
+}
+
+type tierCIDR struct {
+	master  parsedCIDRs
+	standby parsedCIDRs
+	fallback parsedCIDRs
 }
 
 // authority binds config + zone + state + dnssec + index and runs health.
@@ -224,6 +274,8 @@ type authority struct {
 
 	keys *dnssecKeys
 	zidx *zoneIndex
+
+	cidrs tierCIDR
 }
 
 // router is a dynamic handler wrapper we can hot-swap on HUP.
@@ -258,14 +310,11 @@ func main() {
 	flag.StringVar(&cfgPath, "config", "config.yaml", "path to YAML config")
 	flag.Parse()
 
-	// initial load
 	cfg, err := loadConfig(cfgPath)
 	if err != nil { log.Fatalf("read config: %v", err) }
 	setupDefaults(cfg)
 
-	// logging
 	f := setupLogging(cfg.LogFile)
-
 	rand.Seed(time.Now().UnixNano())
 
 	rt := &router{}
@@ -281,21 +330,15 @@ func main() {
 	current.auths = auths
 	current.mu.Unlock()
 
-	// listeners
 	startListeners(rt, cfg)
 
-	// signals: HUP reload, TERM/INT exit
 	sigc := make(chan os.Signal, 2)
 	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 	for {
 		s := <-sigc
 		switch s {
 		case syscall.SIGHUP:
-			if err := reload(cfgPath); err != nil {
-				log.Printf("reload failed: %v", err)
-			} else {
-				log.Printf("reloaded configuration")
-			}
+			if err := reload(cfgPath); err != nil { log.Printf("reload failed: %v", err) } else { log.Printf("reloaded configuration") }
 		case syscall.SIGINT, syscall.SIGTERM:
 			log.Printf("signal %v: shutting down", s)
 			shutdown()
@@ -363,6 +406,8 @@ func buildMux(cfg *Config) (dns.Handler, map[string]*authority) {
 		// DNSSEC keys & index
 		auth.keys = loadDNSSEC(z)
 		auth.zidx = buildIndex(z)
+		// parse local CIDRs once
+		auth.cidrInit()
 
 		mux.HandleFunc(zname, auth.handle)
 		auths[zname] = auth
@@ -372,9 +417,85 @@ func buildMux(cfg *Config) (dns.Handler, map[string]*authority) {
 	return mux, auths
 }
 
-func startListeners(rt *router, cfg *Config) {
+type bindTarget struct{ netw, addr string }
+
+func targetsFromConfig(cfg *Config) []bindTarget {
+	var t []bindTarget
 	port := derivePort(cfg.Listen)
-	addrs := []struct{ netw, addr string }{{"udp4", "0.0.0.0:" + port}, {"udp6", "[::]:" + port}, {"tcp4", "0.0.0.0:" + port}, {"tcp6", "[::]:" + port}}
+	seen := map[string]bool{}
+	add := func(netw, addr string) {
+		key := netw + "|" + addr
+		if !seen[key] { t = append(t, bindTarget{netw, addr}); seen[key] = true }
+	}
+
+	// 1) explicit listen_addrs take precedence
+	if len(cfg.ListenAddrs) > 0 {
+		for _, la := range cfg.ListenAddrs {
+			la = strings.TrimSpace(la)
+			if la == "" { continue }
+			host, p, err := net.SplitHostPort(la)
+			if err != nil {
+				// allow bare IP or bare port
+				if i := strings.LastIndex(la, ":"); i >= 0 && i < len(la)-1 {
+					host = la[:i]; p = la[i+1:]
+				} else {
+					host = la; p = port
+				}
+			}
+			if host == "" || host == "0.0.0.0" {
+				add("udp4", "0.0.0.0:"+p); add("tcp4", "0.0.0.0:"+p)
+			} else if host == "::" || host == "[::]" || strings.Contains(host, ":") {
+				h := strings.Trim(host, "[]")
+				add("udp6", "["+h+"]:"+p); add("tcp6", "["+h+"]:"+p)
+			} else {
+				ip := net.ParseIP(host)
+				if ip != nil && ip.To4() == nil { add("udp6", "["+ip.String()+"]:"+p); add("tcp6", "["+ip.String()+"]:"+p) }
+				if ip == nil || ip.To4() != nil { add("udp4", host+":"+p); add("tcp4", host+":"+p) }
+			}
+		}
+		return t
+	}
+
+	// 2) interfaces: derive bind IPs from interface addresses
+	if len(cfg.Interfaces) > 0 {
+		for _, ifn := range cfg.Interfaces {
+			ifn = strings.TrimSpace(ifn)
+			if ifn == "" { continue }
+			ifi, err := net.InterfaceByName(ifn)
+			if err != nil { log.Printf("warn: interface %s not found: %v", ifn, err); continue }
+			addrs, err := ifi.Addrs()
+			if err != nil { log.Printf("warn: cannot read addrs for %s: %v", ifn, err); continue }
+			for _, a := range addrs {
+				var ip net.IP
+				switch v := a.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip == nil { continue }
+				if ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() { continue }
+				if ip.To4() != nil {
+					add("udp4", ip.String()+":"+port)
+					add("tcp4", ip.String()+":"+port)
+				} else {
+					add("udp6", "["+ip.String()+"]:"+port)
+					add("tcp6", "["+ip.String()+"]:"+port)
+				}
+			}
+		}
+		if len(t) > 0 { return t }
+		log.Printf("warn: no usable addresses from interfaces; falling back to all-addrs")
+	}
+
+	// 3) default: bind on all addresses both families
+	add("udp4", "0.0.0.0:"+port); add("udp6", "[::]:"+port)
+	add("tcp4", "0.0.0.0:"+port); add("tcp6", "[::]:"+port)
+	return t
+}
+
+func startListeners(rt *router, cfg *Config) {
+	addrs := targetsFromConfig(cfg)
 	for _, a := range addrs {
 		srv := &dns.Server{Net: a.netw, Addr: a.addr, Handler: rt}
 		log.Printf("listening on %s %s", a.netw, a.addr)
@@ -384,12 +505,12 @@ func startListeners(rt *router, cfg *Config) {
 	}
 }
 
+
 func reload(cfgPath string) error {
 	cfg, err := loadConfig(cfgPath)
 	if err != nil { return err }
 	setupDefaults(cfg)
 
-	// swap handler
 	mux, auths := buildMux(cfg)
 
 	current.mu.Lock()
@@ -400,10 +521,7 @@ func reload(cfgPath string) error {
 	current.auths = auths
 	current.mu.Unlock()
 
-	// stop old health loops
 	for _, a := range old { a.cancel() }
-
-	// maybe reopen log file
 	reopenLogging(cfg.LogFile)
 	return nil
 }
@@ -426,7 +544,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	name := ensureDot(q.Name)
 	z := ensureDot(a.zone.Name)
 
-	if a.cfg.LogQueries { log.Printf("query %s %s", strings.ToLower(name), dns.TypeToString[q.Qtype]) }
+	if a.cfg.LogQueries { log.Printf("query %s %s", name, dns.TypeToString[q.Qtype]) }
 
 	// Basic apex handling for SOA/NS/DNSKEY
 	if name == z {
@@ -440,53 +558,214 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 				for _, k := range a.dnskeyRRSet() { m.Answer = append(m.Answer, k) }
 				if wantDNSSEC(r) { m.Answer = a.signAll(m.Answer) }
 			}
-			}
+		}
 	}
 
-	// Regular QTYPEs
+	// client identity (ECS or source)
+	cIP := clientIP(w, r)
+
 	switch q.Qtype {
 	case dns.TypeA:
-		m.Answer = append(m.Answer, a.addrA(name)...)
+		m.Answer = append(m.Answer, a.addrA(name, cIP, r)...) 
 	case dns.TypeAAAA:
-		m.Answer = append(m.Answer, a.addrAAAA(name)...)
+		m.Answer = append(m.Answer, a.addrAAAA(name, cIP, r)...) 
 	case dns.TypeTXT:
-		m.Answer = append(m.Answer, a.txtFor(name)...)
+		m.Answer = append(m.Answer, a.txtFor(name)...) 
 	case dns.TypeMX:
-		m.Answer = append(m.Answer, a.mxFor(name)...)
+		m.Answer = append(m.Answer, a.mxFor(name)...) 
 	case dns.TypeCAA:
-		m.Answer = append(m.Answer, a.caaFor(name)...)
+		m.Answer = append(m.Answer, a.caaFor(name)...) 
 	case dns.TypeRP:
 		if rr := a.rpFor(name); rr != nil { m.Answer = append(m.Answer, rr) }
 	case dns.TypeSSHFP:
-		m.Answer = append(m.Answer, a.sshfpFor(name)...)
+		m.Answer = append(m.Answer, a.sshfpFor(name)...) 
 	case dns.TypeSRV:
-		m.Answer = append(m.Answer, a.srvFor(name)...)
+		m.Answer = append(m.Answer, a.srvFor(name)...) 
 	case dns.TypeNAPTR:
-		m.Answer = append(m.Answer, a.naptrFor(name)...)
+		m.Answer = append(m.Answer, a.naptrFor(name)...) 
 	}
 
-	// If nothing in Answer, include NS/SOA in Authority as before
 	if len(m.Answer) == 0 {
 		for _, ns := range a.zone.NS { m.Ns = append(m.Ns, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)}) }
 		m.Ns = append(m.Ns, a.soa())
-
-		// NXRRSET proof with NSEC (alpha)
 		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
 			if a.zidx != nil && a.zidx.hasName(name) {
-				if nsec := a.makeNSEC(name); nsec != nil {
-					m.Ns = append(m.Ns, nsec)
-					/* signed later by a.signAll */
-				}
+				if nsec := a.makeNSEC(name); nsec != nil { m.Ns = append(m.Ns, nsec) }
 			}
 		}
 	}
 
-	// Sign positive RRsets when DO-bit set
 	if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
 		m.Answer = a.signAll(m.Answer)
 		m.Ns = a.signAll(m.Ns)
 	}
 	_ = w.WriteMsg(m)
+}
+
+func clientIP(w dns.ResponseWriter, r *dns.Msg) net.IP {
+	// Prefer ECS if present
+	if opt := r.IsEdns0(); opt != nil {
+		for _, o := range opt.Option {
+			if s, ok := o.(*dns.EDNS0_SUBNET); ok {
+				if s.Address != nil { return s.Address }
+			}
+		}
+	}
+	addr := w.RemoteAddr()
+	ua, _ := net.ResolveUDPAddr("udp", addr.String())
+	if ua != nil && ua.IP != nil { return ua.IP }
+	ta, _ := net.ResolveTCPAddr("tcp", addr.String())
+	if ta != nil { return ta.IP }
+	return nil
+}
+
+// Address selection for a given owner name
+func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
+	if ensureDot(owner) != ensureDot(a.zone.Name) { return nil }
+	// local view first if enabled
+	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
+		if rr := a.localAnswers(false /*v6*/, src); rr != nil { return rr }
+	}
+	// public flow: master -> standby -> fallback
+	mV4, _, sV4, _ := a.state.snapshot()
+	var addrs []string
+	if mV4 && len(a.zone.AMaster) > 0 { addrs = a.zone.AMaster } else if sV4 && len(a.zone.AStandby) > 0 { addrs = a.zone.AStandby } else if len(a.zone.AFallback) > 0 { addrs = a.zone.AFallback } else if a.zone.Alias != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second); defer cancel()
+		ips := aliasLookup(ctx, a.zone.Alias)
+		for _, ip := range ips { if ip.To4() != nil { addrs = append(addrs, ip.String()) } }
+	}
+	return a.buildA(addrs)
+}
+
+func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
+	if ensureDot(owner) != ensureDot(a.zone.Name) { return nil }
+	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
+		if rr := a.localAnswers(true /*v6*/, src); rr != nil { return rr }
+	}
+	_, mV6, _, sV6 := a.state.snapshot()
+	var addrs []string
+	if mV6 && len(a.zone.AAAAMaster) > 0 { addrs = a.zone.AAAAMaster } else if sV6 && len(a.zone.AAAAStandby) > 0 { addrs = a.zone.AAAAStandby } else if len(a.zone.AAAAFallback) > 0 { addrs = a.zone.AAAAFallback } else if a.zone.Alias != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second); defer cancel()
+		ips := aliasLookup(ctx, a.zone.Alias)
+		for _, ip := range ips { if ip.To4() == nil { addrs = append(addrs, ip.String()) } }
+	}
+	return a.buildAAAA(addrs)
+}
+
+func (a *authority) buildA(addrs []string) []dns.RR {
+	var rrs []dns.RR
+	for _, ip := range addrs {
+		p := net.ParseIP(ip); if p == nil || p.To4() == nil { continue }
+		rrs = append(rrs, &dns.A{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeA, a.zone.TTLAnswer), A: p.To4()})
+	}
+	return rrs
+}
+
+func (a *authority) buildAAAA(addrs []string) []dns.RR {
+	var rrs []dns.RR
+	for _, ip := range addrs {
+		p := net.ParseIP(ip); if p == nil || p.To4() != nil { continue }
+		rrs = append(rrs, &dns.AAAA{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: p})
+	}
+	return rrs
+}
+
+// localAnswers decides per-tier private/public answers for local sources.
+func (a *authority) localAnswers(ipv6 bool, src net.IP) []dns.RR {
+	// tier order master -> standby -> fallback
+	if a.isLocal("master", src) {
+		// if isolated and allowed, serve private regardless of health
+		if a.zone.PrivateAllowWhenIsolated || a.tierUp("master", ipv6) {
+			if rr := a.privateFor("master", ipv6); rr != nil { return rr }
+			return a.publicFor("master", ipv6)
+		}
+	}
+	if a.isLocal("standby", src) {
+		if a.zone.PrivateAllowWhenIsolated || a.tierUp("standby", ipv6) {
+			if rr := a.privateFor("standby", ipv6); rr != nil { return rr }
+			return a.publicFor("standby", ipv6)
+		}
+	}
+	if a.isLocal("fallback", src) {
+		if a.zone.PrivateAllowWhenIsolated || true { // fallback assumed available
+			if rr := a.privateFor("fallback", ipv6); rr != nil { return rr }
+			return a.publicFor("fallback", ipv6)
+		}
+	}
+	return nil
+}
+
+func (a *authority) tierUp(tier string, ipv6 bool) bool {
+	mV4, mV6, sV4, sV6 := a.state.snapshot()
+	switch tier {
+	case "master":
+		if ipv6 { return mV6 }; return mV4
+	case "standby":
+		if ipv6 { return sV6 }; return sV4
+	default:
+		return true // fallback assumed available
+	}
+}
+
+func (a *authority) privateFor(tier string, ipv6 bool) []dns.RR {
+	switch tier {
+	case "master":
+		if !ipv6 && len(a.zone.AMasterPrivate) > 0 { return a.buildA(a.zone.AMasterPrivate) }
+		if ipv6 && len(a.zone.AAAAMasterPrivate) > 0 { return a.buildAAAA(a.zone.AAAAMasterPrivate) }
+	case "standby":
+		if !ipv6 && len(a.zone.AStandbyPrivate) > 0 { return a.buildA(a.zone.AStandbyPrivate) }
+		if ipv6 && len(a.zone.AAAAStandbyPrivate) > 0 { return a.buildAAAA(a.zone.AAAAStandbyPrivate) }
+	case "fallback":
+		if !ipv6 && len(a.zone.AFallbackPrivate) > 0 { return a.buildA(a.zone.AFallbackPrivate) }
+		if ipv6 && len(a.zone.AAAAFallbackPrivate) > 0 { return a.buildAAAA(a.zone.AAAAFallbackPrivate) }
+	}
+	return nil
+}
+
+func (a *authority) publicFor(tier string, ipv6 bool) []dns.RR {
+	switch tier {
+	case "master":
+		if !ipv6 { return a.buildA(a.zone.AMaster) }
+		return a.buildAAAA(a.zone.AAAAMaster)
+	case "standby":
+		if !ipv6 { return a.buildA(a.zone.AStandby) }
+		return a.buildAAAA(a.zone.AAAAStandby)
+	default:
+		if !ipv6 { return a.buildA(a.zone.AFallback) }
+		return a.buildAAAA(a.zone.AAAAFallback)
+	}
+}
+
+func (a *authority) cidrInit() {
+	parseAll := func(cidrs []string) []*net.IPNet {
+		var out []*net.IPNet
+		for _, s := range cidrs {
+			_, n, err := net.ParseCIDR(strings.TrimSpace(s))
+			if err == nil && n != nil { out = append(out, n) }
+		}
+		return out
+	}
+	a.cidrs.master.rfc = parseAll(a.zone.RFCMaster)
+	a.cidrs.master.ula = parseAll(a.zone.ULAMaster)
+	a.cidrs.standby.rfc = parseAll(a.zone.RFCStandby)
+	a.cidrs.standby.ula = parseAll(a.zone.ULAStandby)
+	a.cidrs.fallback.rfc = parseAll(a.zone.RFCFallback)
+	a.cidrs.fallback.ula = parseAll(a.zone.ULAFallback)
+}
+
+func (a *authority) isLocal(tier string, ip net.IP) bool {
+	inAny := func(nets []*net.IPNet) bool {
+		for _, n := range nets { if n.Contains(ip) { return true } }
+		return false
+	}
+	switch tier {
+	case "master":
+		return inAny(a.cidrs.master.rfc) || inAny(a.cidrs.master.ula)
+	case "standby":
+		return inAny(a.cidrs.standby.rfc) || inAny(a.cidrs.standby.ula)
+	default:
+		return inAny(a.cidrs.fallback.rfc) || inAny(a.cidrs.fallback.ula)
+	}
 }
 
 func (a *authority) soa() dns.RR {
@@ -504,75 +783,25 @@ func ownerName(apex, s string) string {
 	return ensureDot(s)
 }
 
-// Address selection for a given owner name (currently apex only for GSLB; ALIAS can synthesize).
-func (a *authority) addrA(owner string) []dns.RR {
-	if ensureDot(owner) != ensureDot(a.zone.Name) { return nil }
-	v4Up, _ := a.state.snapshot()
-	var addrs []string
-	if v4Up && len(a.zone.AHealthy) > 0 { addrs = a.zone.AHealthy } else if len(a.zone.AFallback) > 0 { addrs = a.zone.AFallback } else if a.zone.Alias != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second); defer cancel()
-		ips := aliasLookup(ctx, a.zone.Alias)
-		for _, ip := range ips { if ip.To4() != nil { addrs = append(addrs, ip.String()) } }
-	}
-	var rrs []dns.RR
-	for _, ip := range addrs {
-		p := net.ParseIP(ip); if p == nil || p.To4() == nil { continue }
-		rrs = append(rrs, &dns.A{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeA, a.zone.TTLAnswer), A: p.To4()})
-	}
-	return rrs
-}
-
-func (a *authority) addrAAAA(owner string) []dns.RR {
-	if ensureDot(owner) != ensureDot(a.zone.Name) { return nil }
-	_, v6Up := a.state.snapshot()
-	var addrs []string
-	if v6Up && len(a.zone.AAAAHealthy) > 0 { addrs = a.zone.AAAAHealthy } else if len(a.zone.AAAAFallback) > 0 { addrs = a.zone.AAAAFallback } else if a.zone.Alias != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second); defer cancel()
-		ips := aliasLookup(ctx, a.zone.Alias)
-		for _, ip := range ips { if ip.To4() == nil { addrs = append(addrs, ip.String()) } }
-	}
-	var rrs []dns.RR
-	for _, ip := range addrs {
-		p := net.ParseIP(ip); if p == nil || p.To4() != nil { continue }
-		rrs = append(rrs, &dns.AAAA{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: p})
-	}
-	return rrs
-}
-
 // Shared/static helpers
 func (a *authority) txtFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
-	for _, t := range a.zone.TXT {
-		name := ownerName(a.zone.Name, t.Name)
-		if name != owner { continue }
-		ttl := t.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
-		if len(t.Text) > 0 { rrs = append(rrs, &dns.TXT{Hdr: hdr(name, dns.TypeTXT, ttl), Txt: t.Text}) }
-	}
+	for _, t := range a.zone.TXT { name := ownerName(a.zone.Name, t.Name); if name != owner { continue }; ttl := t.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }; if len(t.Text) > 0 { rrs = append(rrs, &dns.TXT{Hdr: hdr(name, dns.TypeTXT, ttl), Txt: t.Text}) } }
 	return rrs
 }
 
 func (a *authority) mxFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
-	for _, mx := range a.zone.MX {
-		name := ownerName(a.zone.Name, mx.Name)
-		if name != owner { continue }
-		ttl := mx.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
-		rrs = append(rrs, &dns.MX{Hdr: hdr(name, dns.TypeMX, ttl), Preference: mx.Preference, Mx: ensureDot(mx.Exchange)})
-	}
+	for _, mx := range a.zone.MX { name := ownerName(a.zone.Name, mx.Name); if name != owner { continue }; ttl := mx.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }; rrs = append(rrs, &dns.MX{Hdr: hdr(name, dns.TypeMX, ttl), Preference: mx.Preference, Mx: ensureDot(mx.Exchange)}) }
 	return rrs
 }
 
 func (a *authority) caaFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
-	for _, c := range a.zone.CAA {
-		name := ownerName(a.zone.Name, c.Name)
-		if name != owner { continue }
-		ttl := c.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
-		rrs = append(rrs, &dns.CAA{Hdr: hdr(name, dns.TypeCAA, ttl), Flag: c.Flag, Tag: c.Tag, Value: c.Value})
-	}
+	for _, c := range a.zone.CAA { name := ownerName(a.zone.Name, c.Name); if name != owner { continue }; ttl := c.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }; rrs = append(rrs, &dns.CAA{Hdr: hdr(name, dns.TypeCAA, ttl), Flag: c.Flag, Tag: c.Tag, Value: c.Value}) }
 	return rrs
 }
 
@@ -588,38 +817,25 @@ func (a *authority) rpFor(owner string) dns.RR {
 func (a *authority) sshfpFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
-	for _, s := range a.zone.SSHFP {
-		name := ownerName(a.zone.Name, s.Name)
-		if name != owner { continue }
-		ttl := s.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
-		rrs = append(rrs, &dns.SSHFP{Hdr: hdr(name, dns.TypeSSHFP, ttl), Algorithm: s.Algorithm, Type: s.Type, FingerPrint: s.Fingerprint})
-	}
+	for _, s := range a.zone.SSHFP { name := ownerName(a.zone.Name, s.Name); if name != owner { continue }; ttl := s.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }; rrs = append(rrs, &dns.SSHFP{Hdr: hdr(name, dns.TypeSSHFP, ttl), Algorithm: s.Algorithm, Type: s.Type, FingerPrint: s.Fingerprint}) }
 	return rrs
 }
 
 func (a *authority) srvFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
-	for _, s := range a.zone.SRV {
-		name := ownerName(a.zone.Name, s.Name)
-		if name != owner { continue }
-		ttl := s.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
-		rrs = append(rrs, &dns.SRV{Hdr: hdr(name, dns.TypeSRV, ttl), Priority: s.Priority, Weight: s.Weight, Port: s.Port, Target: ensureDot(s.Target)})
-	}
+	for _, s := range a.zone.SRV { name := ownerName(a.zone.Name, s.Name); if name != owner { continue }; ttl := s.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }; rrs = append(rrs, &dns.SRV{Hdr: hdr(name, dns.TypeSRV, ttl), Priority: s.Priority, Weight: s.Weight, Port: s.Port, Target: ensureDot(s.Target)}) }
 	return rrs
 }
 
 func (a *authority) naptrFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
-	for _, n := range a.zone.NAPTR {
-		name := ownerName(a.zone.Name, n.Name)
-		if name != owner { continue }
-		ttl := n.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
-		rrs = append(rrs, &dns.NAPTR{Hdr: hdr(name, dns.TypeNAPTR, ttl), Order: n.Order, Preference: n.Preference, Flags: n.Flags, Service: n.Services, Regexp: n.Regexp, Replacement: ensureDot(n.Replacement)})
-	}
+	for _, n := range a.zone.NAPTR { name := ownerName(a.zone.Name, n.Name); if name != owner { continue }; ttl := n.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }; rrs = append(rrs, &dns.NAPTR{Hdr: hdr(name, dns.TypeNAPTR, ttl), Order: n.Order, Preference: n.Preference, Flags: n.Flags, Service: n.Services, Regexp: n.Regexp, Replacement: ensureDot(n.Replacement)}) }
 	return rrs
 }
+
+// ---- health loop ----
 
 func (a *authority) healthLoop() {
 	base := time.Duration(a.cfg.IntervalSec) * time.Second
@@ -629,7 +845,6 @@ func (a *authority) healthLoop() {
 		case <-a.ctx.Done():
 			return
 		default:
-			// check once
 			a.checkOnce()
 			jitter := time.Duration(0)
 			if a.cfg.JitterMs > 0 { jitter = time.Duration(rand.Intn(a.cfg.JitterMs+1)) * time.Millisecond }
@@ -641,30 +856,29 @@ func (a *authority) healthLoop() {
 func (a *authority) checkOnce() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
 	defer cancel()
-	// v4
-	v4ok := false
-	for _, ip := range a.zone.AHealthy {
-		if net.ParseIP(ip) == nil || net.ParseIP(ip).To4() == nil { continue }
-		err := httpCheck(ctx, ip, a.zone.Health)
-		if a.cfg.LogQueries { if err != nil { log.Printf("health v4 DOWN %s: %v", ip, err) } else { log.Printf("health v4 UP %s", ip) } }
-		if err == nil { v4ok = true; break }
+	// master v4
+	m4 := probeAny(ctx, a.zone.AMaster, a.zone.Health, true)
+	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
+	// master v6
+	m6 := probeAny(ctx, a.zone.AAAAMaster, a.zone.Health, false)
+	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
+	// standby v4
+	s4 := probeAny(ctx, a.zone.AStandby, a.zone.Health, true)
+	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
+	// standby v6
+	s6 := probeAny(ctx, a.zone.AAAAStandby, a.zone.Health, false)
+	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
+}
+
+func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
+	for _, ip := range ips {
+		p := net.ParseIP(ip)
+		if p == nil { continue }
+		if ipv4 && p.To4() == nil { continue }
+		if !ipv4 && p.To4() != nil { continue }
+		if err := httpCheck(ctx, ip, hc); err == nil { return true }
 	}
-	prevV4, prevV6 := a.state.snapshot()
-	a.state.setV4(v4ok, a.cfg.Rise, a.cfg.Fall)
-	// v6
-	v6ok := false
-	for _, ip := range a.zone.AAAAHealthy {
-		p := net.ParseIP(ip); if p == nil || p.To4() != nil { continue }
-		err := httpCheck(ctx, ip, a.zone.Health)
-		if a.cfg.LogQueries { if err != nil { log.Printf("health v6 DOWN %s: %v", ip, err) } else { log.Printf("health v6 UP %s", ip) } }
-		if err == nil { v6ok = true; break }
-	}
-	a.state.setV6(v6ok, a.cfg.Rise, a.cfg.Fall)
-	nowV4, nowV6 := a.state.snapshot()
-	if a.cfg.LogQueries {
-		if prevV4 != nowV4 { log.Printf("state v4 -> %v", nowV4) }
-		if prevV6 != nowV6 { log.Printf("state v6 -> %v", nowV6) }
-	}
+	return false
 }
 
 func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
@@ -727,12 +941,8 @@ func loadDNSSEC(z Zone) *dnssecKeys {
 func parseBindKeyPair(zone string, prefix string) (*dns.DNSKEY, crypto.Signer, error) {
 	pubPath := prefix
 	privPath := prefix
-	if !strings.HasSuffix(pubPath, ".key") {
-		pubPath += ".key"
-	}
-	if !strings.HasSuffix(privPath, ".private") {
-		privPath += ".private"
-	}
+	if !strings.HasSuffix(pubPath, ".key") { pubPath += ".key" }
+	if !strings.HasSuffix(privPath, ".private") { privPath += ".private" }
 	pubData, err := os.ReadFile(pubPath)
 	if err != nil { return nil, nil, err }
 	rr, err := dns.NewRR(string(pubData))
@@ -765,38 +975,20 @@ func (a *authority) dnskeyRRSet() []dns.RR {
 func (a *authority) signAll(in []dns.RR) []dns.RR {
 	if a.keys == nil || !a.keys.enabled { return in }
 	if len(in) == 0 { return in }
-
-	// group by name+type, but carry through any pre-existing RRSIGs untouched
 	groups := map[string][]dns.RR{}
 	var out []dns.RR
 	for _, rr := range in {
-		if rr.Header().Rrtype == dns.TypeRRSIG {
-			out = append(out, rr)
-			continue
-		}
+		if rr.Header().Rrtype == dns.TypeRRSIG { out = append(out, rr); continue }
 		k := strings.ToLower(rr.Header().Name) + ":" + fmt.Sprint(rr.Header().Rrtype)
 		groups[k] = append(groups[k], rr)
 	}
-
 	for _, g := range groups {
 		out = append(out, g...)
-		// pick key: DNSKEY RRset uses KSK, others use ZSK
-		key := a.keys.zsk
-		priv := a.keys.zskPriv
-		if len(g) > 0 && g[0].Header().Rrtype == dns.TypeDNSKEY {
-			key = a.keys.ksk
-			priv = a.keys.kskPriv
-		}
-		if key == nil || priv == nil {
-			log.Printf("dnssec sign skipped for %s/%d: missing key", g[0].Header().Name, g[0].Header().Rrtype)
-			continue
-		}
+		key := a.keys.zsk; priv := a.keys.zskPriv
+		if len(g) > 0 && g[0].Header().Rrtype == dns.TypeDNSKEY { key = a.keys.ksk; priv = a.keys.kskPriv }
+		if key == nil || priv == nil { continue }
 		sig := a.makeRRSIG(g, key)
-		if err := sig.Sign(priv, g); err == nil {
-			out = append(out, sig)
-		} else {
-			log.Printf("dnssec sign error for %s/%d: %v", g[0].Header().Name, g[0].Header().Rrtype, err)
-		}
+		if err := sig.Sign(priv, g); err == nil { out = append(out, sig) } else { log.Printf("dnssec sign error for %s/%d: %v", g[0].Header().Name, g[0].Header().Rrtype, err) }
 	}
 	return out
 }
@@ -805,21 +997,10 @@ func (a *authority) makeRRSIG(rrset []dns.RR, key *dns.DNSKEY) *dns.RRSIG {
 	name := rrset[0].Header().Name
 	ttl := rrset[0].Header().Ttl
 	labels := uint8(strings.Count(strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(name), "."), "."), ".") + 1)
-	// validity: now-5m .. now+6h
 	now := time.Now().UTC()
 	incep := uint32(now.Add(-5 * time.Minute).Unix())
 	exp := uint32(now.Add(6 * time.Hour).Unix())
-	return &dns.RRSIG{
-		Hdr:       hdr(name, dns.TypeRRSIG, ttl),
-		TypeCovered: rrset[0].Header().Rrtype,
-		Algorithm: key.Algorithm,
-		Labels:    labels,
-		OrigTtl:   ttl,
-		Expiration: exp,
-		Inception:  incep,
-		KeyTag:    key.KeyTag(),
-		SignerName: ensureDot(a.zone.Name),
-	}
+	return &dns.RRSIG{Hdr: hdr(name, dns.TypeRRSIG, ttl), TypeCovered: rrset[0].Header().Rrtype, Algorithm: key.Algorithm, Labels: labels, OrigTtl: ttl, Expiration: exp, Inception: incep, KeyTag: key.KeyTag(), SignerName: ensureDot(a.zone.Name)}
 }
 
 // NSEC support for existing names only (NXRRSET). We'll extend to full NXDOMAIN later.
@@ -845,9 +1026,9 @@ func buildIndex(z Zone) *zoneIndex {
 	zname := ensureDot(z.Name)
 	add(zname, dns.TypeSOA)
 	add(zname, dns.TypeNS)
-	// potential A/AAAA at apex
-	if len(z.AHealthy)+len(z.AFallback) > 0 { add(zname, dns.TypeA) }
-	if len(z.AAAAHealthy)+len(z.AAAAFallback) > 0 { add(zname, dns.TypeAAAA) }
+	// potential A/AAAA at apex (from any tier)
+	if len(z.AMaster)+len(z.AStandby)+len(z.AFallback) > 0 || z.Alias != "" { add(zname, dns.TypeA) }
+	if len(z.AAAAMaster)+len(z.AAAAStandby)+len(z.AAAAFallback) > 0 || z.Alias != "" { add(zname, dns.TypeAAAA) }
 	for _, t := range z.TXT { add(ownerName(z.Name, t.Name), dns.TypeTXT) }
 	for _, mx := range z.MX { add(ownerName(z.Name, mx.Name), dns.TypeMX) }
 	for _, c := range z.CAA { add(ownerName(z.Name, c.Name), dns.TypeCAA) }
@@ -855,9 +1036,7 @@ func buildIndex(z Zone) *zoneIndex {
 	for _, s := range z.SSHFP { add(ownerName(z.Name, s.Name), dns.TypeSSHFP) }
 	for _, s := range z.SRV { add(ownerName(z.Name, s.Name), dns.TypeSRV) }
 	for _, n := range z.NAPTR { add(ownerName(z.Name, n.Name), dns.TypeNAPTR) }
-	// if DNSSEC enabled, DNSKEY at apex
 	if z.DNSSEC != nil && z.DNSSEC.Enable { add(zname, dns.TypeDNSKEY); add(zname, dns.TypeRRSIG) }
-	// sort names
 	ns := make([]string, 0, len(m))
 	for k := range m { ns = append(ns, ensureDot(strings.ToLower(k))) }
 	sort.Strings(ns)
@@ -873,10 +1052,7 @@ func (z *zoneIndex) hasName(owner string) bool {
 func (z *zoneIndex) nextName(owner string) string {
 	owner = strings.ToLower(ensureDot(owner))
 	if len(z.names) == 0 { return owner }
-	for i, n := range z.names {
-		if n == owner { return z.names[(i+1)%len(z.names)] }
-	}
-	// not found, return first
+	for i, n := range z.names { if n == owner { return z.names[(i+1)%len(z.names)] } }
 	return z.names[0]
 }
 
