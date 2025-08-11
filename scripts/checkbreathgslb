@@ -1,0 +1,97 @@
+#!/bin/sh
+# checkbreathgslb <zone> [ns]
+# Queries BreathGSLB’s authoritative server for a quick, signed snapshot.
+
+set -eu
+
+if [ $# -lt 1 ]; then
+  echo "usage: $0 <zone> [ns]" >&2
+  exit 2
+fi
+
+ZONE="$1"
+NS="${2:-}"
+
+DIGOPTS="+dnssec +norec +time=2 +tries=1 +bufsize=1232"
+SERVICES="${SERVICES:-_sip._tcp _sips._tcp _xmpp-server._tcp _xmpp-client._tcp _imap._tcp _imaps._tcp _smtp._tcp _submission._tcp}"
+NL="
+"
+
+# Resolve NS if not provided
+if [ -z "$NS" ]; then
+  NS="$(dig +short NS "$ZONE" | head -n1 | sed 's/\.$//')"
+fi
+if [ -z "$NS" ]; then
+  echo "no NS found for $ZONE" >&2
+  exit 1
+fi
+
+# Prefer IP of NS to avoid any recursion path
+NSIP="$(dig +short A "$NS" | head -n1)"
+if [ -z "$NSIP" ]; then
+  NSIP="$(dig +short AAAA "$NS" | head -n1)"
+fi
+SERVER="${NSIP:-$NS}"
+
+say() { printf '%s\n' "$*"; }
+bar() { say "----------------------------------------------------------------"; }
+
+show_answer() {
+  name="$1"; qtype="$2"
+  say "== $qtype $name @ $SERVER"
+  # Print just the ANSWER section (and keep it empty if there’s none)
+  dig @"$SERVER" $DIGOPTS "$name" "$qtype" | awk '
+    /^;; ANSWER SECTION:/ {on=1; next}
+    /^;;/ { if(on){exit}; next}
+    /^[[:space:]]*$/ { if(on){exit}; next}
+    { if(on) print }
+  '
+  say ""
+}
+
+# Header
+bar
+say "BreathGSLB check for zone: $ZONE"
+say "Using NS: $NS ($SERVER)"
+bar
+
+# Core apex records
+for t in SOA NS DNSKEY A AAAA MX TXT CAA RP SSHFP; do
+  show_answer "$ZONE" "$t"
+done
+
+# SRV (common well-knowns; override via SERVICES env)
+for svc in $SERVICES; do
+  show_answer "$svc.$ZONE" "SRV"
+done
+
+# NAPTR at apex
+show_answer "$ZONE" "NAPTR"
+
+# NXRRSET proof demo (type that likely doesn’t exist at apex)
+say "== NXRRSET check (LOC at apex, expect NSEC in AUTHORITY if DNSSEC DO-bit set)"
+dig @"$SERVER" $DIGOPTS "$ZONE" LOC | sed -n '/^;; ANSWER SECTION:/,/^$/p;/^;; AUTHORITY SECTION:/,/^$/p'
+say ""
+
+# Optional AXFR (requires TSIG env)
+if [ "${TSIG_KEYNAME:-}" ] && [ "${TSIG_SECRET:-}" ]; then
+  say "== AXFR attempt with TSIG ($TSIG_KEYNAME)"
+  dig @"$SERVER" -y "$TSIG_KEYNAME:$TSIG_SECRET" "$ZONE" AXFR +dnssec +multi | sed -n '1,200p'
+  say "(truncated after 200 lines)"
+  say ""
+else
+  say "AXFR: set TSIG_KEYNAME and TSIG_SECRET env vars to attempt a signed transfer."
+  say ""
+fi
+
+# Signature presence quick check (summary)
+say "== signature summary (A/AAAA/DNSKEY)"
+for t in A AAAA DNSKEY; do
+  if dig @"$SERVER" $DIGOPTS "$ZONE" "$t" | grep -q " RRSIG $t "; then
+    say "[$t] signed ✓"
+  else
+    say "[$t] no RRSIG"
+  fi
+done
+bar
+

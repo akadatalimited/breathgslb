@@ -426,7 +426,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	name := ensureDot(q.Name)
 	z := ensureDot(a.zone.Name)
 
-	if a.cfg.LogQueries { log.Printf("query %s %s", name, dns.TypeToString[q.Qtype]) }
+	if a.cfg.LogQueries { log.Printf("query %s %s", strings.ToLower(name), dns.TypeToString[q.Qtype]) }
 
 	// Basic apex handling for SOA/NS/DNSKEY
 	if name == z {
@@ -498,6 +498,11 @@ func (a *authority) soa() dns.RR {
 func hdr(name string, t uint16, ttl uint32) dns.RR_Header { return dns.RR_Header{Name: name, Rrtype: t, Class: dns.ClassINET, Ttl: ttl} }
 
 func ensureDot(s string) string { if !strings.HasSuffix(s, ".") { return s + "." }; return s }
+func ownerName(apex, s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "." || s == "@" { return ensureDot(apex) }
+	return ensureDot(s)
+}
 
 // Address selection for a given owner name (currently apex only for GSLB; ALIAS can synthesize).
 func (a *authority) addrA(owner string) []dns.RR {
@@ -539,10 +544,10 @@ func (a *authority) txtFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
 	for _, t := range a.zone.TXT {
-		name := ensureDot(firstNonEmpty(t.Name, a.zone.Name))
+		name := ownerName(a.zone.Name, t.Name)
 		if name != owner { continue }
 		ttl := t.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
-		rrs = append(rrs, &dns.TXT{Hdr: hdr(name, dns.TypeTXT, ttl), Txt: t.Text})
+		if len(t.Text) > 0 { rrs = append(rrs, &dns.TXT{Hdr: hdr(name, dns.TypeTXT, ttl), Txt: t.Text}) }
 	}
 	return rrs
 }
@@ -551,7 +556,7 @@ func (a *authority) mxFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
 	for _, mx := range a.zone.MX {
-		name := ensureDot(firstNonEmpty(mx.Name, a.zone.Name))
+		name := ownerName(a.zone.Name, mx.Name)
 		if name != owner { continue }
 		ttl := mx.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
 		rrs = append(rrs, &dns.MX{Hdr: hdr(name, dns.TypeMX, ttl), Preference: mx.Preference, Mx: ensureDot(mx.Exchange)})
@@ -563,7 +568,7 @@ func (a *authority) caaFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
 	for _, c := range a.zone.CAA {
-		name := ensureDot(firstNonEmpty(c.Name, a.zone.Name))
+		name := ownerName(a.zone.Name, c.Name)
 		if name != owner { continue }
 		ttl := c.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
 		rrs = append(rrs, &dns.CAA{Hdr: hdr(name, dns.TypeCAA, ttl), Flag: c.Flag, Tag: c.Tag, Value: c.Value})
@@ -574,7 +579,7 @@ func (a *authority) caaFor(owner string) []dns.RR {
 func (a *authority) rpFor(owner string) dns.RR {
 	owner = ensureDot(owner)
 	if a.zone.RP == nil { return nil }
-	name := ensureDot(firstNonEmpty(a.zone.RP.Name, a.zone.Name))
+	name := ownerName(a.zone.Name, a.zone.RP.Name)
 	if name != owner { return nil }
 	ttl := a.zone.RP.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
 	return &dns.RP{Hdr: hdr(name, dns.TypeRP, ttl), Mbox: ensureDot(a.zone.RP.Mbox), Txt: ensureDot(a.zone.RP.Txt)}
@@ -584,7 +589,7 @@ func (a *authority) sshfpFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
 	for _, s := range a.zone.SSHFP {
-		name := ensureDot(firstNonEmpty(s.Name, a.zone.Name))
+		name := ownerName(a.zone.Name, s.Name)
 		if name != owner { continue }
 		ttl := s.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
 		rrs = append(rrs, &dns.SSHFP{Hdr: hdr(name, dns.TypeSSHFP, ttl), Algorithm: s.Algorithm, Type: s.Type, FingerPrint: s.Fingerprint})
@@ -596,8 +601,7 @@ func (a *authority) srvFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
 	for _, s := range a.zone.SRV {
-		name := ensureDot(s.Name)
-		if name == "." { name = ensureDot(a.zone.Name) }
+		name := ownerName(a.zone.Name, s.Name)
 		if name != owner { continue }
 		ttl := s.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
 		rrs = append(rrs, &dns.SRV{Hdr: hdr(name, dns.TypeSRV, ttl), Priority: s.Priority, Weight: s.Weight, Port: s.Port, Target: ensureDot(s.Target)})
@@ -609,8 +613,7 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 	owner = ensureDot(owner)
 	rrs := []dns.RR{}
 	for _, n := range a.zone.NAPTR {
-		name := ensureDot(n.Name)
-		if name == "." { name = ensureDot(a.zone.Name) }
+		name := ownerName(a.zone.Name, n.Name)
 		if name != owner { continue }
 		ttl := n.TTL; if ttl == 0 { ttl = a.zone.TTLAnswer }
 		rrs = append(rrs, &dns.NAPTR{Hdr: hdr(name, dns.TypeNAPTR, ttl), Order: n.Order, Preference: n.Preference, Flags: n.Flags, Service: n.Services, Regexp: n.Regexp, Replacement: ensureDot(n.Replacement)})
@@ -762,20 +765,32 @@ func (a *authority) dnskeyRRSet() []dns.RR {
 func (a *authority) signAll(in []dns.RR) []dns.RR {
 	if a.keys == nil || !a.keys.enabled { return in }
 	if len(in) == 0 { return in }
-	// group by name+type
+
+	// group by name+type, but carry through any pre-existing RRSIGs untouched
 	groups := map[string][]dns.RR{}
 	var out []dns.RR
 	for _, rr := range in {
-		if rr.Header().Rrtype == dns.TypeRRSIG { out = append(out, rr); continue }
+		if rr.Header().Rrtype == dns.TypeRRSIG {
+			out = append(out, rr)
+			continue
+		}
 		k := strings.ToLower(rr.Header().Name) + ":" + fmt.Sprint(rr.Header().Rrtype)
 		groups[k] = append(groups[k], rr)
 	}
-	
+
 	for _, g := range groups {
 		out = append(out, g...)
-		// pick key
-		key := a.keys.zsk; priv := a.keys.zskPriv
-		if len(g) > 0 && g[0].Header().Rrtype == dns.TypeDNSKEY { key = a.keys.ksk; priv = a.keys.kskPriv }
+		// pick key: DNSKEY RRset uses KSK, others use ZSK
+		key := a.keys.zsk
+		priv := a.keys.zskPriv
+		if len(g) > 0 && g[0].Header().Rrtype == dns.TypeDNSKEY {
+			key = a.keys.ksk
+			priv = a.keys.kskPriv
+		}
+		if key == nil || priv == nil {
+			log.Printf("dnssec sign skipped for %s/%d: missing key", g[0].Header().Name, g[0].Header().Rrtype)
+			continue
+		}
 		sig := a.makeRRSIG(g, key)
 		if err := sig.Sign(priv, g); err == nil {
 			out = append(out, sig)
@@ -833,13 +848,13 @@ func buildIndex(z Zone) *zoneIndex {
 	// potential A/AAAA at apex
 	if len(z.AHealthy)+len(z.AFallback) > 0 { add(zname, dns.TypeA) }
 	if len(z.AAAAHealthy)+len(z.AAAAFallback) > 0 { add(zname, dns.TypeAAAA) }
-	for _, t := range z.TXT { add(firstNonEmpty(t.Name, z.Name), dns.TypeTXT) }
-	for _, mx := range z.MX { add(firstNonEmpty(mx.Name, z.Name), dns.TypeMX) }
-	for _, c := range z.CAA { add(firstNonEmpty(c.Name, z.Name), dns.TypeCAA) }
-	if z.RP != nil { add(firstNonEmpty(z.RP.Name, z.Name), dns.TypeRP) }
-	for _, s := range z.SSHFP { add(firstNonEmpty(s.Name, z.Name), dns.TypeSSHFP) }
-	for _, s := range z.SRV { add(s.Name, dns.TypeSRV) }
-	for _, n := range z.NAPTR { add(n.Name, dns.TypeNAPTR) }
+	for _, t := range z.TXT { add(ownerName(z.Name, t.Name), dns.TypeTXT) }
+	for _, mx := range z.MX { add(ownerName(z.Name, mx.Name), dns.TypeMX) }
+	for _, c := range z.CAA { add(ownerName(z.Name, c.Name), dns.TypeCAA) }
+	if z.RP != nil { add(ownerName(z.Name, z.RP.Name), dns.TypeRP) }
+	for _, s := range z.SSHFP { add(ownerName(z.Name, s.Name), dns.TypeSSHFP) }
+	for _, s := range z.SRV { add(ownerName(z.Name, s.Name), dns.TypeSRV) }
+	for _, n := range z.NAPTR { add(ownerName(z.Name, n.Name), dns.TypeNAPTR) }
 	// if DNSSEC enabled, DNSKEY at apex
 	if z.DNSSEC != nil && z.DNSSEC.Enable { add(zname, dns.TypeDNSKEY); add(zname, dns.TypeRRSIG) }
 	// sort names

@@ -20,6 +20,32 @@ zones:
     ttl_soa: 60
     ttl_answer: 20
 
+
+
+    ttl_answer: 60
+    dnssec:
+      enable: false | true | generated   # false=off; true=manual; generated=auto
+      location: memory | disk            # only used if enable=generated
+      algorithm: ecdsap256sha256         # default 13; allow ecdsap384sha384 too
+      path: "/etc/breathgslb/keys"       # required when location=disk
+      seed_env: "BREATH_DNSSEC_SEED"     # optional; deterministic memory keys if set
+      # manual compatibility (used only when enable:true):
+      zsk_keyfile: "/etc/breathgslb/keys/K...+013+ZID"
+      ksk_keyfile: "/etc/breathgslb/keys/K...+013+KID"
+
+
+
+    tsig:
+      default_algorithm: hmac-sha256
+      seed_env: "BREATH_TSIG_SEED"      # optional; enables deterministic derivation
+      epoch: 1                          # bump to rotate deterministically
+      keys:
+        - name: "gslb-xfr."
+          algorithm: hmac-sha256
+          secret: ""                    # if empty -> derive from seed or random per start
+          allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
+
+
     # Health-driven apex addresses
     a_healthy:      ["217.155.241.55"]                         # e.g., home/Zen v4
     aaaa_healthy:   ["2a02:8012:bc57::1"]                      # e.g., home/Zen v6
@@ -121,6 +147,11 @@ zones:
     admin: "hostmaster.akadata.ltd."
     ttl_soa: 60
     ttl_answer: 60
+    dnssec:
+      enable: true
+      zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+ZSKID"
+      ksk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+KSKID"
+
 
     tsig:
       seed_env: "BREATH_TSIG_SEED"      # optional; derive deterministically from this env var
