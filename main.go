@@ -57,14 +57,16 @@ type Zone struct {
 	AAAAFallback []string `yaml:"aaaa_fallback"`
 	// Health checks performed directly by IP to avoid DNS recursion on the same name.
 	// If both v4 and v6 are configured, each is checked independently.
-	Health struct {
-		HostHeader string   `yaml:"host_header"` // e.g., "articles.akadata.ltd"
-		Path       string   `yaml:"path"`        // e.g., "/health"
-		// Optional TLS settings
-		SNI        string   `yaml:"sni"`         // usually same as HostHeader
-		InsecureTLS bool    `yaml:"insecure_tls"` // allow self-signed while bootstrapping
-	} `yaml:"health"`
+	Health HealthConfig `yaml:"health"`
 }
+
+type HealthConfig struct {
+    HostHeader  string `yaml:"host_header"`
+    Path        string `yaml:"path"`
+    SNI         string `yaml:"sni"`
+    InsecureTLS bool   `yaml:"insecure_tls"`
+}
+
 
 type state struct {
 	mu sync.RWMutex
@@ -278,40 +280,67 @@ func (a *authority) healthLoop() {
 }
 
 func (a *authority) checkOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
-	defer cancel()
-	// Check v4 list: up if any IPv4 succeeds.
-	v4ok := false
-	for _, ip := range a.zone.AHealthy {
-		if isIPv4(ip) && httpCheck(ctx, ip, a.zone.Health) == nil { v4ok = true; break }
-	}
-	a.state.setV4(v4ok, a.cfg.Rise, a.cfg.Fall)
-	// Check v6 list
-	v6ok := false
-	for _, ip := range a.zone.AAAAHealthy {
-		if !isIPv4(ip) && httpCheck(ctx, ip, a.zone.Health) == nil { v6ok = true; break }
-	}
-	a.state.setV6(v6ok, a.cfg.Rise, a.cfg.Fall)
+    ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
+    defer cancel()
+
+    // Check v4 list: up if any IPv4 succeeds; log results if enabled.
+    v4ok := false
+    for _, ip := range a.zone.AHealthy {
+        if !isIPv4(ip) { continue }
+        err := httpCheck(ctx, ip, a.zone.Health)
+        if a.cfg.LogQueries {
+            if err != nil {
+                log.Printf("health v4 DOWN %s: %v", ip, err)
+            } else {
+                log.Printf("health v4 UP %s", ip)
+            }
+        }
+        if err == nil { v4ok = true; break }
+    }
+    a.state.setV4(v4ok, a.cfg.Rise, a.cfg.Fall)
+
+    // Check v6 list: up if any IPv6 succeeds; log results if enabled.
+    v6ok := false
+    for _, ip := range a.zone.AAAAHealthy {
+        if isIPv4(ip) { continue }
+        err := httpCheck(ctx, ip, a.zone.Health)
+        if a.cfg.LogQueries {
+            if err != nil {
+                log.Printf("health v6 DOWN %s: %v", ip, err)
+            } else {
+                log.Printf("health v6 UP %s", ip)
+            }
+        }
+        if err == nil { v6ok = true; break }
+    }
+    a.state.setV6(v6ok, a.cfg.Rise, a.cfg.Fall)
 }
+
 
 func isIPv4(s string) bool { return net.ParseIP(s) != nil && net.ParseIP(s).To4() != nil }
 
-func httpCheck(ctx context.Context, ip string, hc struct{ HostHeader, Path, SNI string; InsecureTLS bool }) error {
-	if hc.Path == "" { hc.Path = "/health" }
-	// Build URL by literal IP. IPv6 needs brackets.
-	host := ip
-	if strings.Contains(ip, ":") { host = "[" + ip + "]" }
-	url := "https://" + host + hc.Path
+func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
+    if hc.Path == "" { hc.Path = "/health" }
+    host := ip
+    if strings.Contains(ip, ":") { host = "[" + ip + "]" }
+    url := "https://" + host + hc.Path
 
-	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: hc.InsecureTLS, ServerName: firstNonEmpty(hc.SNI, hc.HostHeader)}}
-	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if hc.HostHeader != "" { req.Host = hc.HostHeader }
-	resp, err := client.Do(req)
-	if err != nil { return err }
-	defer resp.Body.Close()
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 { return nil }
-	return errors.New(fmt.Sprintf("status %d", resp.StatusCode))
+    tr := &http.Transport{
+        TLSClientConfig: &tls.Config{
+            InsecureSkipVerify: hc.InsecureTLS,
+            ServerName:         firstNonEmpty(hc.SNI, hc.HostHeader),
+        },
+    }
+    client := &http.Client{Transport: tr}
+    req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if hc.HostHeader != "" { req.Host = hc.HostHeader }
+    resp, err := client.Do(req)
+    if err != nil { return err }
+    defer resp.Body.Close()
+    if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+        return nil
+    }
+    return errors.New(fmt.Sprintf("status %d", resp.StatusCode))
 }
 
 func firstNonEmpty(a, b string) string { if a != "" { return a }; return b }

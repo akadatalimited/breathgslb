@@ -1,0 +1,5 @@
+/breathgslb
+/dist/
+/vendor/
+/*.log
+.DS_Store

@@ -1,0 +1,27 @@
+listen: ":53"
+timeout_sec: 4
+interval_sec: 5
+rise: 2
+fall: 2
+edns_buf: 1232
+log_queries: true
+
+zones:
+  - name: "gslb-sitetest.akadata.ltd."
+    ns: ["ns-gslb.akadata.ltd."]
+    admin: "hostmaster.akadata.ltd."
+    ttl_soa: 60
+    ttl_answer: 20
+
+    a_healthy: ["217.155.241.55"]
+    aaaa_healthy: ["2a02:8012:bc57::1"]
+
+    a_fallback: ["13.41.102.86"]
+    aaaa_fallback: ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]
+
+    health:
+      host_header: "gslb-sitetest.akadata.ltd"
+      sni: "gslb-sitetest.akadata.ltd"
+      path: "/health"
+      insecure_tls: false   # set true temporarily if using self-signed
+
