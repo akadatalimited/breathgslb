@@ -1,0 +1,13 @@
+geoip:
+  enable: true
+  mmdb_path: /etc/breathgslb/geoip/GeoLite2-Country.mmdb
+  ecs_scope_v4: 24      # what we announce back so recursors can cache sanely
+  ecs_scope_v6: 56
+
+zones:
+  - name: "gslb-sitetest.akadata.ltd."
+    # …existing…
+    geo_rules:
+      - if: { countries: ["GB","IE"] }    prefer: master
+      - if: { continents: ["EU"] }        prefer: standby
+      - default: fallback
