@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# ./deploy-gslb <host> <ns_ip> <zone>
+# 
+# Example of usage: 
+# update FTTP node first, then AWS
+# ./deploy-gslb ns2-gslb.akadata.ltd hostname gslb-sitetest.akadata.ltd
+# /deploy-gslb ns-gslb.akadata.ltd  hostname gslb-sitetest.akadata.ltd
+
+set -euo pipefail
+HOST="${1:?host}"; NSIP="${2:?ns-ip}"; ZONE="${3:?zone}"
+BIN="./breathgslb"                              # path to built binary on homer
+REM="/usr/local/bin/breathgslb"
+CFG="/etc/breathgslb/config.yaml"
+
+# 1) upload to a temp path with correct mode
+scp "$BIN" "$HOST:/tmp/breathgslb.new"
+ssh "$HOST" "install -m0755 -o root -g root /tmp/breathgslb.new /usr/local/bin/breathgslb.new"
+
+# 2) stop, atomic swap, start (tiny gap; safe because other NS stays up)
+ssh "$HOST" "systemctl stop breathgslb && mv -f /usr/local/bin/breathgslb.new $REM && systemctl start breathgslb"
+
+# 3) quick health: authoritative check with a short timeout
+dig @"$NSIP" +time=2 +tries=1 +norec SOA "$ZONE" >/dev/null
+dig @"$NSIP" +time=2 +tries=1 +norec A "$ZONE"   >/dev/null
+dig @"$NSIP" +time=2 +tries=1 +norec AAAA "$ZONE" >/dev/null
+echo "OK: $HOST serving $ZONE"

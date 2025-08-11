@@ -1,0 +1,5 @@
+scp replacegslb akadata.ltd:/tmp
+ssh akadata.ltd sudo systemctl stop breathgslb
+ssh akadata.ltd sudo mv /tmp/breathgslb /usr/local/bin/
+ssh akadata.ltd sudo systemctl start breathgslb
+

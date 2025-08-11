@@ -1,0 +1,8 @@
+{
+  "v":1,
+  "tier":"master",                     // "master" | "standby" | "fallback" (static)
+  "serves":{"countries":["GB","FR"], "continents":["EU"]},  // optional
+  "weight":60,                         // optional, for future weighted pick
+  "load":0.32,                         // optional, 0..1 normalized
+  "scope":{"ipv4_cidr":24,"ipv6_cidr":56}  // ECS scope hint for responses (optional)
+}
