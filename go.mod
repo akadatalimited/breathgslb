@@ -4,6 +4,7 @@ go 1.24.5
 
 require (
 	github.com/miekg/dns v1.1.68
+	github.com/oschwald/maxminddb-golang v1.13.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
