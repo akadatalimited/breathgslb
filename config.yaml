@@ -53,6 +53,12 @@ zones:
     #
     #
 
+    geoip:
+      enabled: true
+      database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
+      prefer_field: "country"     # or "registered"
+      cache_ttl_sec: 600
+
     geo:
       master:
         allow_countries:  ["GB"]   # UK to master
