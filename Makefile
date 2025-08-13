@@ -1,129 +1,152 @@
-# BreathGSLB Makefile
-# - Uses vendor/ if present (repro builds). Override with NOVENDOR=1 to bypass.
-# - Cross-compile release artifacts (linux/macos/freebsd, amd64/arm64)
-# - Install helpers and service files for systemd/OpenRC
-
-# ---- project vars
+# --- Project
 BINARY      ?= breathgslb
 PKG         ?= github.com/akadatalimited/breathgslb
-LDFLAGS    ?= -s -w
-GOFLAGS    ?=
-PREFIX     ?= /usr/local
-BINDIR     ?= $(PREFIX)/bin
-SYSCONFDIR ?= /etc
-LOGDIR     ?= /var/log/$(BINARY)
-KEYDIR     ?= /etc/$(BINARY)/keys
-CONFDIR    ?= /etc/$(BINARY)
-DISTDIR    ?= dist
 
-# Use vendor by default if vendor/ exists and NOVENDOR not set.
-ifneq ($(wildcard vendor),)
-ifneq ($(NOVENDOR),1)
-  GOFLAGS += -mod=vendor
-endif
-endif
-
-# CGO default can be overridden; musl builds set CGO=0 below explicitly
+# --- Tooling / flags
+GO          ?= go
 CGO_ENABLED ?= 1
+GOFLAGS     ?=
+LDFLAGS     ?= -s -w
 
-# ---- helpers
-GO        ?= go
-INSTALL   ?= install
-RM        ?= rm -f
-MKDIR_P   ?= mkdir -p
-CP        ?= cp -f
+# Vendor by default (NOVENDOR=1 to bypass)
+ifeq ($(NOVENDOR),1)
+MODFLAG :=
+else
+MODFLAG := -mod=vendor
+endif
 
-# ---- targets
-.PHONY: all build clean vendor test release \
-        release-linux release-macos release-freebsd \
-        release-musl \
-        install install-systemd install-openrc uninstall
+# Version injection
+GIT_TAG        := $(shell git describe --tags --always --dirty 2>/dev/null)
+BUILD_LDFLAGS  := $(LDFLAGS) -X 'main.version=$(GIT_TAG)'
+
+# Paths
+PREFIX      ?= /usr/local
+BINDIR      ?= $(PREFIX)/bin
+SYSD_PREFIX ?= /etc/systemd/system
+ORC_PREFIX  ?= /etc/init.d
+LOGDIR      ?= /var/log/breathgslb
+CFGDIR      ?= /etc/breathgslb
+KEYDIR      ?= $(CFGDIR)/keys
+DISTDIR     ?= dist
+
+# Utils
+MKDIR_P := mkdir -p
+TAR     ?= tar
+ZIP     ?= zip -9
+SHA256  := $(shell command -v sha256sum 2>/dev/null || command -v shasum 2>/dev/null)
+SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || echo )
+
+# -------------------- standard targets --------------------
+.PHONY: all build vendor clean fmt vet test \
+        release release-linux release-musl release-macos release-freebsd release-windows \
+        package install install-systemd install-openrc uninstall
 
 all: build
 
 build:
 	@echo "==> building ($(BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(LDFLAGS)" $(GOFLAGS) -o $(BINARY)
-
-clean:
-	$(RM) $(BINARY)
-	$(RM) -r $(DISTDIR)
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(BINARY)
 
 vendor:
-	@echo "==> tidy + vendor"
 	$(GO) mod tidy
 	$(GO) mod vendor
+
+clean:
+	rm -f $(BINARY)
+	rm -rf $(DISTDIR)
+
+fmt:
+	$(GO) fmt ./...
+
+vet:
+	$(GO) vet ./...
 
 test:
 	$(GO) test ./...
 
-# --- Release matrices
-release: release-linux release-macos release-freebsd
+# -------------------- release matrices --------------------
+release: clean release-linux release-musl release-macos release-freebsd release-windows
 
 release-linux:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=linux  GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(LDFLAGS)" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-amd64
-	GOOS=linux  GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(LDFLAGS)" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-arm64
+	GOOS=linux  GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-amd64
+	GOOS=linux  GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-arm64
 
-# Static-ish musl builds for Alpine (no CGO)
+# Static-ish MUSL builds for Alpine (no cgo)
 release-musl:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -tags netgo -trimpath -ldflags "$(LDFLAGS) -extldflags '-static'" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-amd64-musl
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 $(GO) build -tags netgo -trimpath -ldflags "$(LDFLAGS) -extldflags '-static'" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-arm64-musl
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -tags netgo -trimpath -ldflags "$(BUILD_LDFLAGS) -extldflags '-static'" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-amd64-musl
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 $(GO) build -tags netgo -trimpath -ldflags "$(BUILD_LDFLAGS) -extldflags '-static'" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-arm64-musl
 
 release-macos:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(LDFLAGS)" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-darwin-amd64
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(LDFLAGS)" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-darwin-arm64
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-darwin-amd64
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-darwin-arm64
 
 release-freebsd:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(LDFLAGS)" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-amd64
-	GOOS=freebsd GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(LDFLAGS)" $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-arm64
+	GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-amd64
+	GOOS=freebsd GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-arm64
 
-# --- Installers (no user/group creation here; do that in packaging or manually)
-install: build
-	@echo "==> installing binary + config dirs"
-	$(MKDIR_P) $(BINDIR)
-	$(INSTALL) -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
-	$(MKDIR_P) $(CONFDIR)
-	$(MKDIR_P) $(KEYDIR)
-	$(MKDIR_P) $(LOGDIR)
-	# sample configs/scripts if present
-	@if [ -f config.sample.yaml ]; then $(INSTALL) -m 0644 config.sample.yaml $(CONFDIR)/config.sample.yaml; fi
-	@if [ -f healthcheck.json ]; then $(INSTALL) -m 0644 healthcheck.json $(CONFDIR)/healthcheck.sample.json; fi
-	# helper scripts
-	@if [ -d scripts ]; then \
-	  for s in scripts/*; do \
-	    if [ -f $$s ]; then $(INSTALL) -m 0755 $$s $(BINDIR)/$$(basename $$s); fi; \
-	  done \
+release-windows:
+	$(MKDIR_P) $(DISTDIR)
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-windows-amd64.exe
+	GOOS=windows GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-windows-arm64.exe
+
+# -------------------- packaging --------------------
+package: release
+	@echo "==> packaging archives"
+	cd $(DISTDIR) && \
+	for f in *; do \
+	  base="$${f%.*}"; \
+	  case "$$f" in \
+	    *.exe) $(ZIP) "$$f.zip" "$$f" >/dev/null && rm -f "$$f";; \
+	    *)     $(TAR) -czf "$$f.tar.gz" "$$f" && rm -f "$$f";; \
+	  esac; \
+	done
+	@# checksums
+	@if [ -n "$(SHA256)" ]; then \
+	  (cd $(DISTDIR) && $(SHA256) $(SHA256FLAGS) * > SHA256SUMS); \
+	  echo "==> wrote $(DISTDIR)/SHA256SUMS"; \
+	else \
+	  echo "!! sha256 tool not found; skipping sums"; \
 	fi
 
-install-systemd:
-	@echo "==> installing systemd unit"
-	$(MKDIR_P) /etc/systemd/system
-	@if [ -f services/systemd/$(BINARY).service ]; then \
-	   $(INSTALL) -m 0644 services/systemd/$(BINARY).service /etc/systemd/system/$(BINARY).service; \
-	   systemctl daemon-reload || true; \
-	   echo "Enable with: systemctl enable --now $(BINARY)"; \
-	 else \
-	   echo "WARN: services/systemd/$(BINARY).service not found"; \
-	 fi
+# -------------------- install targets --------------------
+install: build
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 0755 $(BINARY) $(DESTDIR)$(BINDIR)/$(BINARY)
+	# helper scripts
+	if [ -d scripts ]; then \
+	  install -d $(DESTDIR)$(BINDIR); \
+	  for f in scripts/*; do \
+	    [ -f $$f ] && install -m 0755 $$f $(DESTDIR)$(BINDIR)/$$(basename $$f); \
+	  done; \
+	fi
+	# dirs used by the service
+	install -d -m 0750 $(DESTDIR)$(CFGDIR)
+	install -d -m 0755 $(DESTDIR)$(KEYDIR)
+	install -d -m 0755 $(DESTDIR)$(LOGDIR)
 
-install-openrc:
-	@echo "==> installing OpenRC script"
-	$(MKDIR_P) /etc/init.d
-	@if [ -f services/init.d/$(BINARY) ]; then \
-	   $(INSTALL) -m 0755 services/init.d/$(BINARY) /etc/init.d/$(BINARY); \
-	   echo "Add to default runlevel: rc-update add $(BINARY) default"; \
-	   echo "Start: rc-service $(BINARY) start"; \
-	 else \
-	   echo "WARN: services/init.d/$(BINARY) not found"; \
-	 fi
+install-systemd: install
+	install -d $(DESTDIR)$(SYSD_PREFIX)
+	install -m 0644 services/systemd/$(BINARY).service $(DESTDIR)$(SYSD_PREFIX)/$(BINARY).service
+	@echo "Reload/enable with:"
+	@echo "  systemctl daemon-reload && systemctl enable --now $(BINARY)"
+
+# NOTE: ensure the OpenRC script in services/init.d is named '$(BINARY)'
+install-openrc: install
+	install -d $(DESTDIR)$(ORC_PREFIX)
+	install -m 0755 services/init.d/$(BINARY) $(DESTDIR)$(ORC_PREFIX)/$(BINARY)
+	@echo "Add to default runlevel with:"
+	@echo "  rc-update add $(BINARY) default && rc-service $(BINARY) start"
 
 uninstall:
-	$(RM) $(BINDIR)/$(BINARY)
-	$(RM) /etc/systemd/system/$(BINARY).service
-	$(RM) /etc/init.d/$(BINARY)
-	@echo "Config left in $(CONFDIR) and logs in $(LOGDIR)"
-
+	- systemctl stop $(BINARY) 2>/dev/null || true
+	- rc-service $(BINARY) stop 2>/dev/null || true
+	rm -f $(DESTDIR)$(BINDIR)/$(BINARY)
+	if [ -d scripts ]; then \
+	  for f in scripts/*; do rm -f $(DESTDIR)$(BINDIR)/$$(basename $$f); done; \
+	fi
+	rm -f $(DESTDIR)$(SYSD_PREFIX)/$(BINARY).service
+	rm -f $(DESTDIR)$(ORC_PREFIX)/$(BINARY) || true
