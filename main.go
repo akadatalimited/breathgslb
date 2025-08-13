@@ -22,13 +22,13 @@ import (
 	"time"
 
 	"encoding/base64"
-    "regexp"
-    "strconv"
+	"regexp"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/miekg/dns"
-	
+
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -1525,8 +1525,6 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 	return h
 }
 
-
-
 func tcpCheck(ctx context.Context, ip string, h HealthConfig) error {
 	addr := net.JoinHostPort(ip, strconv.Itoa(h.Port))
 	d := &net.Dialer{}
@@ -1599,74 +1597,75 @@ func udpCheck(ctx context.Context, ip string, h HealthConfig) error {
 }
 
 func icmpCheck(ctx context.Context, ip string, _ HealthConfig) error {
-    p := net.ParseIP(ip)
-    if p == nil {
-        return fmt.Errorf("bad ip %q", ip)
-    }
+	p := net.ParseIP(ip)
+	if p == nil {
+		return fmt.Errorf("bad ip %q", ip)
+	}
 
-    var network string
-    var echoType icmp.Type
-    if p.To4() != nil {
-        network = "ip4:icmp"
-        echoType = ipv4.ICMPTypeEcho
-    } else {
-        // On many platforms the network name for IPv6 ICMP is "ip6:ipv6-icmp".
-        // Go also accepts the numeric protocol "ip6:58".
-        network = "ip6:ipv6-icmp"
-        echoType = ipv6.ICMPTypeEchoRequest
-    }
+	var network string
+	var echoType icmp.Type
+	if p.To4() != nil {
+		network = "ip4:icmp"
+		echoType = ipv4.ICMPTypeEcho
+	} else {
+		// On many platforms the network name for IPv6 ICMP is "ip6:ipv6-icmp".
+		// Go also accepts the numeric protocol "ip6:58".
+		network = "ip6:ipv6-icmp"
+		echoType = ipv6.ICMPTypeEchoRequest
+	}
 
-    c, err := icmp.ListenPacket(network, "")
-    if err != nil {
-        return err
-    }
-    defer c.Close()
+	c, err := icmp.ListenPacket(network, "")
+	if err != nil {
+		return err
+	}
+	defer c.Close()
 
-    wm := icmp.Message{
-        Type: echoType,
-        Code: 0,
-        Body: &icmp.Echo{
-            ID:  os.Getpid() & 0xffff,
-            Seq: 1,
-            Data: []byte("breathgslb"),
-        },
-    }
-    wb, err := wm.Marshal(nil)
-    if err != nil {
-        return err
-    }
+	wm := icmp.Message{
+		Type: echoType,
+		Code: 0,
+		Body: &icmp.Echo{
+			ID:   os.Getpid() & 0xffff,
+			Seq:  1,
+			Data: []byte("breathgslb"),
+		},
+	}
+	wb, err := wm.Marshal(nil)
+	if err != nil {
+		return err
+	}
 
-    // apply context deadline to the socket
-    if dl, ok := ctx.Deadline(); ok {
-        _ = c.SetDeadline(dl)
-    }
+	// apply context deadline to the socket
+	if dl, ok := ctx.Deadline(); ok {
+		_ = c.SetDeadline(dl)
+	}
 
-    if _, err = c.WriteTo(wb, &net.IPAddr{IP: p}); err != nil {
-        return err
-    }
+	if _, err = c.WriteTo(wb, &net.IPAddr{IP: p}); err != nil {
+		return err
+	}
 
-    rb := make([]byte, 1500)
-    for {
-        n, _, err := c.ReadFrom(rb)
-        if err != nil {
-            return err
-        }
-        rm, err := icmp.ParseMessage(func() int {
-            if p.To4() != nil { return 1 }   // ICMP
-            return 58                        // ICMPv6
-        }(), rb[:n])
-        if err != nil {
-            return err
-        }
-        switch rm.Type {
-        case ipv4.ICMPTypeEchoReply, ipv6.ICMPTypeEchoReply:
-            return nil
-        default:
-            // ignore non-echo-reply messages
-        }
-    }
+	rb := make([]byte, 1500)
+	for {
+		n, _, err := c.ReadFrom(rb)
+		if err != nil {
+			return err
+		}
+		rm, err := icmp.ParseMessage(func() int {
+			if p.To4() != nil {
+				return 1
+			} // ICMP
+			return 58 // ICMPv6
+		}(), rb[:n])
+		if err != nil {
+			return err
+		}
+		switch rm.Type {
+		case ipv4.ICMPTypeEchoReply, ipv6.ICMPTypeEchoReply:
+			return nil
+		default:
+			// ignore non-echo-reply messages
+		}
+	}
 }
-
 
 func (a *authority) healthLoop() {
 	base := time.Duration(a.cfg.IntervalSec) * time.Second
