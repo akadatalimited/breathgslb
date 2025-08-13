@@ -213,7 +213,7 @@ type Zone struct {
 	// Optional direct geo overrides (answers per country/continent)
 	GeoAnswers *GeoAnswers `yaml:"geo_answers,omitempty"`
 
-	Health HealthConfig      `yaml:"health"`
+	Health *HealthConfig      `yaml:"health,omitempty"`
 	DNSSEC *DNSSECZoneConfig `yaml:"dnssec,omitempty"`
 }
 
@@ -1418,6 +1418,25 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 
 // ---- health loop ----
 
+func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
+	var h HealthConfig
+	
+	if zh != nil {
+		if zh.HostHeader  != "" { h.HostHeader = zh.HostHeader }
+		if zh.Path        != "" { h.Path = zh.Path }
+		if zh.SNI         != "" { h.SNI = zh.SNI }
+		if zh.InsecureTLS      { h.InsecureTLS = true }
+	}
+	// sensible fallbacks
+	if h.Path == "" { h.Path = "/health" }
+	zoneHost := strings.TrimSuffix(zoneName, ".")
+	if h.HostHeader == "" { h.HostHeader = zoneHost }
+	if h.SNI == ""        { h.SNI = h.HostHeader }
+	return h
+}
+
+
+
 func (a *authority) healthLoop() {
 	base := time.Duration(a.cfg.IntervalSec) * time.Second
 	if base <= 0 {
@@ -1441,19 +1460,23 @@ func (a *authority) healthLoop() {
 func (a *authority) checkOnce() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
 	defer cancel()
+
+	hc := effectiveHealth(a.zone.Name, a.zone.Health)
+
 	// master v4
-	m4 := probeAny(ctx, a.zone.AMaster, a.zone.Health, true)
+	m4 := probeAny(ctx, a.zone.AMaster, hc, true)
 	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
 	// master v6
-	m6 := probeAny(ctx, a.zone.AAAAMaster, a.zone.Health, false)
+	m6 := probeAny(ctx, a.zone.AAAAMaster, hc, false)
 	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
 	// standby v4
-	s4 := probeAny(ctx, a.zone.AStandby, a.zone.Health, true)
+	s4 := probeAny(ctx, a.zone.AStandby, hc, true)
 	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
 	// standby v6
-	s6 := probeAny(ctx, a.zone.AAAAStandby, a.zone.Health, false)
+	s6 := probeAny(ctx, a.zone.AAAAStandby, hc, false)
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
+
 
 func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
 	for _, ip := range ips {
