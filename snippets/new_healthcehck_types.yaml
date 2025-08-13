@@ -1,0 +1,29 @@
+# New Healthcheck types
+
+
+health:
+  kind: http
+  host_header: "articles.akadata.ltd"
+  path: "/health"
+  scheme: https
+  method: GET
+  port: 443
+  insecure_tls: false
+
+
+health:
+  kind: tcp
+  port: 443
+  tls_enable: true
+  sni: "articles.akadata.ltd"
+
+health:
+  kind: udp
+  port: 53
+  udp_payload_b64: "cGluZw=="     # "ping"
+  udp_expect_re: "."               # any response
+
+
+health:
+  kind: icmp
+  icmp_payload_b64: "Z3NsYg=="    # "gslb"

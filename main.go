@@ -25,14 +25,41 @@ import (
 
 	"github.com/miekg/dns"
 	maxminddb "github.com/oschwald/maxminddb-golang"
+	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 // HealthConfig holds per-zone health probe settings.
+type HealthKind string
+
+const (
+	HKHTTP HealthKind = "http" // existing
+	HKTCP  HealthKind = "tcp"  // new: TCP connect (optionally TLS)
+	HKUDP  HealthKind = "udp"  // new: UDP send/expect
+	HKICMP HealthKind = "icmp" // new: ICMP/ICMPv6 echo
+)
+
 type HealthConfig struct {
-	HostHeader  string `yaml:"host_header"`
-	Path        string `yaml:"path"`
-	SNI         string `yaml:"sni"`
-	InsecureTLS bool   `yaml:"insecure_tls"`
+	Kind        HealthKind `yaml:"kind,omitempty"` // defaults "http"
+	HostHeader  string     `yaml:"host_header,omitempty"`
+	Path        string     `yaml:"path,omitempty"` // default "/health"
+	SNI         string     `yaml:"sni,omitempty"`
+	InsecureTLS bool       `yaml:"insecure_tls,omitempty"`
+	Scheme      string     `yaml:"scheme,omitempty"` // http|https (http default https)
+	Method      string     `yaml:"method,omitempty"` // GET|POST (default GET)
+	Port        int        `yaml:"port,omitempty"`   // default 443 (http picks 80)
+
+	// TCP options
+	TLSEnable bool   `yaml:"tls_enable,omitempty"` // if Kind=tcp, do TLS ClientHello
+	ALPN      string `yaml:"alpn,omitempty"`       // e.g. "h2,http/1.1"
+
+	// UDP options
+	UDPPayloadB64 string `yaml:"udp_payload_b64,omitempty"` // data to send
+	UDPExpectRE   string `yaml:"udp_expect_re,omitempty"`   // regex on response (optional)
+
+	// ICMP options
+	ICMPPayloadB64 string `yaml:"icmp_payload_b64,omitempty"` // optional extra payload
 }
 
 // ---- GeoIP config & policy ----
@@ -213,7 +240,7 @@ type Zone struct {
 	// Optional direct geo overrides (answers per country/continent)
 	GeoAnswers *GeoAnswers `yaml:"geo_answers,omitempty"`
 
-	Health *HealthConfig      `yaml:"health,omitempty"`
+	Health *HealthConfig     `yaml:"health,omitempty"`
 	DNSSEC *DNSSECZoneConfig `yaml:"dnssec,omitempty"`
 }
 
@@ -1420,22 +1447,222 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 
 func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 	var h HealthConfig
-	
+	if h.Kind == "" {
+		h.Kind = HKHTTP
+	}
+	if h.Port == 0 {
+		switch h.Kind {
+		case HKHTTP:
+			if h.Scheme == "" {
+				h.Scheme = "https"
+			}
+			if h.Scheme == "http" {
+				h.Port = 80
+			} else {
+				h.Port = 443
+			}
+		case HKTCP:
+			h.Port = 443
+		case HKUDP:
+			h.Port = 53
+		case HKICMP: /* no port */
+		}
+	}
+
 	if zh != nil {
-		if zh.HostHeader  != "" { h.HostHeader = zh.HostHeader }
-		if zh.Path        != "" { h.Path = zh.Path }
-		if zh.SNI         != "" { h.SNI = zh.SNI }
-		if zh.InsecureTLS      { h.InsecureTLS = true }
+		if zh.Scheme != "" {
+			h.Scheme = zh.Scheme
+		}
+		if zh.Method != "" {
+			h.Method = zh.Method
+		}
+		if zh.Port != 0 {
+			h.Port = zh.Port
+		}
+		if zh.HostHeader != "" {
+			h.HostHeader = zh.HostHeader
+		}
+		if zh.Path != "" {
+			h.Path = zh.Path
+		}
+		if zh.SNI != "" {
+			h.SNI = zh.SNI
+		}
+		if zh.InsecureTLS {
+			h.InsecureTLS = true
+		}
 	}
 	// sensible fallbacks
-	if h.Path == "" { h.Path = "/health" }
+	if h.Path == "" {
+		h.Path = "/health"
+	}
 	zoneHost := strings.TrimSuffix(zoneName, ".")
-	if h.HostHeader == "" { h.HostHeader = zoneHost }
-	if h.SNI == ""        { h.SNI = h.HostHeader }
+	if h.HostHeader == "" {
+		h.HostHeader = zoneHost
+	}
+	if h.SNI == "" {
+		h.SNI = h.HostHeader
+	}
+	if h.Scheme == "" {
+		h.Scheme = "https"
+	}
+	if h.Method == "" {
+		h.Method = http.MethodGet
+	}
+	if h.Port == 0 {
+		if h.Scheme == "https" {
+			h.Port = 443
+		} else {
+			h.Port = 80
+		}
+	}
 	return h
 }
 
+func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
+	for _, ip := range ips {
+		p := net.ParseIP(ip)
+		if p == nil || (ipv4 && p.To4() == nil) || (!ipv4 && p.To4() != nil) {
+			continue
+		}
 
+		var err error
+		switch hc.Kind {
+		case HKHTTP, "":
+			err = httpCheck(ctx, ip, hc)
+		case HKTCP:
+			err = tcpCheck(ctx, ip, hc)
+		case HKUDP:
+			err = udpCheck(ctx, ip, hc)
+		case HKICMP:
+			err = icmpCheck(ctx, ip, hc)
+		default:
+			err = fmt.Errorf("unknown health kind %q", hc.Kind)
+		}
+		if err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func tcpCheck(ctx context.Context, ip string, h HealthConfig) error {
+	addr := net.JoinHostPort(ip, strconv.Itoa(h.Port))
+	d := &net.Dialer{}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if h.TLSEnable {
+		sni := firstNonEmpty(h.SNI, h.HostHeader)
+		cfg := &tls.Config{ServerName: sni, InsecureSkipVerify: h.InsecureTLS}
+		if h.ALPN != "" {
+			cfg.NextProtos = strings.Split(h.ALPN, ",")
+		}
+		tconn := tls.Client(conn, cfg)
+		if err := tconn.HandshakeContext(ctx); err != nil {
+			return err
+		}
+		defer tconn.Close()
+	}
+	return nil
+}
+
+func udpCheck(ctx context.Context, ip string, h HealthConfig) error {
+	addr := net.JoinHostPort(ip, strconv.Itoa(h.Port))
+	uc, err := net.Dial("udp", addr)
+	if err != nil {
+		return err
+	}
+	defer uc.Close()
+
+	payload := []byte("ping")
+	if h.UDPPayloadB64 != "" {
+		if dec, e := base64.StdEncoding.DecodeString(h.UDPPayloadB64); e == nil {
+			payload = dec
+		}
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = uc.SetDeadline(deadline)
+	}
+
+	if _, err = uc.Write(payload); err != nil {
+		return err
+	}
+
+	if h.UDPExpectRE == "" {
+		// fire-and-forget: if no ICMP error, consider OK
+		// Try a short read to catch immediate errors
+		buf := make([]byte, 4)
+		uc.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		_, _ = uc.Read(buf)
+		return nil
+	}
+
+	// Expect response matching regex
+	buf := make([]byte, 1500)
+	n, err := uc.Read(buf)
+	if err != nil {
+		return err
+	}
+	re, err := regexp.Compile(h.UDPExpectRE)
+	if err != nil {
+		return err
+	}
+	if !re.Match(buf[:n]) {
+		return fmt.Errorf("udp expect failed")
+	}
+	return nil
+}
+
+func udpCheck(ctx context.Context, ip string, h HealthConfig) error {
+	addr := net.JoinHostPort(ip, strconv.Itoa(h.Port))
+	uc, err := net.Dial("udp", addr)
+	if err != nil {
+		return err
+	}
+	defer uc.Close()
+
+	payload := []byte("ping")
+	if h.UDPPayloadB64 != "" {
+		if dec, e := base64.StdEncoding.DecodeString(h.UDPPayloadB64); e == nil {
+			payload = dec
+		}
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = uc.SetDeadline(deadline)
+	}
+
+	if _, err = uc.Write(payload); err != nil {
+		return err
+	}
+
+	if h.UDPExpectRE == "" {
+		// fire-and-forget: if no ICMP error, consider OK
+		// Try a short read to catch immediate errors
+		buf := make([]byte, 4)
+		uc.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		_, _ = uc.Read(buf)
+		return nil
+	}
+
+	// Expect response matching regex
+	buf := make([]byte, 1500)
+	n, err := uc.Read(buf)
+	if err != nil {
+		return err
+	}
+	re, err := regexp.Compile(h.UDPExpectRE)
+	if err != nil {
+		return err
+	}
+	if !re.Match(buf[:n]) {
+		return fmt.Errorf("udp expect failed")
+	}
+	return nil
+}
 
 func (a *authority) healthLoop() {
 	base := time.Duration(a.cfg.IntervalSec) * time.Second
@@ -1477,7 +1704,6 @@ func (a *authority) checkOnce() {
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
 
-
 func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
 	for _, ip := range ips {
 		p := net.ParseIP(ip)
@@ -1506,10 +1732,10 @@ func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
 	if strings.Contains(ip, ":") {
 		host = "[" + ip + "]"
 	}
-	url := "https://" + host + path
+	url := fmt.Sprintf("%s://%s:%d%s", h.Scheme, host, h.Port, h.Path)
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: hc.InsecureTLS, ServerName: firstNonEmpty(hc.SNI, hc.HostHeader)}}
 	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, _ := http.NewRequestWithContext(ctx, h.Method, url, nil)
 	if hc.HostHeader != "" {
 		req.Host = hc.HostHeader
 	}
