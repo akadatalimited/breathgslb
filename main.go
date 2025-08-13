@@ -21,13 +21,19 @@ import (
 	"syscall"
 	"time"
 
+	"encoding/base64"
+    "regexp"
+    "strconv"
+
 	"gopkg.in/yaml.v3"
 
 	"github.com/miekg/dns"
-	maxminddb "github.com/oschwald/maxminddb-golang"
+	
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+
+	maxminddb "github.com/oschwald/maxminddb-golang"
 )
 
 // HealthConfig holds per-zone health probe settings.
@@ -1519,32 +1525,7 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 	return h
 }
 
-func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
-	for _, ip := range ips {
-		p := net.ParseIP(ip)
-		if p == nil || (ipv4 && p.To4() == nil) || (!ipv4 && p.To4() != nil) {
-			continue
-		}
 
-		var err error
-		switch hc.Kind {
-		case HKHTTP, "":
-			err = httpCheck(ctx, ip, hc)
-		case HKTCP:
-			err = tcpCheck(ctx, ip, hc)
-		case HKUDP:
-			err = udpCheck(ctx, ip, hc)
-		case HKICMP:
-			err = icmpCheck(ctx, ip, hc)
-		default:
-			err = fmt.Errorf("unknown health kind %q", hc.Kind)
-		}
-		if err == nil {
-			return true
-		}
-	}
-	return false
-}
 
 func tcpCheck(ctx context.Context, ip string, h HealthConfig) error {
 	addr := net.JoinHostPort(ip, strconv.Itoa(h.Port))
@@ -1617,52 +1598,75 @@ func udpCheck(ctx context.Context, ip string, h HealthConfig) error {
 	return nil
 }
 
-func udpCheck(ctx context.Context, ip string, h HealthConfig) error {
-	addr := net.JoinHostPort(ip, strconv.Itoa(h.Port))
-	uc, err := net.Dial("udp", addr)
-	if err != nil {
-		return err
-	}
-	defer uc.Close()
+func icmpCheck(ctx context.Context, ip string, _ HealthConfig) error {
+    p := net.ParseIP(ip)
+    if p == nil {
+        return fmt.Errorf("bad ip %q", ip)
+    }
 
-	payload := []byte("ping")
-	if h.UDPPayloadB64 != "" {
-		if dec, e := base64.StdEncoding.DecodeString(h.UDPPayloadB64); e == nil {
-			payload = dec
-		}
-	}
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = uc.SetDeadline(deadline)
-	}
+    var network string
+    var echoType icmp.Type
+    if p.To4() != nil {
+        network = "ip4:icmp"
+        echoType = ipv4.ICMPTypeEcho
+    } else {
+        // On many platforms the network name for IPv6 ICMP is "ip6:ipv6-icmp".
+        // Go also accepts the numeric protocol "ip6:58".
+        network = "ip6:ipv6-icmp"
+        echoType = ipv6.ICMPTypeEchoRequest
+    }
 
-	if _, err = uc.Write(payload); err != nil {
-		return err
-	}
+    c, err := icmp.ListenPacket(network, "")
+    if err != nil {
+        return err
+    }
+    defer c.Close()
 
-	if h.UDPExpectRE == "" {
-		// fire-and-forget: if no ICMP error, consider OK
-		// Try a short read to catch immediate errors
-		buf := make([]byte, 4)
-		uc.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		_, _ = uc.Read(buf)
-		return nil
-	}
+    wm := icmp.Message{
+        Type: echoType,
+        Code: 0,
+        Body: &icmp.Echo{
+            ID:  os.Getpid() & 0xffff,
+            Seq: 1,
+            Data: []byte("breathgslb"),
+        },
+    }
+    wb, err := wm.Marshal(nil)
+    if err != nil {
+        return err
+    }
 
-	// Expect response matching regex
-	buf := make([]byte, 1500)
-	n, err := uc.Read(buf)
-	if err != nil {
-		return err
-	}
-	re, err := regexp.Compile(h.UDPExpectRE)
-	if err != nil {
-		return err
-	}
-	if !re.Match(buf[:n]) {
-		return fmt.Errorf("udp expect failed")
-	}
-	return nil
+    // apply context deadline to the socket
+    if dl, ok := ctx.Deadline(); ok {
+        _ = c.SetDeadline(dl)
+    }
+
+    if _, err = c.WriteTo(wb, &net.IPAddr{IP: p}); err != nil {
+        return err
+    }
+
+    rb := make([]byte, 1500)
+    for {
+        n, _, err := c.ReadFrom(rb)
+        if err != nil {
+            return err
+        }
+        rm, err := icmp.ParseMessage(func() int {
+            if p.To4() != nil { return 1 }   // ICMP
+            return 58                        // ICMPv6
+        }(), rb[:n])
+        if err != nil {
+            return err
+        }
+        switch rm.Type {
+        case ipv4.ICMPTypeEchoReply, ipv6.ICMPTypeEchoReply:
+            return nil
+        default:
+            // ignore non-echo-reply messages
+        }
+    }
 }
+
 
 func (a *authority) healthLoop() {
 	base := time.Duration(a.cfg.IntervalSec) * time.Second
@@ -1707,16 +1711,24 @@ func (a *authority) checkOnce() {
 func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
 	for _, ip := range ips {
 		p := net.ParseIP(ip)
-		if p == nil {
+		if p == nil || (ipv4 && p.To4() == nil) || (!ipv4 && p.To4() != nil) {
 			continue
 		}
-		if ipv4 && p.To4() == nil {
-			continue
+
+		var err error
+		switch hc.Kind {
+		case HKHTTP, "":
+			err = httpCheck(ctx, ip, hc)
+		case HKTCP:
+			err = tcpCheck(ctx, ip, hc)
+		case HKUDP:
+			err = udpCheck(ctx, ip, hc)
+		case HKICMP:
+			err = icmpCheck(ctx, ip, hc)
+		default:
+			err = fmt.Errorf("unknown health kind %q", hc.Kind)
 		}
-		if !ipv4 && p.To4() != nil {
-			continue
-		}
-		if err := httpCheck(ctx, ip, hc); err == nil {
+		if err == nil {
 			return true
 		}
 	}
@@ -1732,10 +1744,10 @@ func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
 	if strings.Contains(ip, ":") {
 		host = "[" + ip + "]"
 	}
-	url := fmt.Sprintf("%s://%s:%d%s", h.Scheme, host, h.Port, h.Path)
+	url := fmt.Sprintf("%s://%s:%d%s", hc.Scheme, host, hc.Port, hc.Path)
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: hc.InsecureTLS, ServerName: firstNonEmpty(hc.SNI, hc.HostHeader)}}
 	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequestWithContext(ctx, h.Method, url, nil)
+	req, _ := http.NewRequestWithContext(ctx, hc.Method, url, nil)
 	if hc.HostHeader != "" {
 		req.Host = hc.HostHeader
 	}
