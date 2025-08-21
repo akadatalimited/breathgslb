@@ -41,7 +41,7 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 * **ALIAS/ANAME‑like apex** synth when no A/AAAA lists are set.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
-* **File logging** with fallback; cross‑platform binary (Linux, macOS, Windows, \*BSD).
+* **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS, Windows, \*BSD).
 
 ---
 
@@ -49,7 +49,7 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 
 1. Parent zone delegates a sub‑zone (e.g., `gslb-sitetest.akadata.ltd.`) to `ns-gslb.akadata.ltd.` with glue.
 2. BreathGSLB runs as an authoritative server for that sub‑zone only.
-3. A/AAAA at the **apex** come from either the **healthy** set or the **fallback** set. Health is checked by literal IP using HTTPS to `/health` with proper Host/SNI.
+3. A/AAAA at the **apex** come from either the **healthy** set or the **fallback** set. Health is checked per IP using probes such as HTTP/HTTPS, HTTP/3, TCP, UDP, ICMP, or raw IP protocols, with optional body `expect` matching.
 4. Rise/fall thresholds, cooldown, and jitter prevent rapid oscillation.
 5. Other record types are served as configured.
 
@@ -123,7 +123,9 @@ jitter_ms: 600           # add 0..600ms to each sleep
 cooldown_sec: 25         # minimum seconds between flips (per A/AAAA family)
 edns_buf: 1232           # EDNS0 UDP payload
 log_queries: true
-log_file: "/var/log/breathgslb/breathgslb.log"
+log_syslog: true
+tsig:
+  path: "/etc/breathgslb/tsig"
 ```
 
 ### Zone (example)
@@ -146,10 +148,13 @@ zones:
     # alias: "status.akadata.ltd."
 
     health:
+      kind: http
       host_header: "gslb-sitetest.akadata.ltd"
       sni:         "gslb-sitetest.akadata.ltd"
       path:        "/health"
+      expect:      "OK"
       insecure_tls: false
+    # other kinds: http3, tcp (tls_enable:true, alpn: h2), udp, rawip (protocol: 47)
 
     # Shared records (examples)
     txt:
@@ -197,7 +202,11 @@ zones:
         ttl: 60
 ```
 
-**Trailing dots** are required for owner names that are absolute (NS, MX exchanges, SRV targets, NAPTR replacements). 
+Supported `health.kind` values: `http`, `http3` (QUIC), `tcp`, `udp`, `icmp`, and `rawip`.
+Use `kind: tcp` with `tls_enable: true` and `alpn: "h2"` for HTTP/2 checks.
+The optional `expect` field verifies a substring in the response body.
+
+**Trailing dots** are required for owner names that are absolute (NS, MX exchanges, SRV targets, NAPTR replacements).
 When `name` is omitted for TXT/MX/CAA/SSHFP/RP, the record is placed at the apex.
 
 ---
@@ -355,7 +364,7 @@ rc-update add breathgslb default
 rc-service breathgslb start
 ```
 
-> Logs also go to stderr; the binary writes to the path configured by `log_file` (default `/var/log/breathgslb/breathgslb.log`).
+> Logs also go to stderr; enable `log_syslog` to emit to the local syslog daemon.
 
 —
 
