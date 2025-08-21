@@ -17,7 +17,8 @@ BreathGSLB is configured via a YAML file. Sample configurations are provided in 
 | `jitter_ms` | int | Random jitter (milliseconds) added to each interval. |
 | `cooldown_sec` | int | Minimum seconds between state flips for an address family. |
 | `dns64_prefix` | IPv6 prefix string | Prefix used when synthesizing AAAA from A. |
-| `edns_buf` | int | Advertised EDNS0 UDP payload size. |
+| `edns_buf` | int | Advertised EDNS0 UDP payload size; A/AAAA answers are trimmed to fit. |
+| `max_records` | int | Optional hard limit on A/AAAA records per response. |
 | `log_queries` | bool | Log DNS queries and health transitions. |
 | `max_workers` | int | Number of UDP worker goroutines. |
 | `log_syslog` | bool | Send logs to syslog instead of stderr. |

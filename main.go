@@ -159,6 +159,7 @@ type Config struct {
 	Rise        int  `yaml:"rise"`
 	Fall        int  `yaml:"fall"`
 	EDNSBuf     int  `yaml:"edns_buf"`
+	MaxRecords  int  `yaml:"max_records,omitempty"`
 	LogQueries  bool `yaml:"log_queries"`
 	MaxWorkers  int  `yaml:"max_workers"`
 
@@ -603,6 +604,9 @@ func setupDefaults(cfg *Config) {
 	}
 	if cfg.EDNSBuf == 0 {
 		cfg.EDNSBuf = 1232
+	}
+	if cfg.MaxRecords < 0 {
+		cfg.MaxRecords = 0
 	}
 	if cfg.MaxWorkers <= 0 {
 		cfg.MaxWorkers = runtime.NumCPU()
@@ -1423,25 +1427,49 @@ func (a *authority) persistRR(rrs []dns.RR, src net.IP, ipv6 bool) []dns.RR {
 }
 
 func (a *authority) buildA(addrs []string) []dns.RR {
-	var rrs []dns.RR
+	var (
+		rrs []dns.RR
+		m   dns.Msg
+	)
 	for _, ip := range addrs {
 		p := net.ParseIP(ip)
 		if p == nil || p.To4() == nil {
 			continue
 		}
-		rrs = append(rrs, &dns.A{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeA, a.zone.TTLAnswer), A: p.To4()})
+		rr := &dns.A{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeA, a.zone.TTLAnswer), A: p.To4()}
+		candidate := append(rrs, rr)
+		if a.cfg.MaxRecords > 0 && len(candidate) > a.cfg.MaxRecords {
+			break
+		}
+		m.Answer = candidate
+		if m.Len() > a.cfg.EDNSBuf {
+			break
+		}
+		rrs = candidate
 	}
 	return rrs
 }
 
 func (a *authority) buildAAAA(addrs []string) []dns.RR {
-	var rrs []dns.RR
+	var (
+		rrs []dns.RR
+		m   dns.Msg
+	)
 	for _, ip := range addrs {
 		p := net.ParseIP(ip)
 		if p == nil || p.To4() != nil {
 			continue
 		}
-		rrs = append(rrs, &dns.AAAA{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: p})
+		rr := &dns.AAAA{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: p}
+		candidate := append(rrs, rr)
+		if a.cfg.MaxRecords > 0 && len(candidate) > a.cfg.MaxRecords {
+			break
+		}
+		m.Answer = candidate
+		if m.Len() > a.cfg.EDNSBuf {
+			break
+		}
+		rrs = candidate
 	}
 	return rrs
 }
