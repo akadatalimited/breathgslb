@@ -62,6 +62,7 @@ type HealthConfig struct {
 	Scheme      string     `yaml:"scheme,omitempty"` // http|https (http default https)
 	Method      string     `yaml:"method,omitempty"` // GET|POST (default GET)
 	Port        int        `yaml:"port,omitempty"`   // default 443 (http picks 80)
+	Expect      string     `yaml:"expect,omitempty"` // substring expected in body for http/http3
 
 	// TCP options
 	TLSEnable  bool     `yaml:"tls_enable,omitempty"` // if Kind=tcp, do TLS ClientHello
@@ -1742,6 +1743,9 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 		if zh.Protocol != 0 {
 			h.Protocol = zh.Protocol
 		}
+		if zh.Expect != "" {
+			h.Expect = zh.Expect
+		}
 	}
 	if h.Path == "" {
 		h.Path = "/health"
@@ -2047,6 +2051,15 @@ func http3Check(ctx context.Context, ip string, hc HealthConfig) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if hc.Expect != "" {
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(string(body), hc.Expect) {
+				return fmt.Errorf("expect not found")
+			}
+		}
 		return nil
 	}
 	return fmt.Errorf("status %d", resp.StatusCode)
@@ -2074,6 +2087,15 @@ func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if hc.Expect != "" {
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(string(body), hc.Expect) {
+				return fmt.Errorf("expect not found")
+			}
+		}
 		return nil
 	}
 	return fmt.Errorf("status %d", resp.StatusCode)

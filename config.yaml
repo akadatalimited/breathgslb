@@ -73,10 +73,31 @@ zones:
 
 
     health:
+      kind: http
       host_header: "gslb-sitetest.akadata.ltd"
       sni:         "gslb-sitetest.akadata.ltd"
       path:        "/health"
+      expect:      "OK"
       insecure_tls: false
+
+    # Other health check kinds:
+    # health:
+    #   kind: http3
+    #   expect: "OK"
+    # health:
+    #   kind: tcp
+    #   port: 443
+    #   tls_enable: true
+    #   sni: "gslb-sitetest.akadata.ltd"
+    #   alpn: "h2"
+    # health:
+    #   kind: udp
+    #   port: 53
+    #   udp_payload_b64: "cGluZw=="    # "ping"
+    #   udp_expect_re: "."
+    # health:
+    #   kind: rawip
+    #   protocol: 47                   # GRE
 
     dnssec:
       enable: true
