@@ -84,7 +84,9 @@ cooldown_sec: 25                 # minimum time between up/down flips per family
 jitter_ms: 500                   # randomize probe interval a little
 edns_buf: 1232
 log_queries: true
-log_file: "/var/log/breathgslb/breathgslb.log"
+log_syslog: true
+tsig:
+  path: "/etc/breathgslb/tsig"
 
 zones:
   - name: "gslb-sitetest.akadata.ltd."
