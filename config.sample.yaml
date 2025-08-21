@@ -7,6 +7,7 @@ rise: 2                       # successes to mark UP
 fall: 4                       # failures to mark DOWN
 jitter_ms: 600                # add 0..600ms jitter to each interval
 cooldown_sec: 25              # minimum seconds between state flips (per A/AAAA family)
+dns64_prefix: "64:ff9b::"     # synthesize AAAA from A when needed
 edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6 without frag)
 log_queries: true             # log queries and health transitions
 log_syslog: true

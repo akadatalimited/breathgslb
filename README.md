@@ -42,6 +42,8 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
 * **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS, Windows, \*BSD).
+* **DNS64 synthesis** lets IPv6‑only clients reach IPv4‑only zones.
+
 
 ---
 
@@ -49,7 +51,7 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 
 1. Parent zone delegates a sub‑zone (e.g., `gslb-sitetest.akadata.ltd.`) to `ns-gslb.akadata.ltd.` with glue.
 2. BreathGSLB runs as an authoritative server for that sub‑zone only.
-3. A/AAAA at the **apex** come from either the **healthy** set or the **fallback** set. Health is checked per IP using probes such as HTTP/HTTPS, HTTP/3, TCP, UDP, ICMP, or raw IP protocols, with optional body `expect` matching.
+3. A/AAAA at the **apex** come from either the **healthy** set or the **fallback** set. Health is checked per IP using probes such as HTTP/HTTPS, HTTP/3, TCP, UDP, ICMP, or raw IP protocols, with optional body `expect` matching. If only A records exist, IPv6 clients receive synthesized AAAA answers via DNS64.
 4. Rise/fall thresholds, cooldown, and jitter prevent rapid oscillation.
 5. Other record types are served as configured.
 
@@ -121,6 +123,7 @@ rise: 2                  # successes to mark UP
 fall: 4                  # failures to mark DOWN
 jitter_ms: 600           # add 0..600ms to each sleep
 cooldown_sec: 25         # minimum seconds between flips (per A/AAAA family)
+dns64_prefix: "64:ff9b::" # synthesize AAAA from A when needed
 edns_buf: 1232           # EDNS0 UDP payload
 log_queries: true
 log_syslog: true
@@ -205,6 +208,8 @@ zones:
 Supported `health.kind` values: `http`, `http3` (QUIC), `tcp`, `udp`, `icmp`, and `rawip`.
 Use `kind: tcp` with `tls_enable: true` and `alpn: "h2"` for HTTP/2 checks.
 The optional `expect` field verifies a substring in the response body.
+`path` defaults to `/health` only for `http` and `http3` probes.
+
 
 **Trailing dots** are required for owner names that are absolute (NS, MX exchanges, SRV targets, NAPTR replacements).
 When `name` is omitted for TXT/MX/CAA/SSHFP/RP, the record is placed at the apex.

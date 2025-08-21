@@ -162,7 +162,9 @@ type Config struct {
 	// Softening knobs
 	JitterMs    int `yaml:"jitter_ms"`
 	CooldownSec int `yaml:"cooldown_sec"`
-
+  
+	// DNS64 synthesis prefix (empty disables)
+	DNS64Prefix string `yaml:"dns64_prefix,omitempty"`
 	// Logging options
 	LogFile   string `yaml:"log_file"`
 	LogSyslog bool   `yaml:"log_syslog,omitempty"`
@@ -588,6 +590,11 @@ func setupDefaults(cfg *Config) {
 	if cfg.CooldownSec == 0 {
 		cfg.CooldownSec = 25
 	}
+
+	if cfg.DNS64Prefix == "" {
+		cfg.DNS64Prefix = "64:ff9b::"
+	}
+
 	if cfg.LogFile == "" && !cfg.LogSyslog {
 		cfg.LogFile = "/var/log/breathgslb/breathgslb.log"
 	}
@@ -1228,6 +1235,23 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 			}
 		}
 	}
+	if len(addrs) == 0 && src != nil && src.To4() == nil && a.cfg.DNS64Prefix != "" {
+		prefix := net.ParseIP(a.cfg.DNS64Prefix)
+		if prefix != nil {
+			var rrs []dns.RR
+			for _, rr := range a.addrA(owner, src, r) {
+				if aRec, ok := rr.(*dns.A); ok {
+					v6 := make(net.IP, net.IPv6len)
+					copy(v6[:12], prefix.To16()[:12])
+					copy(v6[12:], aRec.A.To4())
+					rrs = append(rrs, &dns.AAAA{Hdr: hdr(ensureDot(owner), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: v6})
+				}
+			}
+			if len(rrs) > 0 {
+				return rrs
+			}
+		}
+	}
 	return a.buildAAAA(addrs)
 }
 
@@ -1751,7 +1775,7 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 			h.Expect = zh.Expect
 		}
 	}
-	if h.Path == "" {
+	if h.Path == "" && (h.Kind == HKHTTP || h.Kind == HKHTTP3) {
 		h.Path = "/health"
 	}
 	zoneHost := strings.TrimSuffix(zoneName, ".")
@@ -1864,10 +1888,14 @@ func rawIPCheck(ctx context.Context, ip string, h HealthConfig) error {
 		return fmt.Errorf("rawip protocol must be >0")
 	}
 	p := net.ParseIP(ip)
-	if p == nil || p.To4() == nil {
-		return fmt.Errorf("rawip requires IPv4 address")
+	if p == nil {
+		return fmt.Errorf("bad ip %q", ip)
 	}
-	c, err := net.ListenPacket(fmt.Sprintf("ip4:%d", h.Protocol), "")
+	network := fmt.Sprintf("ip4:%d", h.Protocol)
+	if p.To4() == nil {
+		network = fmt.Sprintf("ip6:%d", h.Protocol)
+	}
+	c, err := net.ListenPacket(network, "")
 	if err != nil {
 		return err
 	}
@@ -1988,23 +2016,24 @@ func (a *authority) checkOnce() {
 	hc := effectiveHealth(a.zone.Name, a.zone.Health)
 
 	// master v4
-	m4 := probeAny(ctx, ipsFrom(a.zone.AMaster), hc, true)
+
+	m4 := probeAny(ctx, a.zone.AMaster, hc)
 	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
 	// master v6
-	m6 := probeAny(ctx, ipsFrom(a.zone.AAAAMaster), hc, false)
+	m6 := probeAny(ctx, a.zone.AAAAMaster, hc)
 	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
 	// standby v4
-	s4 := probeAny(ctx, ipsFrom(a.zone.AStandby), hc, true)
+	s4 := probeAny(ctx, a.zone.AStandby, hc)
 	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
 	// standby v6
-	s6 := probeAny(ctx, ipsFrom(a.zone.AAAAStandby), hc, false)
+	s6 := probeAny(ctx, a.zone.AAAAStandby, hc)
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
 
-func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
+func probeAny(ctx context.Context, ips []string, hc HealthConfig) bool {
 	for _, ip := range ips {
 		p := net.ParseIP(ip)
-		if p == nil || (ipv4 && p.To4() == nil) || (!ipv4 && p.To4() != nil) {
+		if p == nil {
 			continue
 		}
 
