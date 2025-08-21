@@ -8,6 +8,14 @@ A tiny, self‑contained **authoritative GSLB** (Global Server Load‑Balancer) 
 
 ---
 
+## Code layout
+
+The core logic lives in `main.go`; zone indexing helpers are in
+`zone_index.go` and configuration validators reside in
+`record_validate.go` to fail fast on malformed records.
+
+---
+
 ## Features (current)
 
 * **Master → Standby → Fallback** tiers per family (IPv4/IPv6) with independent health.
