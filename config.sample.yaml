@@ -1,5 +1,6 @@
 # breathgslb global settings
 listen: ":53"                 # port only; server binds udp4/udp6/tcp4/tcp6 automatically
+reverse_dir: "reverse_zones"   # directory for generated reverse zones
 timeout_sec: 5                # per health probe
 interval_sec: 8               # base interval between probe rounds
 rise: 2                       # successes to mark UP
