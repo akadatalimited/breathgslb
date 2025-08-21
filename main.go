@@ -1452,52 +1452,16 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 // ---- health loop ----
 
 func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
+	// Start with a shallow copy so defaults don't mutate the caller's config.
 	var h HealthConfig
+	if zh != nil {
+		h = *zh
+	}
+
 	if h.Kind == "" {
 		h.Kind = HKHTTP
 	}
-	if h.Port == 0 {
-		switch h.Kind {
-		case HKHTTP:
-			if h.Scheme == "" {
-				h.Scheme = "https"
-			}
-			if h.Scheme == "http" {
-				h.Port = 80
-			} else {
-				h.Port = 443
-			}
-		case HKTCP:
-			h.Port = 443
-		case HKUDP:
-			h.Port = 53
-		case HKICMP: /* no port */
-		}
-	}
 
-	if zh != nil {
-		if zh.Scheme != "" {
-			h.Scheme = zh.Scheme
-		}
-		if zh.Method != "" {
-			h.Method = zh.Method
-		}
-		if zh.Port != 0 {
-			h.Port = zh.Port
-		}
-		if zh.HostHeader != "" {
-			h.HostHeader = zh.HostHeader
-		}
-		if zh.Path != "" {
-			h.Path = zh.Path
-		}
-		if zh.SNI != "" {
-			h.SNI = zh.SNI
-		}
-		if zh.InsecureTLS {
-			h.InsecureTLS = true
-		}
-	}
 	// sensible fallbacks
 	if h.Path == "" {
 		h.Path = "/health"
@@ -1516,10 +1480,19 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 		h.Method = http.MethodGet
 	}
 	if h.Port == 0 {
-		if h.Scheme == "https" {
+		switch h.Kind {
+		case HKHTTP:
+			if h.Scheme == "http" {
+				h.Port = 80
+			} else {
+				h.Port = 443
+			}
+		case HKTCP:
 			h.Port = 443
-		} else {
-			h.Port = 80
+		case HKUDP:
+			h.Port = 53
+		case HKICMP:
+			// no port
 		}
 	}
 	return h
@@ -1743,7 +1716,7 @@ func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
 	if strings.Contains(ip, ":") {
 		host = "[" + ip + "]"
 	}
-	url := fmt.Sprintf("%s://%s:%d%s", hc.Scheme, host, hc.Port, hc.Path)
+	url := fmt.Sprintf("%s://%s:%d%s", hc.Scheme, host, hc.Port, path)
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: hc.InsecureTLS, ServerName: firstNonEmpty(hc.SNI, hc.HostHeader)}}
 	client := &http.Client{Transport: tr}
 	req, _ := http.NewRequestWithContext(ctx, hc.Method, url, nil)
