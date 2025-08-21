@@ -16,6 +16,9 @@ import (
 // validateConfig walks through the parsed configuration and validates every zone
 // and record it contains.
 func validateConfig(cfg *Config) error {
+	if err := validatePersistenceMode(cfg.PersistenceMode); err != nil {
+		return fmt.Errorf("persistence_mode: %w", err)
+	}
 	for i := range cfg.Zones {
 		if err := validateZone(&cfg.Zones[i]); err != nil {
 			return fmt.Errorf("zone %q: %w", cfg.Zones[i].Name, err)
@@ -41,6 +44,9 @@ func validateZone(z *Zone) error {
 		if err := validateDomain(z.Alias); err != nil {
 			return fmt.Errorf("alias: %w", err)
 		}
+	}
+	if err := validatePersistenceMode(z.PersistenceMode); err != nil {
+		return fmt.Errorf("persistence_mode: %w", err)
 	}
 
 	// Validate core A/AAAA lists
@@ -128,6 +134,15 @@ func validateZone(z *Zone) error {
 	}
 
 	return nil
+}
+
+func validatePersistenceMode(m string) error {
+	switch strings.ToLower(m) {
+	case "", "rr", "wrr", "random":
+		return nil
+	default:
+		return fmt.Errorf("invalid mode %q", m)
+	}
 }
 
 // validateDomain ensures a domain name is valid and within RFC limits.
