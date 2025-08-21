@@ -161,10 +161,9 @@ type Config struct {
 	// Softening knobs
 	JitterMs    int `yaml:"jitter_ms"`
 	CooldownSec int `yaml:"cooldown_sec"`
-
+  
 	// DNS64 synthesis prefix (empty disables)
 	DNS64Prefix string `yaml:"dns64_prefix,omitempty"`
-
 	// Logging options
 	LogFile   string `yaml:"log_file"`
 	LogSyslog bool   `yaml:"log_syslog,omitempty"`
@@ -590,9 +589,11 @@ func setupDefaults(cfg *Config) {
 	if cfg.CooldownSec == 0 {
 		cfg.CooldownSec = 25
 	}
+
 	if cfg.DNS64Prefix == "" {
 		cfg.DNS64Prefix = "64:ff9b::"
 	}
+
 	if cfg.LogFile == "" && !cfg.LogSyslog {
 		cfg.LogFile = "/var/log/breathgslb/breathgslb.log"
 	}

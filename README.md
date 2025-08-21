@@ -44,6 +44,7 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 * **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS, Windows, \*BSD).
 * **DNS64 synthesis** lets IPv6‑only clients reach IPv4‑only zones.
 
+
 ---
 
 ## How it works
@@ -208,6 +209,7 @@ Supported `health.kind` values: `http`, `http3` (QUIC), `tcp`, `udp`, `icmp`, an
 Use `kind: tcp` with `tls_enable: true` and `alpn: "h2"` for HTTP/2 checks.
 The optional `expect` field verifies a substring in the response body.
 `path` defaults to `/health` only for `http` and `http3` probes.
+
 
 **Trailing dots** are required for owner names that are absolute (NS, MX exchanges, SRV targets, NAPTR replacements).
 When `name` is omitted for TXT/MX/CAA/SSHFP/RP, the record is placed at the apex.
