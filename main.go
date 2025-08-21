@@ -45,6 +45,8 @@ const (
 	HKTCP   HealthKind = "tcp"   // new: TCP connect (optionally TLS)
 	HKUDP   HealthKind = "udp"   // new: UDP send/expect
 	HKICMP  HealthKind = "icmp"  // new: ICMP/ICMPv6 echo
+	HKRawIP HealthKind = "rawip" // new: raw IP protocol probe
+
 )
 
 type HealthConfig struct {
@@ -67,6 +69,9 @@ type HealthConfig struct {
 
 	// ICMP options
 	ICMPPayloadB64 string `yaml:"icmp_payload_b64,omitempty"` // optional extra payload
+
+	// raw IP options
+	Protocol int `yaml:"protocol,omitempty"` // IP protocol number
 }
 
 // ---- GeoIP config & policy ----
@@ -1453,18 +1458,58 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 	// Start with a shallow copy so defaults don't mutate the caller's config.
 	var h HealthConfig
-	if zh != nil {
-		h = *zh
-	}
 
+	if zh != nil && zh.Kind != "" {
+		h.Kind = zh.Kind
+	}
 	if h.Kind == "" {
 		h.Kind = HKHTTP
 	}
-<<<<<<< HEAD
+	if h.Port == 0 {
+		switch h.Kind {
+		case HKHTTP:
+			if h.Scheme == "" {
+				h.Scheme = "https"
+			}
+			if h.Scheme == "http" {
+				h.Port = 80
+			} else {
+				h.Port = 443
+			}
+		case HKTCP:
+			h.Port = 443
+		case HKUDP:
+			h.Port = 53
+		case HKICMP, HKRawIP: /* no port */
+		}
+	}
 
-	// sensible fallbacks
-=======
->>>>>>> codex/extend-healthkind-with-http3-option
+	if zh != nil {
+		if zh.Scheme != "" {
+			h.Scheme = zh.Scheme
+		}
+		if zh.Method != "" {
+			h.Method = zh.Method
+		}
+		if zh.Port != 0 {
+			h.Port = zh.Port
+		}
+		if zh.HostHeader != "" {
+			h.HostHeader = zh.HostHeader
+		}
+		if zh.Path != "" {
+			h.Path = zh.Path
+		}
+		if zh.SNI != "" {
+			h.SNI = zh.SNI
+		}
+		if zh.InsecureTLS {
+			h.InsecureTLS = true
+		}
+		if zh.Protocol != 0 {
+			h.Protocol = zh.Protocol
+		}
+	}
 	if h.Path == "" {
 		h.Path = "/health"
 	}
@@ -1489,15 +1534,10 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 			} else {
 				h.Port = 443
 			}
-<<<<<<< HEAD
-		case HKTCP:
-			h.Port = 443
-=======
 		case HKHTTP3:
 			h.Port = 443
 		case HKTCP:
 			h.Port = 443
->>>>>>> codex/extend-healthkind-with-http3-option
 		case HKUDP:
 			h.Port = 53
 		case HKICMP:
@@ -1576,6 +1616,30 @@ func udpCheck(ctx context.Context, ip string, h HealthConfig) error {
 		return fmt.Errorf("udp expect failed")
 	}
 	return nil
+}
+
+func rawIPCheck(ctx context.Context, ip string, h HealthConfig) error {
+	if h.Protocol <= 0 {
+		return fmt.Errorf("rawip protocol must be >0")
+	}
+	p := net.ParseIP(ip)
+	if p == nil || p.To4() == nil {
+		return fmt.Errorf("rawip requires IPv4 address")
+	}
+	c, err := net.ListenPacket(fmt.Sprintf("ip4:%d", h.Protocol), "")
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if dl, ok := ctx.Deadline(); ok {
+		_ = c.SetDeadline(dl)
+	}
+	if _, err = c.WriteTo([]byte{0}, &net.IPAddr{IP: p}); err != nil {
+		return err
+	}
+	buf := make([]byte, 1)
+	_, _, err = c.ReadFrom(buf)
+	return err
 }
 
 func icmpCheck(ctx context.Context, ip string, _ HealthConfig) error {
@@ -1708,6 +1772,8 @@ func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) boo
 			err = udpCheck(ctx, ip, hc)
 		case HKICMP:
 			err = icmpCheck(ctx, ip, hc)
+		case HKRawIP:
+			err = rawIPCheck(ctx, ip, hc)
 		default:
 			err = fmt.Errorf("unknown health kind %q", hc.Kind)
 		}
