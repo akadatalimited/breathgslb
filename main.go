@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,7 @@ import (
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"golang.org/x/sys/unix"
 
 	maxminddb "github.com/oschwald/maxminddb-golang"
 )
@@ -158,6 +160,7 @@ type Config struct {
 	Fall        int  `yaml:"fall"`
 	EDNSBuf     int  `yaml:"edns_buf"`
 	LogQueries  bool `yaml:"log_queries"`
+	MaxWorkers  int  `yaml:"max_workers"`
 
 	// Softening knobs
 	JitterMs    int `yaml:"jitter_ms"`
@@ -547,7 +550,7 @@ func main() {
 	current.geo = gr
 	current.mu.Unlock()
 
-	startListeners(rt, cfg)
+	startListeners(rt, cfg, cfg.MaxWorkers)
 
 	sigc := make(chan os.Signal, 2)
 	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
@@ -583,6 +586,9 @@ func setupDefaults(cfg *Config) {
 	}
 	if cfg.EDNSBuf == 0 {
 		cfg.EDNSBuf = 1232
+	}
+	if cfg.MaxWorkers <= 0 {
+		cfg.MaxWorkers = runtime.NumCPU()
 	}
 	if cfg.JitterMs < 0 {
 		cfg.JitterMs = 0
@@ -866,10 +872,25 @@ func targetsFromConfig(cfg *Config) []bindTarget {
 	return t
 }
 
-func startListeners(rt *router, cfg *Config) {
+func startListeners(rt *router, cfg *Config, workers int) {
 	addrs := targetsFromConfig(cfg)
+	if workers <= 0 {
+		workers = runtime.NumCPU()
+	}
 	for _, a := range addrs {
-		srv := &dns.Server{Net: a.netw, Addr: a.addr, Handler: rt}
+		if strings.HasPrefix(a.netw, "udp") {
+			pc, err := listenUDP(a.netw, a.addr)
+			if err != nil {
+				log.Fatalf("listen %s %s: %v", a.netw, a.addr, err)
+			}
+			uc := pc.(*net.UDPConn)
+			log.Printf("listening on %s %s", a.netw, a.addr)
+			for i := 0; i < workers; i++ {
+				go serveUDPWorker(rt, uc)
+			}
+			continue
+		}
+		srv := &dns.Server{Net: a.netw, Addr: a.addr, Handler: rt, ReusePort: true}
 		log.Printf("listening on %s %s", a.netw, a.addr)
 		go func(s *dns.Server) {
 			if err := s.ListenAndServe(); err != nil {
@@ -877,6 +898,62 @@ func startListeners(rt *router, cfg *Config) {
 			}
 		}(srv)
 	}
+}
+
+type udpResponseWriter struct {
+	conn    *net.UDPConn
+	session *dns.SessionUDP
+}
+
+func (w *udpResponseWriter) LocalAddr() net.Addr                   { return w.conn.LocalAddr() }
+func (w *udpResponseWriter) RemoteAddr() net.Addr                  { return w.session.RemoteAddr() }
+func (w *udpResponseWriter) Close() error                          { return nil }
+func (w *udpResponseWriter) TsigStatus() error                     { return nil }
+func (w *udpResponseWriter) TsigTimersOnly(bool)                   {}
+func (w *udpResponseWriter) Hijack()                               {}
+func (w *udpResponseWriter) ConnectionState() *tls.ConnectionState { return nil }
+func (w *udpResponseWriter) WriteMsg(m *dns.Msg) error {
+	b, err := m.Pack()
+	if err != nil {
+		return err
+	}
+	_, err = dns.WriteToSessionUDP(w.conn, b, w.session)
+	return err
+}
+func (w *udpResponseWriter) Write(b []byte) (int, error) {
+	return dns.WriteToSessionUDP(w.conn, b, w.session)
+}
+
+func serveUDPWorker(h dns.Handler, conn *net.UDPConn) {
+	buf := make([]byte, dns.MaxMsgSize)
+	for {
+		n, sess, err := dns.ReadFromSessionUDP(conn, buf)
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+				continue
+			}
+			return
+		}
+		req := new(dns.Msg)
+		if err := req.Unpack(buf[:n]); err != nil {
+			continue
+		}
+		w := &udpResponseWriter{conn: conn, session: sess}
+		h.ServeDNS(w, req)
+	}
+}
+
+func listenUDP(network, addr string) (net.PacketConn, error) {
+	lc := net.ListenConfig{Control: func(network, address string, c syscall.RawConn) error {
+		var opErr error
+		if err := c.Control(func(fd uintptr) {
+			opErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+		}); err != nil {
+			return err
+		}
+		return opErr
+	}}
+	return lc.ListenPacket(context.Background(), network, addr)
 }
 
 func reload(cfgPath string) error {

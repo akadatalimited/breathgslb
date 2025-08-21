@@ -19,6 +19,7 @@ BreathGSLB is configured via a YAML file. Sample configurations are provided in 
 | `dns64_prefix` | IPv6 prefix string | Prefix used when synthesizing AAAA from A. |
 | `edns_buf` | int | Advertised EDNS0 UDP payload size. |
 | `log_queries` | bool | Log DNS queries and health transitions. |
+| `max_workers` | int | Number of UDP worker goroutines. |
 | `log_syslog` | bool | Send logs to syslog instead of stderr. |
 | `tsig.path` | string | Directory containing TSIG key files. |
 | `geoip.enabled` | bool | Enable GeoIP lookups. |
