@@ -62,6 +62,7 @@ type HealthConfig struct {
 	// TCP options
 	TLSEnable bool   `yaml:"tls_enable,omitempty"` // if Kind=tcp, do TLS ClientHello
 	ALPN      string `yaml:"alpn,omitempty"`       // e.g. "h2,http/1.1"
+	ALPNProtos []string `yaml:"-"`                    // parsed ALPN protocols
 
 	// UDP options
 	UDPPayloadB64 string `yaml:"udp_payload_b64,omitempty"` // data to send
@@ -1493,6 +1494,9 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 		}
 		if zh.Port != 0 {
 			h.Port = zh.Port
+		}
+		if zh.ALPN != "" {
+			h.ALPN = zh.ALPN
 		}
 		if zh.HostHeader != "" {
 			h.HostHeader = zh.HostHeader
