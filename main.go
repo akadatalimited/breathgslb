@@ -40,10 +40,11 @@ import (
 type HealthKind string
 
 const (
-	HKHTTP HealthKind = "http" // existing
-	HKTCP  HealthKind = "tcp"  // new: TCP connect (optionally TLS)
-	HKUDP  HealthKind = "udp"  // new: UDP send/expect
-	HKICMP HealthKind = "icmp" // new: ICMP/ICMPv6 echo
+	HKHTTP  HealthKind = "http"  // existing
+	HKTCP   HealthKind = "tcp"   // new: TCP connect (optionally TLS)
+	HKUDP   HealthKind = "udp"   // new: UDP send/expect
+	HKICMP  HealthKind = "icmp"  // new: ICMP/ICMPv6 echo
+	HKRawIP HealthKind = "rawip" // new: raw IP protocol probe
 )
 
 type HealthConfig struct {
@@ -66,6 +67,9 @@ type HealthConfig struct {
 
 	// ICMP options
 	ICMPPayloadB64 string `yaml:"icmp_payload_b64,omitempty"` // optional extra payload
+
+	// raw IP options
+	Protocol int `yaml:"protocol,omitempty"` // IP protocol number
 }
 
 // ---- GeoIP config & policy ----
@@ -1453,6 +1457,9 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 
 func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 	var h HealthConfig
+	if zh != nil && zh.Kind != "" {
+		h.Kind = zh.Kind
+	}
 	if h.Kind == "" {
 		h.Kind = HKHTTP
 	}
@@ -1471,7 +1478,7 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 			h.Port = 443
 		case HKUDP:
 			h.Port = 53
-		case HKICMP: /* no port */
+		case HKICMP, HKRawIP: /* no port */
 		}
 	}
 
@@ -1497,6 +1504,9 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 		if zh.InsecureTLS {
 			h.InsecureTLS = true
 		}
+		if zh.Protocol != 0 {
+			h.Protocol = zh.Protocol
+		}
 	}
 	// sensible fallbacks
 	if h.Path == "" {
@@ -1515,7 +1525,7 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 	if h.Method == "" {
 		h.Method = http.MethodGet
 	}
-	if h.Port == 0 {
+	if h.Port == 0 && h.Kind == HKHTTP {
 		if h.Scheme == "https" {
 			h.Port = 443
 		} else {
@@ -1594,6 +1604,30 @@ func udpCheck(ctx context.Context, ip string, h HealthConfig) error {
 		return fmt.Errorf("udp expect failed")
 	}
 	return nil
+}
+
+func rawIPCheck(ctx context.Context, ip string, h HealthConfig) error {
+	if h.Protocol <= 0 {
+		return fmt.Errorf("rawip protocol must be >0")
+	}
+	p := net.ParseIP(ip)
+	if p == nil || p.To4() == nil {
+		return fmt.Errorf("rawip requires IPv4 address")
+	}
+	c, err := net.ListenPacket(fmt.Sprintf("ip4:%d", h.Protocol), "")
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if dl, ok := ctx.Deadline(); ok {
+		_ = c.SetDeadline(dl)
+	}
+	if _, err = c.WriteTo([]byte{0}, &net.IPAddr{IP: p}); err != nil {
+		return err
+	}
+	buf := make([]byte, 1)
+	_, _, err = c.ReadFrom(buf)
+	return err
 }
 
 func icmpCheck(ctx context.Context, ip string, _ HealthConfig) error {
@@ -1724,6 +1758,8 @@ func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) boo
 			err = udpCheck(ctx, ip, hc)
 		case HKICMP:
 			err = icmpCheck(ctx, ip, hc)
+		case HKRawIP:
+			err = rawIPCheck(ctx, ip, hc)
 		default:
 			err = fmt.Errorf("unknown health kind %q", hc.Kind)
 		}
