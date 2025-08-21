@@ -162,7 +162,7 @@ type Config struct {
 	// Softening knobs
 	JitterMs    int `yaml:"jitter_ms"`
 	CooldownSec int `yaml:"cooldown_sec"`
-  
+
 	// DNS64 synthesis prefix (empty disables)
 	DNS64Prefix string `yaml:"dns64_prefix,omitempty"`
 	// Logging options
@@ -2017,16 +2017,16 @@ func (a *authority) checkOnce() {
 
 	// master v4
 
-	m4 := probeAny(ctx, a.zone.AMaster, hc)
+	m4 := probeAny(ctx, ipsFrom(a.zone.AMaster), hc)
 	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
 	// master v6
-	m6 := probeAny(ctx, a.zone.AAAAMaster, hc)
+	m6 := probeAny(ctx, ipsFrom(a.zone.AAAAMaster), hc)
 	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
 	// standby v4
-	s4 := probeAny(ctx, a.zone.AStandby, hc)
+	s4 := probeAny(ctx, ipsFrom(a.zone.AStandby), hc)
 	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
 	// standby v6
-	s6 := probeAny(ctx, a.zone.AAAAStandby, hc)
+	s6 := probeAny(ctx, ipsFrom(a.zone.AAAAStandby), hc)
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
 
