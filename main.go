@@ -168,6 +168,10 @@ type Config struct {
 
 	// DNS64 synthesis prefix (empty disables)
 	DNS64Prefix string `yaml:"dns64_prefix,omitempty"`
+
+	// Persistence options
+	PersistenceEnabled bool   `yaml:"persistence_enabled,omitempty"`
+	PersistenceMode    string `yaml:"persistence_mode,omitempty"`
 	// Logging options
 	LogFile   string `yaml:"log_file"`
 	LogSyslog bool   `yaml:"log_syslog,omitempty"`
@@ -243,6 +247,9 @@ type Zone struct {
 	Admin     string   `yaml:"admin"` // hostmaster email as hostmaster.example.com.
 	TTLSOA    uint32   `yaml:"ttl_soa"`
 	TTLAnswer uint32   `yaml:"ttl_answer"`
+
+	PersistenceEnabled bool   `yaml:"persistence_enabled,omitempty"`
+	PersistenceMode    string `yaml:"persistence_mode,omitempty"`
 
 	// View control
 	Serve                    string `yaml:"serve,omitempty"` // "global" | "local" (default: global)
@@ -481,11 +488,21 @@ type authority struct {
 	cidrs tierCIDR
 	geo   *geoResolver
 
+	persistA    sync.Map
+	persistAAAA sync.Map
+	rrA         atomic.Uint64
+	rrAAAA      atomic.Uint64
+
 	// parsed CIDRs for geo_answers
 	geoCIDR struct {
 		country   map[string]parsedCIDRs
 		continent map[string]parsedCIDRs
 	}
+}
+
+type persistEntry struct {
+	ip  string
+	exp time.Time
 }
 
 // router is a dynamic handler wrapper we can hot-swap on HUP.
@@ -759,6 +776,7 @@ func buildMux(cfg *Config, gr *geoResolver) (dns.Handler, map[string]*authority)
 		mux.HandleFunc(zname, auth.handle)
 		auths[zname] = auth
 		go auth.healthLoop()
+		go auth.purgeLoop()
 		log.Printf("serving zone %s", zname)
 	}
 	return mux, auths
@@ -1236,19 +1254,19 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	// local view first if enabled
 	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
 		if rr := a.localAnswers(false /*v6*/, src); rr != nil {
-			return rr
+			return a.persistRR(rr, src, false)
 		}
 	}
 	// Geo answer overrides (per country/continent) if configured
 	if src != nil {
 		if rr := a.answersByGeo(owner, src, false); rr != nil {
-			return rr
+			return a.persistRR(rr, src, false)
 		}
 	}
 	// Geo steering (policy-only) if configured
 	if src != nil {
 		if tier := a.pickTierByGeo(src, false); tier != "" {
-			return a.publicFor(tier, false)
+			return a.persistRR(a.publicFor(tier, false), src, false)
 		}
 	}
 	// public flow: master -> standby -> fallback
@@ -1270,7 +1288,7 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 			}
 		}
 	}
-	return a.buildA(addrs)
+	return a.persistRR(a.buildA(addrs), src, false)
 }
 
 func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
@@ -1279,19 +1297,19 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	}
 	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
 		if rr := a.localAnswers(true /*v6*/, src); rr != nil {
-			return rr
+			return a.persistRR(rr, src, true)
 		}
 	}
 	// Geo answer overrides first
 	if src != nil {
 		if rr := a.answersByGeo(owner, src, true); rr != nil {
-			return rr
+			return a.persistRR(rr, src, true)
 		}
 	}
 	// Policy-only geo if any
 	if src != nil {
 		if tier := a.pickTierByGeo(src, true); tier != "" {
-			return a.publicFor(tier, true)
+			return a.persistRR(a.publicFor(tier, true), src, true)
 		}
 	}
 	_, mV6, _, sV6 := a.state.snapshot()
@@ -1329,7 +1347,79 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 			}
 		}
 	}
-	return a.buildAAAA(addrs)
+	return a.persistRR(a.buildAAAA(addrs), src, true)
+}
+
+func pickAddr(addrs []string, mode string, ctr *atomic.Uint64) string {
+	if len(addrs) == 0 {
+		return ""
+	}
+	switch strings.ToLower(mode) {
+	case "random":
+		return addrs[rand.Intn(len(addrs))]
+	case "wrr", "rr":
+		fallthrough
+	default:
+		idx := ctr.Add(1) - 1
+		return addrs[int(idx)%len(addrs)]
+	}
+}
+
+func (a *authority) persistRR(rrs []dns.RR, src net.IP, ipv6 bool) []dns.RR {
+	if src == nil {
+		return rrs
+	}
+	enabled := a.cfg.PersistenceEnabled || a.zone.PersistenceEnabled
+	if !enabled || len(rrs) <= 1 {
+		return rrs
+	}
+	mode := a.cfg.PersistenceMode
+	if a.zone.PersistenceMode != "" {
+		mode = a.zone.PersistenceMode
+	}
+	ttl := time.Duration(a.zone.TTLAnswer) * time.Second
+	key := src.String()
+	now := time.Now()
+	var store *sync.Map
+	var ctr *atomic.Uint64
+	var build func([]string) []dns.RR
+	if ipv6 {
+		store = &a.persistAAAA
+		ctr = &a.rrAAAA
+		build = a.buildAAAA
+	} else {
+		store = &a.persistA
+		ctr = &a.rrA
+		build = a.buildA
+	}
+	if val, ok := store.Load(key); ok {
+		pv := val.(persistEntry)
+		if now.Before(pv.exp) {
+			return build([]string{pv.ip})
+		}
+		store.Delete(key)
+	}
+	addrs := make([]string, 0, len(rrs))
+	for _, rr := range rrs {
+		if ipv6 {
+			if aaaa, ok := rr.(*dns.AAAA); ok {
+				addrs = append(addrs, aaaa.AAAA.String())
+			}
+		} else {
+			if aRec, ok := rr.(*dns.A); ok {
+				addrs = append(addrs, aRec.A.String())
+			}
+		}
+	}
+	if len(addrs) <= 1 {
+		return rrs
+	}
+	ip := pickAddr(addrs, mode, ctr)
+	if ip == "" {
+		return rrs
+	}
+	store.Store(key, persistEntry{ip: ip, exp: now.Add(ttl)})
+	return build([]string{ip})
 }
 
 func (a *authority) buildA(addrs []string) []dns.RR {
@@ -1354,6 +1444,31 @@ func (a *authority) buildAAAA(addrs []string) []dns.RR {
 		rrs = append(rrs, &dns.AAAA{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: p})
 	}
 	return rrs
+}
+
+func (a *authority) purgeLoop() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			a.persistA.Range(func(k, v any) bool {
+				if now.After(v.(persistEntry).exp) {
+					a.persistA.Delete(k)
+				}
+				return true
+			})
+			a.persistAAAA.Range(func(k, v any) bool {
+				if now.After(v.(persistEntry).exp) {
+					a.persistAAAA.Delete(k)
+				}
+				return true
+			})
+		case <-a.ctx.Done():
+			return
+		}
+	}
 }
 
 // localAnswers decides per-tier private/public answers for local sources.
