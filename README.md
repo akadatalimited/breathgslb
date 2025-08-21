@@ -112,6 +112,7 @@ Use valid TLS for the hostname being checked; during bootstrap, `insecure_tls: t
 ## Configuration
 
 Create `/etc/breathgslb/config.yaml` and run `breathgslb -config /etc/breathgslb/config.yaml`.
+Sample configuration files and a full option reference are available in the [`doc`](doc) directory.
 
 ### Global
 
