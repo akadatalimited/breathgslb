@@ -60,8 +60,8 @@ type HealthConfig struct {
 	Port        int        `yaml:"port,omitempty"`   // default 443 (http picks 80)
 
 	// TCP options
-	TLSEnable bool   `yaml:"tls_enable,omitempty"` // if Kind=tcp, do TLS ClientHello
-	ALPN      string `yaml:"alpn,omitempty"`       // e.g. "h2,http/1.1"
+	TLSEnable  bool     `yaml:"tls_enable,omitempty"` // if Kind=tcp, do TLS ClientHello
+	ALPN       string   `yaml:"alpn,omitempty"`       // e.g. "h2,http/1.1"
 	ALPNProtos []string `yaml:"-"`                    // parsed ALPN protocols
 
 	// UDP options
@@ -822,6 +822,16 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		log.Printf("query %s %s", name, dns.TypeToString[q.Qtype])
 	}
 
+	if q.Qtype == dns.TypeAXFR || q.Qtype == dns.TypeIXFR {
+		if name != z {
+			m.SetRcode(r, dns.RcodeRefused)
+			_ = w.WriteMsg(m)
+			return
+		}
+		a.xfr(w, r, q.Qtype == dns.TypeIXFR)
+		return
+	}
+
 	// Basic apex handling for SOA/NS/DNSKEY
 	if name == z {
 		switch q.Qtype {
@@ -888,6 +898,113 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		m.Ns = a.signAll(m.Ns)
 	}
 	_ = w.WriteMsg(m)
+}
+
+func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
+	tr := new(dns.Transfer)
+	ch := make(chan *dns.Envelope)
+	go func() {
+		soa := a.soa()
+		if ixfr {
+			if len(r.Ns) > 0 {
+				if rr, ok := r.Ns[0].(*dns.SOA); ok {
+					if rr.Serial >= a.serial {
+						ch <- &dns.Envelope{RR: []dns.RR{soa}}
+						close(ch)
+						return
+					}
+				}
+			}
+		}
+		records := a.axfrRecords()
+		rrset := append([]dns.RR{soa}, records...)
+		rrset = append(rrset, soa)
+		ch <- &dns.Envelope{RR: rrset}
+		close(ch)
+	}()
+	if err := tr.Out(w, r, ch); err != nil {
+		log.Printf("xfr for %s failed: %v", a.zone.Name, err)
+	}
+	_ = w.Close()
+}
+
+func (a *authority) axfrRecords() []dns.RR {
+	var rrs []dns.RR
+	z := ensureDot(a.zone.Name)
+	for _, ns := range a.zone.NS {
+		rrs = append(rrs, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
+	}
+	rrs = append(rrs, a.buildA(a.zone.AMaster)...)
+	rrs = append(rrs, a.buildA(a.zone.AStandby)...)
+	rrs = append(rrs, a.buildA(a.zone.AFallback)...)
+	rrs = append(rrs, a.buildA(a.zone.AMasterPrivate)...)
+	rrs = append(rrs, a.buildA(a.zone.AStandbyPrivate)...)
+	rrs = append(rrs, a.buildA(a.zone.AFallbackPrivate)...)
+	rrs = append(rrs, a.buildAAAA(a.zone.AAAAMaster)...)
+	rrs = append(rrs, a.buildAAAA(a.zone.AAAAStandby)...)
+	rrs = append(rrs, a.buildAAAA(a.zone.AAAAFallback)...)
+	rrs = append(rrs, a.buildAAAA(a.zone.AAAAMasterPrivate)...)
+	rrs = append(rrs, a.buildAAAA(a.zone.AAAAStandbyPrivate)...)
+	rrs = append(rrs, a.buildAAAA(a.zone.AAAAFallbackPrivate)...)
+	for _, t := range a.zone.TXT {
+		name := ownerName(a.zone.Name, t.Name)
+		ttl := t.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		if len(t.Text) > 0 {
+			rrs = append(rrs, &dns.TXT{Hdr: hdr(name, dns.TypeTXT, ttl), Txt: t.Text})
+		}
+	}
+	for _, mx := range a.zone.MX {
+		name := ownerName(a.zone.Name, mx.Name)
+		ttl := mx.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.MX{Hdr: hdr(name, dns.TypeMX, ttl), Preference: mx.Preference, Mx: ensureDot(mx.Exchange)})
+	}
+	for _, c := range a.zone.CAA {
+		name := ownerName(a.zone.Name, c.Name)
+		ttl := c.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.CAA{Hdr: hdr(name, dns.TypeCAA, ttl), Flag: c.Flag, Tag: c.Tag, Value: c.Value})
+	}
+	if a.zone.RP != nil {
+		name := ownerName(a.zone.Name, a.zone.RP.Name)
+		ttl := a.zone.RP.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.RP{Hdr: hdr(name, dns.TypeRP, ttl), Mbox: ensureDot(a.zone.RP.Mbox), Txt: ensureDot(a.zone.RP.Txt)})
+	}
+	for _, s := range a.zone.SSHFP {
+		name := ownerName(a.zone.Name, s.Name)
+		ttl := s.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.SSHFP{Hdr: hdr(name, dns.TypeSSHFP, ttl), Algorithm: s.Algorithm, Type: s.Type, FingerPrint: s.Fingerprint})
+	}
+	for _, s := range a.zone.SRV {
+		name := ownerName(a.zone.Name, s.Name)
+		ttl := s.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.SRV{Hdr: hdr(name, dns.TypeSRV, ttl), Priority: s.Priority, Weight: s.Weight, Port: s.Port, Target: ensureDot(s.Target)})
+	}
+	for _, n := range a.zone.NAPTR {
+		name := ownerName(a.zone.Name, n.Name)
+		ttl := n.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.NAPTR{Hdr: hdr(name, dns.TypeNAPTR, ttl), Order: n.Order, Preference: n.Preference, Flags: n.Flags, Service: n.Services, Regexp: n.Regexp, Replacement: ensureDot(n.Replacement)})
+	}
+	return rrs
 }
 
 func clientIP(w dns.ResponseWriter, r *dns.Msg) net.IP {
@@ -1315,7 +1432,7 @@ func (a *authority) isLocalGeo(key string, isCountry bool, ip net.IP) bool {
 func (a *authority) soa() dns.RR {
 	z := ensureDot(a.zone.Name)
 	nsPrimary := ensureDot(a.zone.NS[0])
-	return &dns.SOA{Hdr: hdr(z, dns.TypeSOA, a.zone.TTLSOA), Ns: nsPrimary, Mbox: ensureDot(a.zone.Admin), Serial: uint32(time.Now().Unix()), Refresh: 60, Retry: 30, Expire: 600, Minttl: a.zone.TTLSOA}
+	return &dns.SOA{Hdr: hdr(z, dns.TypeSOA, a.zone.TTLSOA), Ns: nsPrimary, Mbox: ensureDot(a.zone.Admin), Serial: a.serial, Refresh: 60, Retry: 30, Expire: 600, Minttl: a.zone.TTLSOA}
 }
 
 func hdr(name string, t uint16, ttl uint32) dns.RR_Header {
@@ -1649,7 +1766,7 @@ func rawIPCheck(ctx context.Context, ip string, h HealthConfig) error {
 	return err
 }
 
-func icmpCheck(ctx context.Context, ip string, _ HealthConfig) error {
+func icmpCheck(ctx context.Context, ip string, h HealthConfig) error {
 	p := net.ParseIP(ip)
 	if p == nil {
 		return fmt.Errorf("bad ip %q", ip)
@@ -1673,13 +1790,20 @@ func icmpCheck(ctx context.Context, ip string, _ HealthConfig) error {
 	}
 	defer c.Close()
 
+	payload := []byte("breathgslb")
+	if h.ICMPPayloadB64 != "" {
+		if dec, err := base64.StdEncoding.DecodeString(h.ICMPPayloadB64); err == nil {
+			payload = dec
+		}
+	}
+
 	wm := icmp.Message{
 		Type: echoType,
 		Code: 0,
 		Body: &icmp.Echo{
 			ID:   os.Getpid() & 0xffff,
 			Seq:  1,
-			Data: []byte("breathgslb"),
+			Data: payload,
 		},
 	}
 	wb, err := wm.Marshal(nil)
