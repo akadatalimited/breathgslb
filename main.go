@@ -28,6 +28,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/miekg/dns"
+	"github.com/quic-go/quic-go/http3"
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
@@ -40,10 +41,11 @@ import (
 type HealthKind string
 
 const (
-	HKHTTP HealthKind = "http" // existing
-	HKTCP  HealthKind = "tcp"  // new: TCP connect (optionally TLS)
-	HKUDP  HealthKind = "udp"  // new: UDP send/expect
-	HKICMP HealthKind = "icmp" // new: ICMP/ICMPv6 echo
+	HKHTTP  HealthKind = "http"  // existing
+	HKHTTP3 HealthKind = "http3" // new: HTTP/3 over QUIC
+	HKTCP   HealthKind = "tcp"   // new: TCP connect (optionally TLS)
+	HKUDP   HealthKind = "udp"   // new: UDP send/expect
+	HKICMP  HealthKind = "icmp"  // new: ICMP/ICMPv6 echo
 )
 
 type HealthConfig struct {
@@ -1453,52 +1455,13 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 
 func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 	var h HealthConfig
+	if zh != nil {
+		h = *zh
+	}
+
 	if h.Kind == "" {
 		h.Kind = HKHTTP
 	}
-	if h.Port == 0 {
-		switch h.Kind {
-		case HKHTTP:
-			if h.Scheme == "" {
-				h.Scheme = "https"
-			}
-			if h.Scheme == "http" {
-				h.Port = 80
-			} else {
-				h.Port = 443
-			}
-		case HKTCP:
-			h.Port = 443
-		case HKUDP:
-			h.Port = 53
-		case HKICMP: /* no port */
-		}
-	}
-
-	if zh != nil {
-		if zh.Scheme != "" {
-			h.Scheme = zh.Scheme
-		}
-		if zh.Method != "" {
-			h.Method = zh.Method
-		}
-		if zh.Port != 0 {
-			h.Port = zh.Port
-		}
-		if zh.HostHeader != "" {
-			h.HostHeader = zh.HostHeader
-		}
-		if zh.Path != "" {
-			h.Path = zh.Path
-		}
-		if zh.SNI != "" {
-			h.SNI = zh.SNI
-		}
-		if zh.InsecureTLS {
-			h.InsecureTLS = true
-		}
-	}
-	// sensible fallbacks
 	if h.Path == "" {
 		h.Path = "/health"
 	}
@@ -1516,10 +1479,21 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 		h.Method = http.MethodGet
 	}
 	if h.Port == 0 {
-		if h.Scheme == "https" {
+		switch h.Kind {
+		case HKHTTP:
+			if h.Scheme == "http" {
+				h.Port = 80
+			} else {
+				h.Port = 443
+			}
+		case HKHTTP3:
 			h.Port = 443
-		} else {
-			h.Port = 80
+		case HKTCP:
+			h.Port = 443
+		case HKUDP:
+			h.Port = 53
+		case HKICMP:
+			// no port
 		}
 	}
 	return h
@@ -1718,6 +1692,8 @@ func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) boo
 		switch hc.Kind {
 		case HKHTTP, "":
 			err = httpCheck(ctx, ip, hc)
+		case HKHTTP3:
+			err = http3Check(ctx, ip, hc)
 		case HKTCP:
 			err = tcpCheck(ctx, ip, hc)
 		case HKUDP:
@@ -1732,6 +1708,34 @@ func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) boo
 		}
 	}
 	return false
+}
+
+func http3Check(ctx context.Context, ip string, hc HealthConfig) error {
+	path := hc.Path
+	if path == "" {
+		path = "/health"
+	}
+	host := ip
+	if strings.Contains(ip, ":") {
+		host = "[" + ip + "]"
+	}
+	url := fmt.Sprintf("%s://%s:%d%s", hc.Scheme, host, hc.Port, path)
+	tr := &http3.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: hc.InsecureTLS, ServerName: firstNonEmpty(hc.SNI, hc.HostHeader)}}
+	defer tr.Close()
+	client := &http.Client{Transport: tr}
+	req, _ := http.NewRequestWithContext(ctx, hc.Method, url, nil)
+	if hc.HostHeader != "" {
+		req.Host = hc.HostHeader
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	return fmt.Errorf("status %d", resp.StatusCode)
 }
 
 func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
