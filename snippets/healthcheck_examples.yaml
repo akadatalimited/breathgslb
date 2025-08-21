@@ -8,7 +8,12 @@ health:
   scheme: https
   method: GET
   port: 443
+  expect: "OK"
   insecure_tls: false
+
+health:
+  kind: http3
+  expect: "OK"
 
 
 health:
@@ -16,6 +21,7 @@ health:
   port: 443
   tls_enable: true
   sni: "articles.akadata.ltd"
+  alpn: "h2"
 
 health:
   kind: udp
@@ -27,3 +33,7 @@ health:
 health:
   kind: icmp
   icmp_payload_b64: "Z3NsYg=="    # "gslb"
+
+health:
+  kind: rawip
+  protocol: 47

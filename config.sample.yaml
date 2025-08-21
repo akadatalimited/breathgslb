@@ -6,9 +6,12 @@ rise: 2                       # successes to mark UP
 fall: 4                       # failures to mark DOWN
 jitter_ms: 600                # add 0..600ms jitter to each interval
 cooldown_sec: 25              # minimum seconds between state flips (per A/AAAA family)
+dns64_prefix: "64:ff9b::"     # synthesize AAAA from A when needed
 edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6 without frag)
 log_queries: true             # log queries and health transitions
-log_file: "/var/log/breathgslb/breathgslb.log"
+log_syslog: true
+tsig:
+  path: "/etc/breathgslb/tsig"
 
 zones:
   #
@@ -56,10 +59,31 @@ zones:
     # alias: "status.akadata.ltd."
 
     health:
+      kind: http
       host_header: "gslb-sitetest.akadata.ltd"
       sni:         "gslb-sitetest.akadata.ltd"
       path:        "/health"
+      expect:      "OK"
       insecure_tls: false
+
+    # Other health check kinds:
+    # health:
+    #   kind: http3
+    #   expect: "OK"
+    # health:
+    #   kind: tcp
+    #   port: 443
+    #   tls_enable: true
+    #   sni: "gslb-sitetest.akadata.ltd"
+    #   alpn: "h2"
+    # health:
+    #   kind: udp
+    #   port: 53
+    #   udp_payload_b64: "cGluZw=="    # "ping"
+    #   udp_expect_re: "."
+    # health:
+    #   kind: rawip
+    #   protocol: 47                   # GRE
 
     # Shared/static records served authoritatively
 
@@ -167,9 +191,11 @@ zones:
     alias: "status.akadata.ltd."
 
     health:
+      kind: http
       host_header: "articles.akadata.ltd"
       sni:         "articles.akadata.ltd"
       path:        "/health"
+      expect:      "OK"
       insecure_tls: false
 
     # Shared records at apex

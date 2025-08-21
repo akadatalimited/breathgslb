@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"crypto"
+	"crypto/hmac"
+	crand "crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"log/syslog"
 	"math/rand"
 	"net"
 	"net/http"
@@ -58,6 +62,7 @@ type HealthConfig struct {
 	Scheme      string     `yaml:"scheme,omitempty"` // http|https (http default https)
 	Method      string     `yaml:"method,omitempty"` // GET|POST (default GET)
 	Port        int        `yaml:"port,omitempty"`   // default 443 (http picks 80)
+	Expect      string     `yaml:"expect,omitempty"` // substring expected in body for http/http3
 
 	// TCP options
 	TLSEnable  bool     `yaml:"tls_enable,omitempty"` // if Kind=tcp, do TLS ClientHello
@@ -118,6 +123,27 @@ type DNSSECZoneConfig struct {
 	KSKFile string `yaml:"ksk_keyfile,omitempty"` // if empty, ZSKFile is used for both
 }
 
+// TSIGGlobalConfig holds global TSIG parameters.
+type TSIGGlobalConfig struct {
+	Path string `yaml:"path,omitempty"`
+}
+
+// TSIGKey describes a single TSIG key.
+type TSIGKey struct {
+	Name         string   `yaml:"name"`
+	Algorithm    string   `yaml:"algorithm,omitempty"`
+	Secret       string   `yaml:"secret,omitempty"`
+	AllowXFRFrom []string `yaml:"allow_xfr_from,omitempty"`
+}
+
+// TSIGZoneConfig holds per-zone TSIG options.
+type TSIGZoneConfig struct {
+	DefaultAlgorithm string    `yaml:"default_algorithm,omitempty"`
+	SeedEnv          string    `yaml:"seed_env,omitempty"`
+	Epoch            int       `yaml:"epoch,omitempty"`
+	Keys             []TSIGKey `yaml:"keys,omitempty"`
+}
+
 // Config is the top-level YAML.
 type Config struct {
 	Listen      string   `yaml:"listen"`
@@ -136,8 +162,15 @@ type Config struct {
 	JitterMs    int `yaml:"jitter_ms"`
 	CooldownSec int `yaml:"cooldown_sec"`
 
-	// Optional file logging
-	LogFile string `yaml:"log_file"`
+	// DNS64 synthesis prefix (empty disables)
+	DNS64Prefix string `yaml:"dns64_prefix,omitempty"`
+
+	// Logging options
+	LogFile   string `yaml:"log_file"`
+	LogSyslog bool   `yaml:"log_syslog,omitempty"`
+
+	// Global TSIG settings
+	TSIG *TSIGGlobalConfig `yaml:"tsig,omitempty"`
 
 	// Optional GeoIP steering
 	GeoIP *GeoIPConfig `yaml:"geoip,omitempty"`
@@ -255,6 +288,7 @@ type Zone struct {
 
 	Health *HealthConfig     `yaml:"health,omitempty"`
 	DNSSEC *DNSSECZoneConfig `yaml:"dnssec,omitempty"`
+	TSIG   *TSIGZoneConfig   `yaml:"tsig,omitempty"`
 }
 
 // ---- state: per-tier, per-family ----
@@ -477,7 +511,7 @@ var (
 		mu    sync.Mutex
 		cfg   *Config
 		rt    *router
-		logF  *os.File
+		logW  io.WriteCloser
 		auths map[string]*authority // by zone name (fqdn)
 		geo   *geoResolver
 	}
@@ -493,8 +527,9 @@ func main() {
 		log.Fatalf("read config: %v", err)
 	}
 	setupDefaults(cfg)
+	generateTSIGKeys(cfg)
 
-	f := setupLogging(cfg.LogFile)
+	w := setupLogging(cfg)
 	rand.Seed(time.Now().UnixNano())
 
 	rt := &router{}
@@ -507,7 +542,7 @@ func main() {
 	current.mu.Lock()
 	current.cfg = cfg
 	current.rt = rt
-	current.logF = f
+	current.logW = w
 	current.auths = auths
 	current.geo = gr
 	current.mu.Unlock()
@@ -555,7 +590,10 @@ func setupDefaults(cfg *Config) {
 	if cfg.CooldownSec == 0 {
 		cfg.CooldownSec = 25
 	}
-	if cfg.LogFile == "" {
+	if cfg.DNS64Prefix == "" {
+		cfg.DNS64Prefix = "64:ff9b::"
+	}
+	if cfg.LogFile == "" && !cfg.LogSyslog {
 		cfg.LogFile = "/var/log/breathgslb/breathgslb.log"
 	}
 	if cfg.GeoIP != nil {
@@ -568,7 +606,86 @@ func setupDefaults(cfg *Config) {
 	}
 }
 
-func setupLogging(path string) *os.File {
+// generateTSIGKeys populates missing TSIG secrets and optionally writes them to disk.
+func generateTSIGKeys(cfg *Config) {
+	if cfg.TSIG == nil {
+		return
+	}
+	var keyDir string
+	if cfg.TSIG.Path != "" {
+		keyDir = cfg.TSIG.Path
+		_ = os.MkdirAll(keyDir, 0o755)
+	}
+	for zi := range cfg.Zones {
+		z := &cfg.Zones[zi]
+		if z.TSIG == nil {
+			continue
+		}
+		defAlg := z.TSIG.DefaultAlgorithm
+		if defAlg == "" {
+			defAlg = "hmac-sha256"
+		}
+		seed := ""
+		if z.TSIG.SeedEnv != "" {
+			seed = os.Getenv(z.TSIG.SeedEnv)
+		}
+		for ki := range z.TSIG.Keys {
+			k := &z.TSIG.Keys[ki]
+			if k.Algorithm == "" {
+				k.Algorithm = defAlg
+			}
+			if k.Secret == "" {
+				if seed != "" {
+					k.Secret = deriveTSIGSecret(seed, k.Name, z.TSIG.Epoch)
+				} else {
+					k.Secret = randomTSIGSecret()
+				}
+			}
+			if keyDir != "" {
+				saveTSIGKey(keyDir, *k)
+			}
+		}
+	}
+}
+
+func deriveTSIGSecret(seed, name string, epoch int) string {
+	h := hmac.New(sha256.New, []byte(seed))
+	h.Write([]byte(fmt.Sprintf("%s|%d", name, epoch)))
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+func randomTSIGSecret() string {
+	b := make([]byte, 32)
+	if _, err := crand.Read(b); err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func saveTSIGKey(dir string, k TSIGKey) {
+	name := strings.TrimSuffix(k.Name, ".")
+	path := filepath.Join(dir, name+".key")
+	content := fmt.Sprintf("key \"%s\" {\n    algorithm %s;\n    secret \"%s\";\n};\n", k.Name, k.Algorithm, k.Secret)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		log.Printf("tsig: write %s: %v", path, err)
+	}
+}
+
+func setupLogging(cfg *Config) io.WriteCloser {
+	if cfg.LogSyslog {
+		w, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "breathgslb")
+		if err != nil {
+			log.Printf("warn: cannot connect to syslog: %v; using stderr only", err)
+			return nil
+		}
+		mw := io.MultiWriter(os.Stderr, w)
+		log.SetOutput(mw)
+		log.SetFlags(0)
+		log.SetPrefix("")
+		log.Printf("logging to syslog")
+		return w
+	}
+	path := cfg.LogFile
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Printf("warn: cannot create log dir %s: %v; falling back to ./breathgslb.log", dir, err)
@@ -587,17 +704,15 @@ func setupLogging(path string) *os.File {
 	return f
 }
 
-func reopenLogging(newPath string) {
+func reopenLogging(cfg *Config) {
 	current.mu.Lock()
 	defer current.mu.Unlock()
-	if current.cfg.LogFile == newPath {
-		return
+	if current.logW != nil {
+		_ = current.logW.Close()
 	}
-	if current.logF != nil {
-		_ = current.logF.Close()
-	}
-	current.logF = setupLogging(newPath)
-	current.cfg.LogFile = newPath
+	current.logW = setupLogging(cfg)
+	current.cfg.LogFile = cfg.LogFile
+	current.cfg.LogSyslog = cfg.LogSyslog
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -765,6 +880,7 @@ func reload(cfgPath string) error {
 		return err
 	}
 	setupDefaults(cfg)
+	generateTSIGKeys(cfg)
 
 	newGeo := newGeoResolver(cfg.GeoIP)
 	mux, auths := buildMux(cfg, newGeo)
@@ -782,7 +898,7 @@ func reload(cfgPath string) error {
 	for _, a := range old {
 		a.cancel()
 	}
-	reopenLogging(cfg.LogFile)
+	reopenLogging(cfg)
 	if oldGeo != nil {
 		oldGeo.Close()
 	}
@@ -795,8 +911,8 @@ func shutdown() {
 	for _, a := range current.auths {
 		a.cancel()
 	}
-	if current.logF != nil {
-		_ = current.logF.Close()
+	if current.logW != nil {
+		_ = current.logW.Close()
 	}
 	if current.geo != nil {
 		current.geo.Close()
@@ -1111,6 +1227,23 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 		for _, ip := range ips {
 			if ip.To4() == nil {
 				addrs = append(addrs, ip.String())
+			}
+		}
+	}
+	if len(addrs) == 0 && src != nil && src.To4() == nil && a.cfg.DNS64Prefix != "" {
+		prefix := net.ParseIP(a.cfg.DNS64Prefix)
+		if prefix != nil {
+			var rrs []dns.RR
+			for _, rr := range a.addrA(owner, src, r) {
+				if aRec, ok := rr.(*dns.A); ok {
+					v6 := make(net.IP, net.IPv6len)
+					copy(v6[:12], prefix.To16()[:12])
+					copy(v6[12:], aRec.A.To4())
+					rrs = append(rrs, &dns.AAAA{Hdr: hdr(ensureDot(owner), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: v6})
+				}
+			}
+			if len(rrs) > 0 {
+				return rrs
 			}
 		}
 	}
@@ -1633,8 +1766,11 @@ func effectiveHealth(zoneName string, zh *HealthConfig) HealthConfig {
 		if zh.Protocol != 0 {
 			h.Protocol = zh.Protocol
 		}
+		if zh.Expect != "" {
+			h.Expect = zh.Expect
+		}
 	}
-	if h.Path == "" {
+	if h.Path == "" && (h.Kind == HKHTTP || h.Kind == HKHTTP3) {
 		h.Path = "/health"
 	}
 	zoneHost := strings.TrimSuffix(zoneName, ".")
@@ -1747,10 +1883,14 @@ func rawIPCheck(ctx context.Context, ip string, h HealthConfig) error {
 		return fmt.Errorf("rawip protocol must be >0")
 	}
 	p := net.ParseIP(ip)
-	if p == nil || p.To4() == nil {
-		return fmt.Errorf("rawip requires IPv4 address")
+	if p == nil {
+		return fmt.Errorf("bad ip %q", ip)
 	}
-	c, err := net.ListenPacket(fmt.Sprintf("ip4:%d", h.Protocol), "")
+	network := fmt.Sprintf("ip4:%d", h.Protocol)
+	if p.To4() == nil {
+		network = fmt.Sprintf("ip6:%d", h.Protocol)
+	}
+	c, err := net.ListenPacket(network, "")
 	if err != nil {
 		return err
 	}
@@ -1871,23 +2011,23 @@ func (a *authority) checkOnce() {
 	hc := effectiveHealth(a.zone.Name, a.zone.Health)
 
 	// master v4
-	m4 := probeAny(ctx, a.zone.AMaster, hc, true)
+	m4 := probeAny(ctx, a.zone.AMaster, hc)
 	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
 	// master v6
-	m6 := probeAny(ctx, a.zone.AAAAMaster, hc, false)
+	m6 := probeAny(ctx, a.zone.AAAAMaster, hc)
 	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
 	// standby v4
-	s4 := probeAny(ctx, a.zone.AStandby, hc, true)
+	s4 := probeAny(ctx, a.zone.AStandby, hc)
 	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
 	// standby v6
-	s6 := probeAny(ctx, a.zone.AAAAStandby, hc, false)
+	s6 := probeAny(ctx, a.zone.AAAAStandby, hc)
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
 
-func probeAny(ctx context.Context, ips []string, hc HealthConfig, ipv4 bool) bool {
+func probeAny(ctx context.Context, ips []string, hc HealthConfig) bool {
 	for _, ip := range ips {
 		p := net.ParseIP(ip)
-		if p == nil || (ipv4 && p.To4() == nil) || (!ipv4 && p.To4() != nil) {
+		if p == nil {
 			continue
 		}
 
@@ -1938,6 +2078,15 @@ func http3Check(ctx context.Context, ip string, hc HealthConfig) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if hc.Expect != "" {
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(string(body), hc.Expect) {
+				return fmt.Errorf("expect not found")
+			}
+		}
 		return nil
 	}
 	return fmt.Errorf("status %d", resp.StatusCode)
@@ -1965,6 +2114,15 @@ func httpCheck(ctx context.Context, ip string, hc HealthConfig) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if hc.Expect != "" {
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(string(body), hc.Expect) {
+				return fmt.Errorf("expect not found")
+			}
+		}
 		return nil
 	}
 	return fmt.Errorf("status %d", resp.StatusCode)
