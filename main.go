@@ -433,6 +433,8 @@ type authority struct {
 	zone  Zone
 	state *state
 
+	serial uint32
+
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -621,6 +623,7 @@ func buildMux(cfg *Config, gr *geoResolver) (dns.Handler, map[string]*authority)
 		ctx, cancel := context.WithCancel(context.Background())
 		st := &state{cooldown: time.Duration(cfg.CooldownSec) * time.Second}
 		auth := &authority{cfg: cfg, zone: z, state: st, ctx: ctx, cancel: cancel, geo: gr}
+		auth.serial = uint32(time.Now().Unix())
 		// DNSSEC keys & index
 		auth.keys = loadDNSSEC(z)
 		auth.zidx = buildIndex(z)
