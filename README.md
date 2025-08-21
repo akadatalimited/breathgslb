@@ -8,6 +8,15 @@ Minimal moving parts, RFC‑sane answers.
 
 ---
 
+## Code layout
+
+The main server logic resides in `main.go`.
+Zone indexing utilities live in `zone_index.go`, and preflight
+configuration validators are in `record_validate.go` so malformed records are
+caught before runtime.
+
+---
+
 ## Why this exists
 
 Often there are two places to run a site:
