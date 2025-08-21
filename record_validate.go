@@ -44,42 +44,42 @@ func validateZone(z *Zone) error {
 	}
 
 	// Validate core A/AAAA lists
-	if err := validateIPList(z.AMaster, false, "a_master"); err != nil {
+	if err := validateIPAddrList(z.AMaster, false, "a_master"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AAAAMaster, true, "aaaa_master"); err != nil {
+	if err := validateIPAddrList(z.AAAAMaster, true, "aaaa_master"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AStandby, false, "a_standby"); err != nil {
+	if err := validateIPAddrList(z.AStandby, false, "a_standby"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AAAAStandby, true, "aaaa_standby"); err != nil {
+	if err := validateIPAddrList(z.AAAAStandby, true, "aaaa_standby"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AFallback, false, "a_fallback"); err != nil {
+	if err := validateIPAddrList(z.AFallback, false, "a_fallback"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AAAAFallback, true, "aaaa_fallback"); err != nil {
+	if err := validateIPAddrList(z.AAAAFallback, true, "aaaa_fallback"); err != nil {
 		return err
 	}
 
 	// Per-tier private answers
-	if err := validateIPList(z.AMasterPrivate, false, "a_master_private"); err != nil {
+	if err := validateIPAddrList(z.AMasterPrivate, false, "a_master_private"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AAAAMasterPrivate, true, "aaaa_master_private"); err != nil {
+	if err := validateIPAddrList(z.AAAAMasterPrivate, true, "aaaa_master_private"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AStandbyPrivate, false, "a_standby_private"); err != nil {
+	if err := validateIPAddrList(z.AStandbyPrivate, false, "a_standby_private"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AAAAStandbyPrivate, true, "aaaa_standby_private"); err != nil {
+	if err := validateIPAddrList(z.AAAAStandbyPrivate, true, "aaaa_standby_private"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AFallbackPrivate, false, "a_fallback_private"); err != nil {
+	if err := validateIPAddrList(z.AFallbackPrivate, false, "a_fallback_private"); err != nil {
 		return err
 	}
-	if err := validateIPList(z.AAAAFallbackPrivate, true, "aaaa_fallback_private"); err != nil {
+	if err := validateIPAddrList(z.AAAAFallbackPrivate, true, "aaaa_fallback_private"); err != nil {
 		return err
 	}
 
@@ -165,6 +165,26 @@ func validateIPList(list []string, ipv6 bool, field string) error {
 		} else {
 			if ip.To4() == nil {
 				return fmt.Errorf("%s[%d]: %q is not IPv4", field, i, s)
+			}
+		}
+	}
+	return nil
+}
+
+// validateIPAddrList checks IPAddr slices.
+func validateIPAddrList(list []IPAddr, ipv6 bool, field string) error {
+	for i, s := range list {
+		ip := net.ParseIP(strings.TrimSpace(s.IP))
+		if ip == nil {
+			return fmt.Errorf("%s[%d]: invalid IP %q", field, i, s.IP)
+		}
+		if ipv6 {
+			if ip.To16() == nil || ip.To4() != nil {
+				return fmt.Errorf("%s[%d]: %q is not IPv6", field, i, s.IP)
+			}
+		} else {
+			if ip.To4() == nil {
+				return fmt.Errorf("%s[%d]: %q is not IPv4", field, i, s.IP)
 			}
 		}
 	}
