@@ -41,7 +41,7 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 * **ALIAS/ANAME‑like apex** synth when no A/AAAA lists are set.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
-* **File logging** with fallback; cross‑platform binary (Linux, macOS, Windows, \*BSD).
+* **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS, Windows, \*BSD).
 
 ---
 
@@ -123,7 +123,9 @@ jitter_ms: 600           # add 0..600ms to each sleep
 cooldown_sec: 25         # minimum seconds between flips (per A/AAAA family)
 edns_buf: 1232           # EDNS0 UDP payload
 log_queries: true
-log_file: "/var/log/breathgslb/breathgslb.log"
+log_syslog: true
+tsig:
+  path: "/etc/breathgslb/tsig"
 ```
 
 ### Zone (example)
@@ -355,7 +357,7 @@ rc-update add breathgslb default
 rc-service breathgslb start
 ```
 
-> Logs also go to stderr; the binary writes to the path configured by `log_file` (default `/var/log/breathgslb/breathgslb.log`).
+> Logs also go to stderr; enable `log_syslog` to emit to the local syslog daemon.
 
 —
 

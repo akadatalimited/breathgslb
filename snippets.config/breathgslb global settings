@@ -11,7 +11,9 @@ jitter_ms: 600                # add 0..600ms jitter to each interval
 cooldown_sec: 30              # minimum seconds between state flips (per A/AAAA family)
 edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6 without frag)
 log_queries: true             # log queries and health transitions
-log_file: "/var/log/breathgslb/breathgslb.log"
+log_syslog: true
+tsig:
+  path: "/etc/breathgslb/tsig"
 
 zones:
 #
