@@ -3,6 +3,8 @@ listen: ":53"                     # optional; default port 53 if omitted
 #listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets (overrides interfaces)
 # interfaces: ["enX0"]            # derive IPs from interface(s) and bind there
 
+reverse_dir: "reverse_zones"      # where generated reverse zones are written
+
 timeout_sec: 3                # per health probe
 interval_sec: 4               # base interval between probe rounds
 rise: 1                       # successes to mark UP
@@ -37,7 +39,9 @@ zones:
     serve: "local"
 
     # Health-driven apex addresses
-    a_master:            ["217.155.241.55"]                         # e.g., home/Zen v4
+    a_master:
+      - ip: "217.155.241.55"        # e.g., home/Zen v4
+        reverse: true
     rfc_master:          ["172.16.0.0/24"]                          # e.g., the private rfc_1918 address
     a_master_private:    ["172.16.0.1"]
     aaaa_master_private: ["2a02:8012:bc57:1::2"]
@@ -48,7 +52,9 @@ zones:
     aaaa_standby: ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]   # e.g., AWS v6
 
     a_fallback:    ["217.155.241.55"]                           # e.g.,same as master to test
-    aaaa_fallback:  ["2a02:8012:bc57:cafe:f00d:babe::2"]   # e.g., part of /48 to test v6
+    aaaa_fallback:
+      - ip: "2a02:8012:bc57:cafe:f00d:babe::2"   # e.g., part of /48 to test v6
+        reverse: true
 
     # Optional ALIAS at apex (only used if no A/AAAA lists are set)
     # alias: "status.akadata.ltd."

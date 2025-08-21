@@ -149,6 +149,7 @@ type Config struct {
 	Listen      string   `yaml:"listen"`
 	ListenAddrs []string `yaml:"listen_addrs,omitempty"`
 	Interfaces  []string `yaml:"interfaces,omitempty"`
+	ReverseDir  string   `yaml:"reverse_dir,omitempty"`
 	Zones       []Zone   `yaml:"zones"`
 
 	TimeoutSec  int  `yaml:"timeout_sec"`
@@ -243,20 +244,20 @@ type Zone struct {
 	PrivateAllowWhenIsolated bool   `yaml:"private_allow_when_isolated,omitempty"`
 
 	// Tiered public answers
-	AMaster      []string `yaml:"a_master,omitempty"`
-	AAAAMaster   []string `yaml:"aaaa_master,omitempty"`
-	AStandby     []string `yaml:"a_standby,omitempty"`
-	AAAAStandby  []string `yaml:"aaaa_standby,omitempty"`
-	AFallback    []string `yaml:"a_fallback,omitempty"`
-	AAAAFallback []string `yaml:"aaaa_fallback,omitempty"`
+	AMaster      []IPAddr `yaml:"a_master,omitempty"`
+	AAAAMaster   []IPAddr `yaml:"aaaa_master,omitempty"`
+	AStandby     []IPAddr `yaml:"a_standby,omitempty"`
+	AAAAStandby  []IPAddr `yaml:"aaaa_standby,omitempty"`
+	AFallback    []IPAddr `yaml:"a_fallback,omitempty"`
+	AAAAFallback []IPAddr `yaml:"aaaa_fallback,omitempty"`
 
 	// Optional per-tier private answers (served only to local source ranges)
-	AMasterPrivate      []string `yaml:"a_master_private,omitempty"`
-	AAAAMasterPrivate   []string `yaml:"aaaa_master_private,omitempty"`
-	AStandbyPrivate     []string `yaml:"a_standby_private,omitempty"`
-	AAAAStandbyPrivate  []string `yaml:"aaaa_standby_private,omitempty"`
-	AFallbackPrivate    []string `yaml:"a_fallback_private,omitempty"`
-	AAAAFallbackPrivate []string `yaml:"aaaa_fallback_private,omitempty"`
+	AMasterPrivate      []IPAddr `yaml:"a_master_private,omitempty"`
+	AAAAMasterPrivate   []IPAddr `yaml:"aaaa_master_private,omitempty"`
+	AStandbyPrivate     []IPAddr `yaml:"a_standby_private,omitempty"`
+	AAAAStandbyPrivate  []IPAddr `yaml:"aaaa_standby_private,omitempty"`
+	AFallbackPrivate    []IPAddr `yaml:"a_fallback_private,omitempty"`
+	AAAAFallbackPrivate []IPAddr `yaml:"aaaa_fallback_private,omitempty"`
 
 	// Per-tier local source ranges (RFC1918 and ULA)
 	RFCMaster   []string `yaml:"rfc_master,omitempty"`
@@ -721,6 +722,9 @@ func loadConfig(path string) (*Config, error) {
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
 	}
+	if err := generateReverseZones(&cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
@@ -1044,18 +1048,18 @@ func (a *authority) axfrRecords() []dns.RR {
 	for _, ns := range a.zone.NS {
 		rrs = append(rrs, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 	}
-	rrs = append(rrs, a.buildA(a.zone.AMaster)...)
-	rrs = append(rrs, a.buildA(a.zone.AStandby)...)
-	rrs = append(rrs, a.buildA(a.zone.AFallback)...)
-	rrs = append(rrs, a.buildA(a.zone.AMasterPrivate)...)
-	rrs = append(rrs, a.buildA(a.zone.AStandbyPrivate)...)
-	rrs = append(rrs, a.buildA(a.zone.AFallbackPrivate)...)
-	rrs = append(rrs, a.buildAAAA(a.zone.AAAAMaster)...)
-	rrs = append(rrs, a.buildAAAA(a.zone.AAAAStandby)...)
-	rrs = append(rrs, a.buildAAAA(a.zone.AAAAFallback)...)
-	rrs = append(rrs, a.buildAAAA(a.zone.AAAAMasterPrivate)...)
-	rrs = append(rrs, a.buildAAAA(a.zone.AAAAStandbyPrivate)...)
-	rrs = append(rrs, a.buildAAAA(a.zone.AAAAFallbackPrivate)...)
+	rrs = append(rrs, a.buildA(ipsFrom(a.zone.AMaster))...)
+	rrs = append(rrs, a.buildA(ipsFrom(a.zone.AStandby))...)
+	rrs = append(rrs, a.buildA(ipsFrom(a.zone.AFallback))...)
+	rrs = append(rrs, a.buildA(ipsFrom(a.zone.AMasterPrivate))...)
+	rrs = append(rrs, a.buildA(ipsFrom(a.zone.AStandbyPrivate))...)
+	rrs = append(rrs, a.buildA(ipsFrom(a.zone.AFallbackPrivate))...)
+	rrs = append(rrs, a.buildAAAA(ipsFrom(a.zone.AAAAMaster))...)
+	rrs = append(rrs, a.buildAAAA(ipsFrom(a.zone.AAAAStandby))...)
+	rrs = append(rrs, a.buildAAAA(ipsFrom(a.zone.AAAAFallback))...)
+	rrs = append(rrs, a.buildAAAA(ipsFrom(a.zone.AAAAMasterPrivate))...)
+	rrs = append(rrs, a.buildAAAA(ipsFrom(a.zone.AAAAStandbyPrivate))...)
+	rrs = append(rrs, a.buildAAAA(ipsFrom(a.zone.AAAAFallbackPrivate))...)
 	for _, t := range a.zone.TXT {
 		name := ownerName(a.zone.Name, t.Name)
 		ttl := t.TTL
@@ -1167,11 +1171,11 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	mV4, _, sV4, _ := a.state.snapshot()
 	var addrs []string
 	if mV4 && len(a.zone.AMaster) > 0 {
-		addrs = a.zone.AMaster
+		addrs = ipsFrom(a.zone.AMaster)
 	} else if sV4 && len(a.zone.AStandby) > 0 {
-		addrs = a.zone.AStandby
+		addrs = ipsFrom(a.zone.AStandby)
 	} else if len(a.zone.AFallback) > 0 {
-		addrs = a.zone.AFallback
+		addrs = ipsFrom(a.zone.AFallback)
 	} else if a.zone.Alias != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
 		defer cancel()
@@ -1209,11 +1213,11 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	_, mV6, _, sV6 := a.state.snapshot()
 	var addrs []string
 	if mV6 && len(a.zone.AAAAMaster) > 0 {
-		addrs = a.zone.AAAAMaster
+		addrs = ipsFrom(a.zone.AAAAMaster)
 	} else if sV6 && len(a.zone.AAAAStandby) > 0 {
-		addrs = a.zone.AAAAStandby
+		addrs = ipsFrom(a.zone.AAAAStandby)
 	} else if len(a.zone.AAAAFallback) > 0 {
-		addrs = a.zone.AAAAFallback
+		addrs = ipsFrom(a.zone.AAAAFallback)
 	} else if a.zone.Alias != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
 		defer cancel()
@@ -1304,24 +1308,24 @@ func (a *authority) privateFor(tier string, ipv6 bool) []dns.RR {
 	switch tier {
 	case "master":
 		if !ipv6 && len(a.zone.AMasterPrivate) > 0 {
-			return a.buildA(a.zone.AMasterPrivate)
+			return a.buildA(ipsFrom(a.zone.AMasterPrivate))
 		}
 		if ipv6 && len(a.zone.AAAAMasterPrivate) > 0 {
-			return a.buildAAAA(a.zone.AAAAMasterPrivate)
+			return a.buildAAAA(ipsFrom(a.zone.AAAAMasterPrivate))
 		}
 	case "standby":
 		if !ipv6 && len(a.zone.AStandbyPrivate) > 0 {
-			return a.buildA(a.zone.AStandbyPrivate)
+			return a.buildA(ipsFrom(a.zone.AStandbyPrivate))
 		}
 		if ipv6 && len(a.zone.AAAAStandbyPrivate) > 0 {
-			return a.buildAAAA(a.zone.AAAAStandbyPrivate)
+			return a.buildAAAA(ipsFrom(a.zone.AAAAStandbyPrivate))
 		}
 	case "fallback":
 		if !ipv6 && len(a.zone.AFallbackPrivate) > 0 {
-			return a.buildA(a.zone.AFallbackPrivate)
+			return a.buildA(ipsFrom(a.zone.AFallbackPrivate))
 		}
 		if ipv6 && len(a.zone.AAAAFallbackPrivate) > 0 {
-			return a.buildAAAA(a.zone.AAAAFallbackPrivate)
+			return a.buildAAAA(ipsFrom(a.zone.AAAAFallbackPrivate))
 		}
 	}
 	return nil
@@ -1331,19 +1335,19 @@ func (a *authority) publicFor(tier string, ipv6 bool) []dns.RR {
 	switch tier {
 	case "master":
 		if !ipv6 {
-			return a.buildA(a.zone.AMaster)
+			return a.buildA(ipsFrom(a.zone.AMaster))
 		}
-		return a.buildAAAA(a.zone.AAAAMaster)
+		return a.buildAAAA(ipsFrom(a.zone.AAAAMaster))
 	case "standby":
 		if !ipv6 {
-			return a.buildA(a.zone.AStandby)
+			return a.buildA(ipsFrom(a.zone.AStandby))
 		}
-		return a.buildAAAA(a.zone.AAAAStandby)
+		return a.buildAAAA(ipsFrom(a.zone.AAAAStandby))
 	default:
 		if !ipv6 {
-			return a.buildA(a.zone.AFallback)
+			return a.buildA(ipsFrom(a.zone.AFallback))
 		}
-		return a.buildAAAA(a.zone.AAAAFallback)
+		return a.buildAAAA(ipsFrom(a.zone.AAAAFallback))
 	}
 }
 
@@ -1984,16 +1988,16 @@ func (a *authority) checkOnce() {
 	hc := effectiveHealth(a.zone.Name, a.zone.Health)
 
 	// master v4
-	m4 := probeAny(ctx, a.zone.AMaster, hc, true)
+	m4 := probeAny(ctx, ipsFrom(a.zone.AMaster), hc, true)
 	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
 	// master v6
-	m6 := probeAny(ctx, a.zone.AAAAMaster, hc, false)
+	m6 := probeAny(ctx, ipsFrom(a.zone.AAAAMaster), hc, false)
 	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
 	// standby v4
-	s4 := probeAny(ctx, a.zone.AStandby, hc, true)
+	s4 := probeAny(ctx, ipsFrom(a.zone.AStandby), hc, true)
 	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
 	// standby v6
-	s6 := probeAny(ctx, a.zone.AAAAStandby, hc, false)
+	s6 := probeAny(ctx, ipsFrom(a.zone.AAAAStandby), hc, false)
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
 
