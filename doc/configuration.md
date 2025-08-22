@@ -2,6 +2,15 @@
 
 BreathGSLB is configured via a YAML file. Sample configurations are provided in [`doc/examples`](examples).
 
+Typical invocation:
+
+```
+breathgslb -config /etc/breathgslb/config.yaml \ 
+  -metrics-listen :9090 \ 
+  -supervisor /var/run/breathgslb.sock \ 
+  -api-token $TOKEN
+```
+
 ## Global Settings
 
 | Key | Type | Description |
