@@ -41,6 +41,18 @@ paths:
                     type: integer
                   memstats:
                     type: object
+                  supervisor:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        running:
+                          type: boolean
+                        restarts:
+                          type: integer
+                        last_exit:
+                          type: string
+                          format: date-time
 components:
   securitySchemes:
     bearerAuth:
