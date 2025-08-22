@@ -1803,6 +1803,16 @@ func (a *authority) tierUp(tier string, ipv6 bool) bool {
 	}
 }
 
+// setMasterUp marks the master tier's up state for both address families.
+// It acquires the state's mutex; tests should call this helper instead of
+// manipulating state.master directly.
+func (a *authority) setMasterUp(v4, v6 bool) {
+	a.state.mu.Lock()
+	a.state.master.v4.up = v4
+	a.state.master.v6.up = v6
+	a.state.mu.Unlock()
+}
+
 func (a *authority) privateFor(tier string, ipv6 bool) []dns.RR {
 	switch tier {
 	case "master":
