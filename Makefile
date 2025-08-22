@@ -38,14 +38,23 @@ SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || ech
 
 # -------------------- standard targets --------------------
 .PHONY: all build vendor clean fmt vet test help \
-        release release-linux release-musl release-macos release-freebsd release-windows \
+        release release-linux release-musl release-macos release-freebsd release-bsd release-windows \
         package install install-systemd install-openrc uninstall
 
 all: build
 
 help:
-	@echo "Available targets:"
-	@grep -E '^[a-zA-Z_-]+:' $(MAKEFILE_LIST) | grep -v '^\.PHONY' | cut -d: -f1 | sort | uniq | sed 's/^/  /'
+        @echo "Available targets:"
+        @echo "  build            build the $(BINARY) binary"
+        @echo "  test             run tests with the race detector"
+        @echo "  release          build release binaries for all supported platforms"
+        @echo "  release-linux    build release binaries for Linux"
+        @echo "  release-musl     build static Linux binaries (musl)"
+        @echo "  release-macos    build release binaries for macOS"
+        @echo "  release-freebsd  build release binaries for FreeBSD"
+        @echo "  release-bsd      build release binaries for OpenBSD and NetBSD"
+        @echo "  release-windows  build release binaries for Windows"
+        @echo "  package          archive release binaries and generate checksums"
 
 build:
 	@echo "==> building ($(BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
@@ -66,10 +75,10 @@ vet:
 	$(GO) vet ./...
 
 test:
-	$(GO) test ./...
+        $(GO) test -race ./...
 
 # -------------------- release matrices --------------------
-release: clean release-linux release-musl release-macos release-freebsd release-windows
+release: clean release-linux release-musl release-macos release-freebsd release-bsd release-windows
 
 release-linux:
 	$(MKDIR_P) $(DISTDIR)
@@ -88,9 +97,16 @@ release-macos:
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-darwin-arm64
 
 release-freebsd:
-	$(MKDIR_P) $(DISTDIR)
-	GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-amd64
-	GOOS=freebsd GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-arm64
+        $(MKDIR_P) $(DISTDIR)
+        GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-amd64
+        GOOS=freebsd GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-arm64
+
+release-bsd:
+        $(MKDIR_P) $(DISTDIR)
+        GOOS=openbsd GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-amd64
+        GOOS=openbsd GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-arm64
+        GOOS=netbsd  GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-amd64
+        GOOS=netbsd  GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-arm64
 
 release-windows:
 	$(MKDIR_P) $(DISTDIR)
