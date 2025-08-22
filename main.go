@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"log/syslog"
 	"math/rand"
 	"net"
 	"net/http"
@@ -42,7 +41,6 @@ import (
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-	"golang.org/x/sys/unix"
 
 	maxminddb "github.com/oschwald/maxminddb-golang"
 )
@@ -882,16 +880,11 @@ func saveTSIGKey(dir string, k TSIGKey) {
 
 func setupLogging(cfg *Config) io.WriteCloser {
 	if cfg.LogSyslog {
-		w, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "breathgslb")
+		w, err := setupSyslogLogging()
 		if err != nil {
 			log.Printf("warn: cannot connect to syslog: %v; using stderr only", err)
 			return nil
 		}
-		mw := io.MultiWriter(os.Stderr, w)
-		log.SetOutput(mw)
-		log.SetFlags(0)
-		log.SetPrefix("")
-		log.Printf("logging to syslog")
 		return w
 	}
 	path := cfg.LogFile
@@ -1236,19 +1229,6 @@ func serveUDPWorker(h dns.Handler, conn *net.UDPConn) {
 	}
 }
 
-func listenUDP(network, addr string) (net.PacketConn, error) {
-	lc := net.ListenConfig{Control: func(network, address string, c syscall.RawConn) error {
-		var opErr error
-		if err := c.Control(func(fd uintptr) {
-			opErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
-		}); err != nil {
-			return err
-		}
-		return opErr
-	}}
-	return lc.ListenPacket(context.Background(), network, addr)
-}
-
 func reload(cfgPath string) error {
 	cfg, err := loadConfig(cfgPath)
 	if err != nil {
@@ -1257,8 +1237,8 @@ func reload(cfgPath string) error {
 	setupDefaults(cfg)
 	generateTSIGKeys(cfg)
 
-       newGeo := newGeoResolver(cfg.GeoIP)
-       mux, auths := buildMux(cfg, newGeo, sup)
+	newGeo := newGeoResolver(cfg.GeoIP)
+	mux, auths := buildMux(cfg, newGeo, sup)
 
 	current.mu.Lock()
 	old := current.auths
