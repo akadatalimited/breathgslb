@@ -71,8 +71,10 @@ func TestRecordTypes(t *testing.T) {
 
 	addr, auth := startRecordServer(t, cfg, gr)
 	// Mark master up so that default A/AAAA answers exist if geo lookup fails.
+	auth.state.mu.Lock()
 	auth.state.master.v4.up = true
 	auth.state.master.v6.up = true
+	auth.state.mu.Unlock()
 	if !auth.zidx.types[ensureDot("example.org.")][dns.TypeA] {
 		t.Fatalf("A not indexed")
 	}
