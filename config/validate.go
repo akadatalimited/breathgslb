@@ -1,4 +1,4 @@
-package main
+package config
 
 // record_validate.go provides preflight validation for YAML-specified records.
 // Each check enforces basic RFC constraints (domain name length, text field size,
@@ -15,20 +15,20 @@ import (
 
 // validateConfig walks through the parsed configuration and validates every zone
 // and record it contains.
-func validateConfig(cfg *Config) error {
+func ValidateConfig(cfg *Config) error {
 	if err := validatePersistenceMode(cfg.PersistenceMode); err != nil {
 		return fmt.Errorf("persistence_mode: %w", err)
 	}
 	for i := range cfg.Zones {
-		if err := validateZone(&cfg.Zones[i]); err != nil {
+		if err := ValidateZone(&cfg.Zones[i]); err != nil {
 			return fmt.Errorf("zone %q: %w", cfg.Zones[i].Name, err)
 		}
 	}
 	return nil
 }
 
-// validateZone performs basic sanity checks on a zone and its records.
-func validateZone(z *Zone) error {
+// ValidateZone performs basic sanity checks on a zone and its records.
+func ValidateZone(z *Zone) error {
 	if err := validateDomain(z.Name); err != nil {
 		return err
 	}
@@ -50,42 +50,42 @@ func validateZone(z *Zone) error {
 	}
 
 	// Validate core A/AAAA lists
-	if err := validateIPAddrList(z.AMaster, false, "a_master"); err != nil {
+	if err := ValidateIPAddrList(z.AMaster, false, "a_master"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AAAAMaster, true, "aaaa_master"); err != nil {
+	if err := ValidateIPAddrList(z.AAAAMaster, true, "aaaa_master"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AStandby, false, "a_standby"); err != nil {
+	if err := ValidateIPAddrList(z.AStandby, false, "a_standby"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AAAAStandby, true, "aaaa_standby"); err != nil {
+	if err := ValidateIPAddrList(z.AAAAStandby, true, "aaaa_standby"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AFallback, false, "a_fallback"); err != nil {
+	if err := ValidateIPAddrList(z.AFallback, false, "a_fallback"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AAAAFallback, true, "aaaa_fallback"); err != nil {
+	if err := ValidateIPAddrList(z.AAAAFallback, true, "aaaa_fallback"); err != nil {
 		return err
 	}
 
 	// Per-tier private answers
-	if err := validateIPAddrList(z.AMasterPrivate, false, "a_master_private"); err != nil {
+	if err := ValidateIPAddrList(z.AMasterPrivate, false, "a_master_private"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AAAAMasterPrivate, true, "aaaa_master_private"); err != nil {
+	if err := ValidateIPAddrList(z.AAAAMasterPrivate, true, "aaaa_master_private"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AStandbyPrivate, false, "a_standby_private"); err != nil {
+	if err := ValidateIPAddrList(z.AStandbyPrivate, false, "a_standby_private"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AAAAStandbyPrivate, true, "aaaa_standby_private"); err != nil {
+	if err := ValidateIPAddrList(z.AAAAStandbyPrivate, true, "aaaa_standby_private"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AFallbackPrivate, false, "a_fallback_private"); err != nil {
+	if err := ValidateIPAddrList(z.AFallbackPrivate, false, "a_fallback_private"); err != nil {
 		return err
 	}
-	if err := validateIPAddrList(z.AAAAFallbackPrivate, true, "aaaa_fallback_private"); err != nil {
+	if err := ValidateIPAddrList(z.AAAAFallbackPrivate, true, "aaaa_fallback_private"); err != nil {
 		return err
 	}
 
@@ -128,7 +128,7 @@ func validateZone(z *Zone) error {
 
 	// Geo answer overrides
 	if z.GeoAnswers != nil {
-		if err := validateGeoAnswers(z.GeoAnswers); err != nil {
+		if err := ValidateGeoAnswers(z.GeoAnswers); err != nil {
 			return err
 		}
 	}
@@ -151,7 +151,7 @@ func validateDomain(name string) error {
 	if name == "" {
 		return fmt.Errorf("empty domain name")
 	}
-	fqdn := ensureDot(name)
+	fqdn := EnsureDot(name)
 	if !dns.IsFqdn(fqdn) {
 		return fmt.Errorf("invalid domain %q", name)
 	}
@@ -166,8 +166,8 @@ func validateDomain(name string) error {
 	return nil
 }
 
-// validateIPList checks that every string is a valid IPv4 or IPv6 address.
-func validateIPList(list []string, ipv6 bool, field string) error {
+// ValidateIPList checks that every string is a valid IPv4 or IPv6 address.
+func ValidateIPList(list []string, ipv6 bool, field string) error {
 	for i, s := range list {
 		ip := net.ParseIP(strings.TrimSpace(s))
 		if ip == nil {
@@ -186,8 +186,8 @@ func validateIPList(list []string, ipv6 bool, field string) error {
 	return nil
 }
 
-// validateIPAddrList checks IPAddr slices.
-func validateIPAddrList(list []IPAddr, ipv6 bool, field string) error {
+// ValidateIPAddrList checks IPAddr slices.
+func ValidateIPAddrList(list []IPAddr, ipv6 bool, field string) error {
 	for i, s := range list {
 		ip := net.ParseIP(strings.TrimSpace(s.IP))
 		if ip == nil {
@@ -303,37 +303,37 @@ func validateNAPTRRecord(r *NAPTRRecord) error {
 	return nil
 }
 
-func validateGeoAnswers(g *GeoAnswers) error {
+func ValidateGeoAnswers(g *GeoAnswers) error {
 	for c, set := range g.Country {
-		if err := validateGeoAnswerSet(set, fmt.Sprintf("geo_answers.country[%s]", c)); err != nil {
+		if err := ValidateGeoAnswerSet(set, fmt.Sprintf("geo_answers.country[%s]", c)); err != nil {
 			return err
 		}
 	}
 	for c, set := range g.Continent {
-		if err := validateGeoAnswerSet(set, fmt.Sprintf("geo_answers.continent[%s]", c)); err != nil {
+		if err := ValidateGeoAnswerSet(set, fmt.Sprintf("geo_answers.continent[%s]", c)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateGeoAnswerSet(set GeoAnswerSet, prefix string) error {
-	if err := validateIPList(set.A, false, prefix+".a"); err != nil {
+func ValidateGeoAnswerSet(set GeoAnswerSet, prefix string) error {
+	if err := ValidateIPList(set.A, false, prefix+".a"); err != nil {
 		return err
 	}
-	if err := validateIPList(set.AAAA, true, prefix+".aaaa"); err != nil {
+	if err := ValidateIPList(set.AAAA, true, prefix+".aaaa"); err != nil {
 		return err
 	}
-	if err := validateIPList(set.APrivate, false, prefix+".a_private"); err != nil {
+	if err := ValidateIPList(set.APrivate, false, prefix+".a_private"); err != nil {
 		return err
 	}
-	if err := validateIPList(set.AAAAPrivate, true, prefix+".aaaa_private"); err != nil {
+	if err := ValidateIPList(set.AAAAPrivate, true, prefix+".aaaa_private"); err != nil {
 		return err
 	}
-	if err := validateIPList(set.RFC, false, prefix+".rfc"); err != nil {
+	if err := ValidateIPList(set.RFC, false, prefix+".rfc"); err != nil {
 		return err
 	}
-	if err := validateIPList(set.ULA, true, prefix+".ula"); err != nil {
+	if err := ValidateIPList(set.ULA, true, prefix+".ula"); err != nil {
 		return err
 	}
 	return nil

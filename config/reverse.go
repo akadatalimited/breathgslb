@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -9,41 +9,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
-
-// IPAddr represents an IP address with optional reverse generation.
-type IPAddr struct {
-	IP      string `yaml:"ip"`
-	Reverse bool   `yaml:"reverse,omitempty"`
-}
-
-// UnmarshalYAML allows IPAddr to be specified as a scalar string or a mapping.
-func (a *IPAddr) UnmarshalYAML(value *yaml.Node) error {
-	if value.Kind == yaml.ScalarNode {
-		a.IP = strings.TrimSpace(value.Value)
-		return nil
-	}
-	var tmp struct {
-		IP      string `yaml:"ip"`
-		Reverse bool   `yaml:"reverse"`
-	}
-	if err := value.Decode(&tmp); err != nil {
-		return err
-	}
-	a.IP = strings.TrimSpace(tmp.IP)
-	a.Reverse = tmp.Reverse
-	return nil
-}
-
-// ipsFrom extracts plain strings from a slice of IPAddr.
-func ipsFrom(list []IPAddr) []string {
-	out := make([]string, 0, len(list))
-	for _, a := range list {
-		if a.IP != "" {
-			out = append(out, a.IP)
-		}
-	}
-	return out
-}
 
 // reverseName converts an IP to its reverse DNS owner name.
 func reverseName(ip net.IP) string {
@@ -66,8 +31,8 @@ func reverseName(ip net.IP) string {
 	return strings.Join(parts, ".") + ".ip6.arpa."
 }
 
-// generateReverseZones writes reverse PTR zones for marked addresses.
-func generateReverseZones(cfg *Config) error {
+// GenerateReverseZones writes reverse PTR zones for marked addresses.
+func GenerateReverseZones(cfg *Config) error {
 	if cfg.ReverseDir == "" {
 		return nil
 	}
@@ -89,7 +54,7 @@ func generateReverseZones(cfg *Config) error {
 				if rev == "" {
 					continue
 				}
-				records = append(records, map[string]string{"name": rev, "ptr": ensureDot(z.Name)})
+				records = append(records, map[string]string{"name": rev, "ptr": EnsureDot(z.Name)})
 			}
 		}
 		add(z.AMaster)

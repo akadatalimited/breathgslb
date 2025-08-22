@@ -1,4 +1,4 @@
-package main
+package config
 
 import "testing"
 
@@ -16,8 +16,8 @@ func TestValidateIPList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateIPList(tt.list, tt.ipv6, "field"); (err != nil) != tt.wantErr {
-				t.Fatalf("validateIPList() error = %v, wantErr %v", err, tt.wantErr)
+			if err := ValidateIPList(tt.list, tt.ipv6, "field"); (err != nil) != tt.wantErr {
+				t.Fatalf("ValidateIPList() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -37,8 +37,8 @@ func TestValidateIPAddrList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateIPAddrList(tt.list, tt.ipv6, "field"); (err != nil) != tt.wantErr {
-				t.Fatalf("validateIPAddrList() error = %v, wantErr %v", err, tt.wantErr)
+			if err := ValidateIPAddrList(tt.list, tt.ipv6, "field"); (err != nil) != tt.wantErr {
+				t.Fatalf("ValidateIPAddrList() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -53,7 +53,7 @@ func TestValidateGeoAnswerSet(t *testing.T) {
 		RFC:         []string{"192.168.1.1"},
 		ULA:         []string{"fd00::1"},
 	}
-	if err := validateGeoAnswerSet(valid, "geo"); err != nil {
+	if err := ValidateGeoAnswerSet(valid, "geo"); err != nil {
 		t.Fatalf("valid set rejected: %v", err)
 	}
 
@@ -68,7 +68,7 @@ func TestValidateGeoAnswerSet(t *testing.T) {
 	}
 	for _, tt := range badCases {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateGeoAnswerSet(tt.set, "geo"); err == nil {
+			if err := ValidateGeoAnswerSet(tt.set, "geo"); err == nil {
 				t.Fatalf("expected error for %s", tt.name)
 			}
 		})

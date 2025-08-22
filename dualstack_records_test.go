@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/akadatalimited/breathgslb/config"
 	"github.com/miekg/dns"
 )
 
@@ -58,7 +59,7 @@ func TestDualStackRecords(t *testing.T) {
 		},
 	}}
 
-	setupDefaults(cfg)
+	config.SetupDefaults(cfg)
 	cfg.DNS64Prefix = ""
 	v4addr, v6addr, auths := startDualStackServer(t, cfg, nil)
 	for _, a := range auths {

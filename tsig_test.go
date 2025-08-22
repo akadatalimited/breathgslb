@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/akadatalimited/breathgslb/config"
 	"github.com/miekg/dns"
 )
 
@@ -42,12 +43,12 @@ func TestTSIGKeyGenerationAndAXFR(t *testing.T) {
 		},
 	}
 
-	generateTSIGKeys(cfg)
+	config.GenerateTSIGKeys(cfg)
 
 	algConst := map[string]string{"hmac-sha256": dns.HmacSHA256, "hmac-sha512": dns.HmacSHA512}
 
 	for _, key := range cfg.Zones[0].TSIG.Keys {
-		expected := deriveTSIGSecret(seedVal, key.Name, 0)
+		expected := config.DeriveTSIGSecret(seedVal, key.Name, 0)
 		if key.Secret != expected {
 			t.Fatalf("unexpected secret for %s: %s", key.Name, key.Secret)
 		}
@@ -118,8 +119,8 @@ func TestTSIGKeyGenerationAndAXFR(t *testing.T) {
 func TestTSIGMissingSeedEnv(t *testing.T) {
 	cfgA := &Config{TSIG: &TSIGGlobalConfig{}, Zones: []Zone{{Name: "example.org.", TSIG: &TSIGZoneConfig{SeedEnv: "MISSING_ENV", Keys: []TSIGKey{{Name: "a."}}}}}}
 	cfgB := &Config{TSIG: &TSIGGlobalConfig{}, Zones: []Zone{{Name: "example.org.", TSIG: &TSIGZoneConfig{SeedEnv: "MISSING_ENV", Keys: []TSIGKey{{Name: "a."}}}}}}
-	generateTSIGKeys(cfgA)
-	generateTSIGKeys(cfgB)
+	config.GenerateTSIGKeys(cfgA)
+	config.GenerateTSIGKeys(cfgB)
 	if cfgA.Zones[0].TSIG.Keys[0].Secret == cfgB.Zones[0].TSIG.Keys[0].Secret {
 		t.Fatalf("expected random secrets when seed env missing")
 	}
@@ -142,7 +143,7 @@ func TestTSIGInvalidAlgorithm(t *testing.T) {
 		}},
 	}
 
-	generateTSIGKeys(cfg)
+	config.GenerateTSIGKeys(cfg)
 
 	key := cfg.Zones[0].TSIG.Keys[0]
 	records := axfrTestRecords()
@@ -194,7 +195,7 @@ func TestTSIGDuplicateKeyNames(t *testing.T) {
 		}},
 	}
 
-	generateTSIGKeys(cfg)
+	config.GenerateTSIGKeys(cfg)
 
 	keys := cfg.Zones[0].TSIG.Keys
 	records := axfrTestRecords()
@@ -248,7 +249,7 @@ func TestTSIGAllowXFRFromRestriction(t *testing.T) {
 		TSIG:      &TSIGZoneConfig{SeedEnv: seedEnv, Keys: []TSIGKey{{Name: "xfr-key.", AllowXFRFrom: []string{"203.0.113.1"}}}},
 	}}}
 
-	generateTSIGKeys(cfg)
+	config.GenerateTSIGKeys(cfg)
 	key := cfg.Zones[0].TSIG.Keys[0]
 
 	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret})
