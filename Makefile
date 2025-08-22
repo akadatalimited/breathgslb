@@ -6,6 +6,11 @@ PKG         ?= github.com/akadatalimited/breathgslb
 GO          ?= go
 CGO_ENABLED ?= 1
 GOFLAGS     ?=
+# Disable automatic VCS stamping which can fail when the repository
+# metadata is unavailable (e.g. during installs on systems like Alpine).
+# The build still embeds version information via BUILD_LDFLAGS, so this
+# only suppresses Go's own VCS checks.
+GOFLAGS     += -buildvcs=false
 LDFLAGS     ?= -s -w
 
 # Vendor by default (NOVENDOR=1 to bypass)
