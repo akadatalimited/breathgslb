@@ -114,11 +114,13 @@ Use valid TLS for the hostname being checked; during bootstrap, `insecure_tls: t
 Create `/etc/breathgslb/config.yaml` and run:
 
 ```
-breathgslb -config /etc/breathgslb/config.yaml \ 
-  -metrics-listen :9090 \ 
-  -supervisor /var/run/breathgslb.sock \ 
+breathgslb -config /etc/breathgslb/config.yaml \
+  -metrics-listen :9090 \
+  -supervisor /var/run/breathgslb.sock \
   -api-token $(cat /etc/breathgslb/token)
 ```
+
+Add `-debug-pprof` to expose Go pprof handlers on `localhost:6060` for deep inspection.
 
 Sample configuration files and a full option reference are available in the [`doc`](doc) directory.
 
