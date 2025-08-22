@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"net"
 	"os"
 	"strings"
@@ -9,15 +8,17 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"gopkg.in/yaml.v3"
 )
 
 type liveConfig struct {
-	Zone       string
-	TSIGName   string
-	TSIGSecret string
-	Primary    []string
-	Secondary  []string
-	Standby    []string
+	Zone       string `yaml:"zone"`
+	TSIGName   string `yaml:"tsig_name"`
+	TSIGSecret string `yaml:"tsig_secret"`
+	Primary    string `yaml:"primary"`
+	Secondary  string `yaml:"secondary"`
+	Standby    string `yaml:"standby"`
+	Tester     string `yaml:"tester"`
 }
 
 func loadLiveConfig(t *testing.T) *liveConfig {
@@ -26,45 +27,18 @@ func loadLiveConfig(t *testing.T) *liveConfig {
 		t.Skip("tests.config missing")
 	}
 	cfg := &liveConfig{}
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
-		parseAddrs := func(v string) []string {
-			fields := strings.Split(v, ",")
-			var res []string
-			for _, f := range fields {
-				if a := strings.TrimSpace(f); a != "" {
-					res = append(res, ensurePort(a))
-				}
-			}
-			return res
-		}
-		switch key {
-		case "zone":
-			cfg.Zone = val
-		case "tsig_name":
-			cfg.TSIGName = val
-		case "tsig_secret":
-			cfg.TSIGSecret = val
-		case "primary":
-			cfg.Primary = parseAddrs(val)
-		case "secondary":
-			cfg.Secondary = parseAddrs(val)
-		case "standby":
-			cfg.Standby = parseAddrs(val)
-		}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		t.Fatalf("parse tests.config: %v", err)
 	}
-	if cfg.Zone == "" || cfg.TSIGName == "" || cfg.TSIGSecret == "" || len(cfg.Primary) == 0 {
+	if cfg.Zone == "" || cfg.TSIGName == "" || cfg.TSIGSecret == "" || cfg.Primary == "" {
 		t.Skip("tests.config incomplete")
+	}
+	cfg.Primary = ensurePort(cfg.Primary)
+	if cfg.Secondary != "" {
+		cfg.Secondary = ensurePort(cfg.Secondary)
+	}
+	if cfg.Standby != "" {
+		cfg.Standby = ensurePort(cfg.Standby)
 	}
 	return cfg
 }
@@ -130,15 +104,15 @@ func equalRR(a, b []dns.RR) bool {
 
 func TestIntegrationAXFRChain(t *testing.T) {
 	cfg := loadLiveConfig(t)
-	primary := axfr(t, cfg.Primary[0], cfg)
-	if len(cfg.Secondary) == 0 || len(cfg.Standby) == 0 {
+	if cfg.Secondary == "" || cfg.Standby == "" {
 		t.Skip("need secondary and standby for chain test")
 	}
-	secondary := axfr(t, cfg.Secondary[0], cfg)
+	primary := axfr(t, cfg.Primary, cfg)
+	secondary := axfr(t, cfg.Secondary, cfg)
 	if !equalRR(primary, secondary) {
 		t.Fatalf("secondary does not match primary")
 	}
-	standby := axfr(t, cfg.Standby[0], cfg)
+	standby := axfr(t, cfg.Standby, cfg)
 	if !equalRR(secondary, standby) {
 		t.Fatalf("standby does not match secondary")
 	}
@@ -146,7 +120,13 @@ func TestIntegrationAXFRChain(t *testing.T) {
 
 func TestIntegrationIXFR(t *testing.T) {
 	cfg := loadLiveConfig(t)
-	addrs := append(append(cfg.Primary, cfg.Secondary...), cfg.Standby...)
+	addrs := []string{cfg.Primary}
+	if cfg.Secondary != "" {
+		addrs = append(addrs, cfg.Secondary)
+	}
+	if cfg.Standby != "" {
+		addrs = append(addrs, cfg.Standby)
+	}
 	for _, addr := range addrs {
 		ixfr(t, addr, cfg)
 	}
