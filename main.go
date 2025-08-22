@@ -29,6 +29,8 @@ import (
 	"regexp"
 	"strconv"
 
+	"expvar"
+
 	"gopkg.in/yaml.v3"
 
 	"github.com/miekg/dns"
@@ -494,6 +496,11 @@ type authority struct {
 	rrA         atomic.Uint64
 	rrAAAA      atomic.Uint64
 
+	// statistics counters
+	totalQueries    atomic.Uint64
+	recordsReturned atomic.Uint64
+	queriesResolved atomic.Uint64
+
 	// parsed CIDRs for geo_answers
 	geoCIDR struct {
 		country   map[string]parsedCIDRs
@@ -504,6 +511,22 @@ type authority struct {
 type persistEntry struct {
 	ip  string
 	exp time.Time
+}
+
+func (a *authority) publishStats() {
+	name := strings.TrimSuffix(ensureDot(a.zone.Name), ".")
+	var m *expvar.Map
+	if v := expvar.Get("authority." + name); v != nil {
+		if mp, ok := v.(*expvar.Map); ok {
+			m = mp
+		}
+	}
+	if m == nil {
+		m = expvar.NewMap("authority." + name)
+	}
+	m.Set("total_queries", expvar.Func(func() any { return a.totalQueries.Load() }))
+	m.Set("records_returned", expvar.Func(func() any { return a.recordsReturned.Load() }))
+	m.Set("queries_resolved", expvar.Func(func() any { return a.queriesResolved.Load() }))
 }
 
 // router is a dynamic handler wrapper we can hot-swap on HUP.
@@ -791,6 +814,7 @@ func buildMux(cfg *Config, gr *geoResolver) (dns.Handler, map[string]*authority)
 		auth.zidx = buildIndex(z)
 		// parse local CIDRs once
 		auth.cidrInit()
+		auth.publishStats()
 
 		mux.HandleFunc(zname, auth.handle)
 		auths[zname] = auth
@@ -1053,6 +1077,8 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	name := ensureDot(q.Name)
 	z := ensureDot(a.zone.Name)
 
+	a.totalQueries.Add(1)
+
 	if a.cfg.LogQueries {
 		log.Printf("query %s %s", name, dns.TypeToString[q.Qtype])
 	}
@@ -1131,6 +1157,10 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
 		m.Answer = a.signAll(m.Answer)
 		m.Ns = a.signAll(m.Ns)
+	}
+	a.recordsReturned.Add(uint64(len(m.Answer)))
+	if len(m.Answer) > 0 {
+		a.queriesResolved.Add(1)
 	}
 	_ = w.WriteMsg(m)
 }
