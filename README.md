@@ -217,6 +217,30 @@ When `name` is omitted for TXT/MX/CAA/SSHFP/RP, the record is placed at the apex
 
 ---
 
+## Integration tests
+
+Optional integration tests exercise live zone transfers between BreathGSLB instances. They require a `tests.config` file in the repository root specifying the hosts involved. The file is YAML and ships with commented example values:
+
+```yaml
+# zone: example.org.
+# tsig_name: gslb-xfr.
+# tsig_secret: base64encodedsecret==
+# primary: gslb-builder.breathtechnology.co.uk
+# secondary: gslb-secondary.breathtechnology.co.uk
+# standby: gslb-standby.breathtechnology.co.uk
+# tester: gslb-tester.breathtechnology.co.uk
+```
+
+Uncomment and adjust these fields to match your environment. Tests automatically skip when a required host is missing.
+
+Run all tests with:
+
+```sh
+go test ./...
+```
+
+---
+
 ## Record‑type notes
 
 ### ALIAS (apex synth)
