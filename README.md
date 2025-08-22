@@ -85,6 +85,15 @@ setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
 
 macOS/Windows/\*BSD: build with Go. If binding to port 53 is restricted, either run elevated or use a higher port (e.g. `:5353`) and front with a system‑specific port forward.
 
+On Windows, paths use the native `C:` style. Build the executable and point to a configuration file with Windows separators:
+
+```powershell
+go build -trimpath -ldflags "-s -w" -o breathgslb.exe
+./breathgslb.exe -config C:\breathgslb\config.yaml
+```
+
+The server relies on Go's `filepath` package, so `C:\` paths are handled correctly.
+
 ### Delegate the sub‑zone
 
 In the parent zone (e.g., at HE.net):
@@ -405,6 +414,19 @@ rc-service breathgslb start
 ```
 
 > Logs also go to stderr; enable `log_syslog` to emit to the local syslog daemon.
+
+### Windows service
+
+On Windows (without WSL2), the executable can read configuration files from native `C:` paths. Run an elevated PowerShell to install the service and open firewall ports:
+
+```powershell
+go build -trimpath -ldflags "-s -w" -o C:\breathgslb\breathgslb.exe
+New-Service -Name BreathGSLB -BinaryPathName 'C:\breathgslb\breathgslb.exe -config C:\breathgslb\config.yaml' -DisplayName 'BreathGSLB' -StartupType Automatic
+Start-Service BreathGSLB
+netsh advfirewall firewall add rule name="BreathGSLB DNS UDP" dir=in action=allow protocol=UDP localport=53
+netsh advfirewall firewall add rule name="BreathGSLB DNS TCP" dir=in action=allow protocol=TCP localport=53
+netsh advfirewall firewall add rule name="BreathGSLB Metrics" dir=in action=allow protocol=TCP localport=9090
+```
 
 —
 
