@@ -37,11 +37,15 @@ SHA256  := $(shell command -v sha256sum 2>/dev/null || command -v shasum 2>/dev/
 SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || echo )
 
 # -------------------- standard targets --------------------
-.PHONY: all build vendor clean fmt vet test \
+.PHONY: all build vendor clean fmt vet test help \
         release release-linux release-musl release-macos release-freebsd release-windows \
         package install install-systemd install-openrc uninstall
 
 all: build
+
+help:
+	@echo "Available targets:"
+	@grep -E '^[a-zA-Z_-]+:' $(MAKEFILE_LIST) | grep -v '^\.PHONY' | cut -d: -f1 | sort | uniq | sed 's/^/  /'
 
 build:
 	@echo "==> building ($(BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"

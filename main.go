@@ -540,8 +540,23 @@ var (
 
 func main() {
 	var cfgPath string
+	var metricsListen string
+	var supervisor string
+	var apiToken string
+
 	flag.StringVar(&cfgPath, "config", "config.yaml", "path to YAML config")
+	flag.StringVar(&metricsListen, "metrics-listen", "", "address for metrics listener")
+	flag.StringVar(&supervisor, "supervisor", "", "supervisor notification target")
+	flag.StringVar(&apiToken, "api-token", "", "admin API bearer token")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+
+	_ = metricsListen
+	_ = supervisor
+	_ = apiToken
 
 	cfg, err := loadConfig(cfgPath)
 	if err != nil {
