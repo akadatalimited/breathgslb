@@ -116,6 +116,10 @@ location = /health { access_log off; default_type text/plain; return 200 "OK\n";
 
 Use valid TLS for the hostname being checked; during bootstrap, `insecure_tls: true` is acceptable temporarily.
 
+### Admin API
+
+An optional HTTPS admin API serves health and runtime statistics. Enable it by supplying `-api-listen`, `-api-token`, `-api-cert`, and `-api-key` flags. Detailed cross-platform instructions are available in [doc/api.md](doc/api.md).
+
 ---
 
 ## Configuration
