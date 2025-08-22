@@ -19,6 +19,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -518,15 +519,18 @@ type router struct {
 }
 
 func (r *router) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
+	start := time.Now()
 	if o := req.IsEdns0(); o != nil {
 		o.SetUDPSize(uint16(r.edns.Load()))
 	}
 	h := r.inner.Load()
 	if h == nil {
 		_ = w.WriteMsg(new(dns.Msg))
+		recordLatency(time.Since(start))
 		return
 	}
 	h.(dns.Handler).ServeDNS(w, req)
+	recordLatency(time.Since(start))
 }
 
 // ---- globals for reload ----
@@ -542,7 +546,39 @@ var (
 	}
 	adminAPIToken string
 	startTime     = time.Now()
+
+	statsMu        sync.RWMutex
+	memStatsRecent []runtime.MemStats
+	latencyRecent  []time.Duration
 )
+
+const statsKeep = 60
+
+func recordLatency(d time.Duration) {
+	statsMu.Lock()
+	if len(latencyRecent) >= statsKeep {
+		copy(latencyRecent, latencyRecent[1:])
+		latencyRecent = latencyRecent[:statsKeep-1]
+	}
+	latencyRecent = append(latencyRecent, d)
+	statsMu.Unlock()
+}
+
+func sampleMemStats() {
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		statsMu.Lock()
+		if len(memStatsRecent) >= statsKeep {
+			copy(memStatsRecent, memStatsRecent[1:])
+			memStatsRecent = memStatsRecent[:statsKeep-1]
+		}
+		memStatsRecent = append(memStatsRecent, m)
+		statsMu.Unlock()
+		<-ticker.C
+	}
+}
 
 //go:embed doc/openapi.yaml
 var openapiSpec []byte
@@ -557,6 +593,7 @@ func main() {
 	var apiToken string
 	var apiCert string
 	var apiKey string
+	var debugPprof bool
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "path to YAML config")
 	flag.StringVar(&apiListen, "api-listen", "", "HTTPS listen address for admin API")
@@ -564,6 +601,7 @@ func main() {
 	flag.StringVar(&apiToken, "api-token", "", "admin API bearer token")
 	flag.StringVar(&apiCert, "api-cert", "", "TLS certificate for admin API")
 	flag.StringVar(&apiKey, "api-key", "", "TLS key for admin API")
+	flag.BoolVar(&debugPprof, "debug-pprof", false, "enable pprof debug server on localhost:6060")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
@@ -599,7 +637,17 @@ func main() {
 	current.geo = gr
 	current.mu.Unlock()
 
+	go sampleMemStats()
 	startListeners(rt, cfg, cfg.MaxWorkers)
+
+	if debugPprof {
+		go func() {
+			log.Printf("pprof listening on %s", "localhost:6060")
+			if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+				log.Printf("pprof: %v", err)
+			}
+		}()
+	}
 
 	if apiListen != "" && apiCert != "" && apiKey != "" {
 		mux := http.NewServeMux()
@@ -985,19 +1033,32 @@ func checkAuth(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func runtimeData(status bool) map[string]interface{} {
-	m := new(runtime.MemStats)
-	runtime.ReadMemStats(m)
+	statsMu.RLock()
+	var mem runtime.MemStats
+	if n := len(memStatsRecent); n > 0 {
+		mem = memStatsRecent[n-1]
+	}
+	ms := make([]runtime.MemStats, len(memStatsRecent))
+	copy(ms, memStatsRecent)
+	lats := make([]float64, len(latencyRecent))
+	for i, d := range latencyRecent {
+		lats[i] = float64(d) / float64(time.Millisecond)
+	}
+	statsMu.RUnlock()
+
 	vars := map[string]string{}
 	expvar.Do(func(kv expvar.KeyValue) {
 		vars[kv.Key] = kv.Value.String()
 	})
 	res := map[string]interface{}{
-		"goroutines": runtime.NumGoroutine(),
-		"cgo_calls":  runtime.NumCgoCall(),
-		"num_cpu":    runtime.NumCPU(),
-		"memstats":   m,
-		"expvar":     vars,
-		"uptime":     time.Since(startTime).Seconds(),
+		"goroutines":      runtime.NumGoroutine(),
+		"cgo_calls":       runtime.NumCgoCall(),
+		"num_cpu":         runtime.NumCPU(),
+		"memstats":        mem,
+		"memstats_recent": ms,
+		"latency_ms":      lats,
+		"expvar":          vars,
+		"uptime":          time.Since(startTime).Seconds(),
 	}
 	if status {
 		res["status"] = "ok"
@@ -1253,8 +1314,10 @@ func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
 		}
 		records := a.axfrRecords()
 		rrset := append([]dns.RR{soa}, records...)
+		records = nil
 		rrset = append(rrset, soa)
 		ch <- &dns.Envelope{RR: rrset}
+		rrset = nil
 		close(ch)
 	}()
 	if err := tr.Out(w, r, ch); err != nil {
@@ -1339,7 +1402,9 @@ func (a *authority) axfrRecords() []dns.RR {
 		}
 		rrs = append(rrs, &dns.NAPTR{Hdr: hdr(name, dns.TypeNAPTR, ttl), Order: n.Order, Preference: n.Preference, Flags: n.Flags, Service: n.Services, Regexp: n.Regexp, Replacement: ensureDot(n.Replacement)})
 	}
-	return rrs
+	out := rrs
+	rrs = nil
+	return out
 }
 
 func clientIP(w dns.ResponseWriter, r *dns.Msg) net.IP {
@@ -2393,6 +2458,7 @@ func probeAny(ctx context.Context, ips []string, hc HealthConfig) bool {
 			return true
 		}
 	}
+	ips = nil
 	return false
 }
 
