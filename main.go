@@ -6,7 +6,11 @@ import (
 	"crypto/hmac"
 	crand "crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
+	_ "embed"
+	"encoding/json"
+	"expvar"
 	"flag"
 	"fmt"
 	"io"
@@ -536,27 +540,39 @@ var (
 		auths map[string]*authority // by zone name (fqdn)
 		geo   *geoResolver
 	}
+	adminAPIToken string
+	startTime     = time.Now()
 )
+
+//go:embed doc/openapi.yaml
+var openapiSpec []byte
+
+//go:embed doc/swagger.html
+var swaggerPage []byte
 
 func main() {
 	var cfgPath string
-	var metricsListen string
+	var apiListen string
 	var supervisor string
 	var apiToken string
+	var apiCert string
+	var apiKey string
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "path to YAML config")
-	flag.StringVar(&metricsListen, "metrics-listen", "", "address for metrics listener")
+	flag.StringVar(&apiListen, "api-listen", "", "HTTPS listen address for admin API")
 	flag.StringVar(&supervisor, "supervisor", "", "supervisor notification target")
 	flag.StringVar(&apiToken, "api-token", "", "admin API bearer token")
+	flag.StringVar(&apiCert, "api-cert", "", "TLS certificate for admin API")
+	flag.StringVar(&apiKey, "api-key", "", "TLS key for admin API")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	_ = metricsListen
 	_ = supervisor
-	_ = apiToken
+
+	adminAPIToken = apiToken
 
 	cfg, err := loadConfig(cfgPath)
 	if err != nil {
@@ -584,6 +600,20 @@ func main() {
 	current.mu.Unlock()
 
 	startListeners(rt, cfg, cfg.MaxWorkers)
+
+	if apiListen != "" && apiCert != "" && apiKey != "" {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", healthHandler)
+		mux.HandleFunc("/stats", statsHandler)
+		mux.HandleFunc("/openapi.yaml", openapiHandler)
+		mux.HandleFunc("/swagger/", swaggerHandler)
+		go func() {
+			log.Printf("admin https listening on %s", apiListen)
+			if err := http.ListenAndServeTLS(apiListen, apiCert, apiKey, mux); err != nil {
+				log.Printf("admin https: %v", err)
+			}
+		}()
+	}
 
 	sigc := make(chan os.Signal, 2)
 	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
@@ -935,6 +965,76 @@ func startListeners(rt *router, cfg *Config, workers int) {
 			}
 		}(srv)
 	}
+}
+
+func checkAuth(w http.ResponseWriter, r *http.Request) bool {
+	if adminAPIToken == "" {
+		return true
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	tok := strings.TrimPrefix(auth, "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(tok), []byte(adminAPIToken)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
+func runtimeData(status bool) map[string]interface{} {
+	m := new(runtime.MemStats)
+	runtime.ReadMemStats(m)
+	vars := map[string]string{}
+	expvar.Do(func(kv expvar.KeyValue) {
+		vars[kv.Key] = kv.Value.String()
+	})
+	res := map[string]interface{}{
+		"goroutines": runtime.NumGoroutine(),
+		"cgo_calls":  runtime.NumCgoCall(),
+		"num_cpu":    runtime.NumCPU(),
+		"memstats":   m,
+		"expvar":     vars,
+		"uptime":     time.Since(startTime).Seconds(),
+	}
+	if status {
+		res["status"] = "ok"
+	}
+	return res
+}
+
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAuth(w, r) {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(runtimeData(false))
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAuth(w, r) {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(runtimeData(true))
+}
+
+func openapiHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAuth(w, r) {
+		return
+	}
+	w.Header().Set("Content-Type", "application/yaml")
+	w.Write(openapiSpec)
+}
+
+func swaggerHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAuth(w, r) {
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(swaggerPage)
 }
 
 type udpResponseWriter struct {

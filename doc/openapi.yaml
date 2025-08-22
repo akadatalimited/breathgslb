@@ -1,0 +1,49 @@
+openapi: 3.0.0
+info:
+  title: breathgslb Admin API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Health information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  goroutines:
+                    type: integer
+                  memstats:
+                    type: object
+  /stats:
+    get:
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Runtime statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  goroutines:
+                    type: integer
+                  cgo_calls:
+                    type: integer
+                  num_cpu:
+                    type: integer
+                  memstats:
+                    type: object
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API
