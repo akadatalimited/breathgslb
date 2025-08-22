@@ -550,9 +550,95 @@ var (
 	statsMu        sync.RWMutex
 	memStatsRecent []runtime.MemStats
 	latencyRecent  []time.Duration
+	sup            *supervisor
 )
 
 const statsKeep = 60
+
+type supState struct {
+	Running  bool      `json:"running"`
+	Restarts int       `json:"restarts"`
+	LastExit time.Time `json:"last_exit,omitempty"`
+}
+
+type supervisor struct {
+	mu     sync.RWMutex
+	states map[string]supState
+}
+
+func newSupervisor() *supervisor {
+	return &supervisor{states: make(map[string]supState)}
+}
+
+func (s *supervisor) set(name string, st supState) {
+	s.mu.Lock()
+	s.states[name] = st
+	s.mu.Unlock()
+}
+
+func (s *supervisor) update(name string, running, restarted bool) {
+	s.mu.Lock()
+	st := s.states[name]
+	st.Running = running
+	if restarted {
+		st.Restarts++
+		st.LastExit = time.Now()
+	} else if !running {
+		st.LastExit = time.Now()
+	}
+	s.states[name] = st
+	s.mu.Unlock()
+}
+
+func (s *supervisor) snapshot() map[string]supState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m := make(map[string]supState, len(s.states))
+	for k, v := range s.states {
+		m[k] = v
+	}
+	return m
+}
+
+func (s *supervisor) watch(ctx context.Context, name string, fn func()) {
+	s.mu.Lock()
+	if _, ok := s.states[name]; !ok {
+		s.states[name] = supState{}
+	}
+	s.mu.Unlock()
+	go func() {
+		backoff := time.Second
+		for {
+			s.update(name, true, false)
+			done := make(chan struct{})
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("%s panic: %v", name, r)
+					}
+					close(done)
+				}()
+				fn()
+			}()
+			select {
+			case <-ctx.Done():
+				s.update(name, false, false)
+				return
+			case <-done:
+				if ctx.Err() != nil {
+					s.update(name, false, false)
+					return
+				}
+				s.update(name, false, true)
+				log.Printf("supervisor: %s exited unexpectedly; restarting in %v", name, backoff)
+				time.Sleep(backoff)
+				if backoff < 30*time.Second {
+					backoff *= 2
+				}
+			}
+		}
+	}()
+}
 
 func recordLatency(d time.Duration) {
 	statsMu.Lock()
@@ -626,7 +712,8 @@ func main() {
 	rt.edns.Store(uint32(cfg.EDNSBuf))
 
 	gr := newGeoResolver(cfg.GeoIP)
-	mux, auths := buildMux(cfg, gr)
+	sup = newSupervisor()
+	mux, auths := buildMux(cfg, gr, sup)
 	rt.inner.Store(mux)
 
 	current.mu.Lock()
@@ -855,7 +942,7 @@ func loadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-func buildMux(cfg *Config, gr *geoResolver) (dns.Handler, map[string]*authority) {
+func buildMux(cfg *Config, gr *geoResolver, sup *supervisor) (dns.Handler, map[string]*authority) {
 	mux := dns.NewServeMux()
 	auths := make(map[string]*authority)
 	for _, z := range cfg.Zones {
@@ -872,8 +959,13 @@ func buildMux(cfg *Config, gr *geoResolver) (dns.Handler, map[string]*authority)
 
 		mux.HandleFunc(zname, auth.handle)
 		auths[zname] = auth
-		go auth.healthLoop()
-		go auth.purgeLoop()
+		if sup != nil {
+			sup.watch(ctx, zname+" healthLoop", auth.healthLoop)
+			sup.watch(ctx, zname+" purgeLoop", auth.purgeLoop)
+		} else {
+			go auth.healthLoop()
+			go auth.purgeLoop()
+		}
 		log.Printf("serving zone %s", zname)
 	}
 	return mux, auths
@@ -1060,6 +1152,9 @@ func runtimeData(status bool) map[string]interface{} {
 		"expvar":          vars,
 		"uptime":          time.Since(startTime).Seconds(),
 	}
+	if sup != nil {
+		res["supervisor"] = sup.snapshot()
+	}
 	if status {
 		res["status"] = "ok"
 	}
@@ -1162,8 +1257,8 @@ func reload(cfgPath string) error {
 	setupDefaults(cfg)
 	generateTSIGKeys(cfg)
 
-	newGeo := newGeoResolver(cfg.GeoIP)
-	mux, auths := buildMux(cfg, newGeo)
+       newGeo := newGeoResolver(cfg.GeoIP)
+       mux, auths := buildMux(cfg, newGeo, sup)
 
 	current.mu.Lock()
 	old := current.auths
