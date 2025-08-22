@@ -20,13 +20,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"encoding/base64"
@@ -748,23 +746,7 @@ func main() {
 		}()
 	}
 
-	sigc := make(chan os.Signal, 2)
-	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
-	for {
-		s := <-sigc
-		switch s {
-		case syscall.SIGHUP:
-			if err := reload(cfgPath); err != nil {
-				log.Printf("reload failed: %v", err)
-			} else {
-				log.Printf("reloaded configuration")
-			}
-		case syscall.SIGINT, syscall.SIGTERM:
-			log.Printf("signal %v: shutting down", s)
-			shutdown()
-			return
-		}
-	}
+	handleSignals(cfgPath)
 }
 
 func setupDefaults(cfg *Config) {
