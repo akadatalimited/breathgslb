@@ -62,10 +62,7 @@ func TestDualStackRecords(t *testing.T) {
 	cfg.DNS64Prefix = ""
 	v4addr, v6addr, auths := startDualStackServer(t, cfg, nil)
 	for _, a := range auths {
-		a.state.mu.Lock()
-		a.state.master.v4.up = true
-		a.state.master.v6.up = true
-		a.state.mu.Unlock()
+		a.setMasterUp(true, true)
 	}
 
 	c4 := &dns.Client{Net: "tcp4", Timeout: time.Second}
