@@ -1,0 +1,7 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BreathGSLB]
+"DisplayName"="BreathGSLB"
+"ImagePath"="\"C:\\breathgslb\\breathgslb.exe\" -config \"C:\\breathgslb\\config.yaml\""
+"Start"=dword:00000002
+"Type"=dword:00000010
