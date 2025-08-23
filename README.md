@@ -94,6 +94,8 @@ go build -trimpath -ldflags "-s -w" -o breathgslb.exe
 
 The server relies on Go's `filepath` package, so `C:\` paths are handled correctly.
 
+Service installation examples for systemd, OpenRC, Windows, and macOS are available in [doc/services.md](doc/services.md).
+
 ### Delegate the sub‑zone
 
 In the parent zone (e.g., at HE.net):
