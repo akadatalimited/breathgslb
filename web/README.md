@@ -13,6 +13,10 @@ db:
   dsn: web.db      # for mysql use user:pass@tcp(host:3306)/dbname
 admin:
   email: admin@example.com
+server:
+  interface: eth0      # optional network interface to bind
+  port: 8080
+  ip: 0.0.0.0         # optional explicit IP; overrides interface
 ```
 
 ## Building
@@ -31,6 +35,6 @@ This produces a `web` binary at `web/web`.
 ./web
 ```
 
-The server listens on `:8080` and exposes endpoints for user signup,
+The server listens on the configured `server` address (default `:8080`) and exposes endpoints for user signup,
 verification, license requests, and administrative actions for issuing,
 renewing, and revoking licenses.
