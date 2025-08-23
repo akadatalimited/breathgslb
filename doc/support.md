@@ -4,14 +4,10 @@
 
 | Field | Description |
 |-------|-------------|
-| `build` | Build date tied to the license |
-| `os` | Target operating system |
 | `email` | Licensed contact address |
-| `salt` | Unique value preventing replay |
-| `expiry` | When the license ceases to be valid (`"never"` for perpetual) |
-| `support_expiry` | Date when support coverage ends |
+| `expiry` | License expiry date (defaults to 31 days; `"never"` for perpetual) |
+| `customer_type` | User type such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 | `supported` | Whether support is currently active |
-| `customer_type` | User type such as `community`, `basic`, `pro`, or `enterprise` |
 
 ## Supported vs. unsupported behaviour
 
@@ -25,7 +21,7 @@
 
 - Running modified or unofficial binaries
 - Relying on experimental or undocumented features
-- Operating after `support_expiry`
+- Operating without a valid support contract
 
 ## Support request flow
 
@@ -55,8 +51,7 @@ Visit `http://localhost:8080` to create accounts, request licenses, and file sup
 
 ```sh
 go build ./cmd/licensegen
-./licensegen -email user@example.com -build 2024-05-01 -os linux \
-  -supported -supportExpiry 2025-05-01 -customerType pro
+./licensegen -email user@example.com -expiry 2025-05-01 -customerType pro -supported
 ```
 
 ### licensectl
