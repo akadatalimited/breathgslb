@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"net/smtp"
+	"runtime"
 	"strings"
 )
 
@@ -28,10 +29,26 @@ type licensePayload struct {
 	CustomerType  string `json:"customer_type"`
 }
 
+func baseOS(s string) string {
+	s = strings.ToLower(s)
+	switch {
+	case strings.HasPrefix(s, "linux"):
+		return "linux"
+	case strings.HasPrefix(s, "darwin"):
+		return "darwin"
+	case strings.HasPrefix(s, "windows"):
+		return "windows"
+	case strings.Contains(s, "bsd"):
+		return "bsd"
+	default:
+		return s
+	}
+}
+
 func main() {
 	email := flag.String("email", "", "licensee email")
 	build := flag.String("build", "", "build date (YYYY-MM-DD)")
-	osFlag := flag.String("os", "", "target operating system")
+	osFlag := flag.String("os", "", "target operating system (optional, case-insensitive)")
 	expiry := flag.String("expiry", "never", "license expiry (YYYY-MM-DD or 'never')")
 	supportExpiry := flag.String("supportExpiry", "", "support expiry (YYYY-MM-DD)")
 	customerType := flag.String("customerType", "", "customer type")
@@ -41,8 +58,8 @@ func main() {
 	from := flag.String("from", "", "from email address")
 	flag.Parse()
 
-	if strings.TrimSpace(*email) == "" || strings.TrimSpace(*build) == "" || strings.TrimSpace(*osFlag) == "" {
-		log.Fatal("email, build, and os flags are required")
+	if strings.TrimSpace(*email) == "" || strings.TrimSpace(*build) == "" {
+		log.Fatal("email and build flags are required")
 	}
 	if *supported && strings.TrimSpace(*supportExpiry) == "" {
 		log.Fatal("supportExpiry required when supported is true")
@@ -60,9 +77,15 @@ func main() {
 	}
 	salt := hex.EncodeToString(saltBytes)
 
+	osVal := *osFlag
+	if strings.TrimSpace(osVal) == "" {
+		osVal = runtime.GOOS
+	}
+	osVal = baseOS(osVal)
+
 	lp := licensePayload{
 		Build:         *build,
-		OS:            *osFlag,
+		OS:            osVal,
 		Email:         *email,
 		Salt:          salt,
 		Expiry:        *expiry,
