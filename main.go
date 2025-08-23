@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"expvar"
 	"flag"
@@ -38,7 +39,6 @@ import (
 var version string
 var buildOS string
 var buildDate string
-var licensePayloadBytes []byte
 
 func init() {
 	version = strings.TrimSpace(version)
@@ -501,6 +501,7 @@ func main() {
 	var showHelp bool
 	var showAbout bool
 	var supportReq bool
+	var licensePayload string
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "path to YAML config")
 	flag.StringVar(&cfgPath, "c", "config.yaml", "path to YAML config")
@@ -516,6 +517,8 @@ func main() {
 	flag.StringVar(&apiKey, "ak", "", "TLS key for admin API")
 	flag.StringVar(&activateKey, "activate", "", "activate license with provided key and exit")
 	flag.StringVar(&activateKey, "k", "", "activate license with provided key and exit")
+	flag.StringVar(&licensePayload, "license-payload", "", "base64-encoded license payload")
+	flag.StringVar(&licensePayload, "lp", "", "base64-encoded license payload")
 	flag.BoolVar(&debugPprof, "debug-pprof", false, "enable pprof debug server on localhost:6060")
 	flag.BoolVar(&debugPprof, "d", false, "enable pprof debug server on localhost:6060")
 	flag.BoolVar(&showHelp, "help", false, "returns help for BreathGSLB")
@@ -536,6 +539,7 @@ func main() {
 		fmt.Fprint(flag.CommandLine.Output(), "-d --debug-pprof\nenable pprof debug server on localhost:6060\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-s --supervisor string\nsupervisor notification target\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-k --activate string\nactivate license with provided key and exit\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-lp --license-payload string\nbase64-encoded license payload\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-sr --support-request\ncreate a support request and exit\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-h --help\nreturns help for BreathGSLB\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-a --about\nreturns a detailed about page\n")
@@ -549,6 +553,14 @@ func main() {
 	if showAbout {
 		fmt.Print(aboutText())
 		return
+	}
+
+	if licensePayload == "" {
+		log.Fatalf("license payload required")
+	}
+	licensePayloadBytes, err := base64.StdEncoding.DecodeString(licensePayload)
+	if err != nil {
+		log.Fatalf("decode license payload: %v", err)
 	}
 
 	if activateKey != "" {
