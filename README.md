@@ -125,6 +125,25 @@ correctly.
 Service installation examples for systemd, OpenRC, Windows, and macOS are
 available in [doc/services.md](doc/services.md).
 
+### License generator
+
+An optional CLI can generate encrypted license payloads. Build it separately
+with the `tools` tag:
+
+```sh
+go build -tags tools ./cmd/licensegen
+```
+
+It may also be run without producing a binary:
+
+```sh
+go run -tags tools ./cmd/licensegen -email user@example.com -build 2024-01-02 -os linux
+```
+
+Compiling `license.go` by itself will error because it depends on build-time
+variables defined in `main.go`; build the entire server or the tool as shown
+above.
+
 ### Delegate the sub‑zone
 
 In the parent zone (e.g., at HE.net):

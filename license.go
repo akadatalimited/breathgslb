@@ -1,5 +1,9 @@
 package main
 
+// buildOS and buildDate are injected by main.go via ldflags when the full
+// server is compiled. Building this file standalone (e.g. `go build license.go`)
+// will fail due to the missing symbols.
+
 import (
 	"crypto/aes"
 	"crypto/cipher"
