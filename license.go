@@ -35,6 +35,9 @@ func validateLicense(key string, payload []byte) error {
 	if len(k) != 32 {
 		return fmt.Errorf("invalid key length")
 	}
+	if len(payload) == 0 {
+		return fmt.Errorf("license payload missing")
+	}
 	block, err := aes.NewCipher(k)
 	if err != nil {
 		return err
