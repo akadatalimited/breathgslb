@@ -8,3 +8,10 @@ server:
   interface: "" # network interface to bind (optional)
   port: 8080
   ip: ""       # explicit IP to bind (optional)
+email:
+  mode: smtp # or "gmail"
+  smtp:
+    server: smtp.example.com:587
+    username: user@example.com
+    password: secret
+    from: noreply@example.com

@@ -18,6 +18,13 @@ server:
   interface: eth0      # optional network interface to bind
   port: 8080
   ip: 0.0.0.0         # optional explicit IP; overrides interface
+email:
+  mode: smtp          # or "gmail"
+  smtp:
+    server: smtp.example.com:587
+    username: user@example.com
+    password: secret
+    from: noreply@example.com
 ```
 
 Generate a bcrypt hash for the admin password and place it in
@@ -38,6 +45,17 @@ EOF
 ```
 
 Then copy the printed hash into `config.yaml`.
+
+### Email Modes
+
+When `email.mode` is set to `smtp` and `email.smtp` is populated, the
+server sends mail using the provided SMTP server. The license key is
+attached as a file when applicable.
+
+Setting `email.mode` to `gmail` disables SMTP and instead returns a
+Gmail compose URL to the admin interface. License keys are also
+returned in the HTTP response as downloadable files so they can be
+manually attached to the Gmail message.
 
 ## Building
 

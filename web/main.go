@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -9,8 +10,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/smtp"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -33,6 +37,15 @@ type Config struct {
 		Port      int    `yaml:"port"`
 		IP        string `yaml:"ip"`
 	} `yaml:"server"`
+	Email struct {
+		Mode string `yaml:"mode"`
+		SMTP struct {
+			Server   string `yaml:"server"`
+			Username string `yaml:"username,omitempty"`
+			Password string `yaml:"password,omitempty"`
+			From     string `yaml:"from,omitempty"`
+		} `yaml:"smtp,omitempty"`
+	} `yaml:"email"`
 }
 
 var (
@@ -124,8 +137,36 @@ func generateToken() string {
 	return hex.EncodeToString(b)
 }
 
-func sendEmail(to, subject, body string) {
-	log.Printf("send email to %s: %s\n%s", to, subject, body)
+func sendEmail(to, subject, body string, attachment []byte) (string, error) {
+	if cfg.Email.Mode == "smtp" && cfg.Email.SMTP.Server != "" {
+		addr := cfg.Email.SMTP.Server
+		host := strings.Split(addr, ":")[0]
+		var msg bytes.Buffer
+		msg.WriteString(fmt.Sprintf("From: %s\r\n", cfg.Email.SMTP.From))
+		msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
+		msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+		msg.WriteString("MIME-Version: 1.0\r\n")
+		if attachment != nil {
+			boundary := "mixedboundary"
+			msg.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=%q\r\n\r\n", boundary))
+			msg.WriteString("--" + boundary + "\r\n")
+			msg.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+			msg.WriteString(body + "\r\n")
+			msg.WriteString("--" + boundary + "\r\n")
+			msg.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+			msg.WriteString("Content-Disposition: attachment; filename=\"license.txt\"\r\n\r\n")
+			msg.Write(attachment)
+			msg.WriteString("\r\n--" + boundary + "--\r\n")
+		} else {
+			msg.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+			msg.WriteString(body + "\r\n")
+		}
+		auth := smtp.PlainAuth("", cfg.Email.SMTP.Username, cfg.Email.SMTP.Password, host)
+		return "", smtp.SendMail(addr, auth, cfg.Email.SMTP.From, []string{to}, msg.Bytes())
+	}
+	url := fmt.Sprintf("https://mail.google.com/mail/?view=cm&to=%s&su=%s&body=%s", url.QueryEscape(to), url.QueryEscape(subject), url.QueryEscape(body))
+	log.Printf("gmail compose URL: %s", url)
+	return url, nil
 }
 
 func signupHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +177,9 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sendEmail(email, "Verify your account", fmt.Sprintf("Visit /verify?token=%s", token))
+	if _, err := sendEmail(email, "Verify your account", fmt.Sprintf("Visit /verify?token=%s", token), nil); err != nil {
+		log.Printf("sendEmail: %v", err)
+	}
 	fmt.Fprintln(w, "verification email sent")
 }
 
@@ -249,8 +292,15 @@ func requestLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sendEmail(c.Value, "Your license key", key)
-	fmt.Fprintln(w, key)
+	if urlStr, err := sendEmail(c.Value, "Your license key", key, []byte(key)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if urlStr != "" {
+		w.Header().Set("X-Email-URL", urlStr)
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"license.txt\"")
+	fmt.Fprint(w, key)
 }
 
 func resendLicenseHandler(w http.ResponseWriter, r *http.Request) {
@@ -262,8 +312,15 @@ func resendLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sendEmail(c.Value, "Your license key", k)
-	fmt.Fprintln(w, "resent")
+	if urlStr, err := sendEmail(c.Value, "Your license key", k, []byte(k)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if urlStr != "" {
+		w.Header().Set("X-Email-URL", urlStr)
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"license.txt\"")
+	fmt.Fprint(w, k)
 }
 
 func adminAccountsHandler(w http.ResponseWriter, r *http.Request) {
@@ -298,8 +355,15 @@ func adminIssueLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sendEmail(email, "Your license key", key)
-	fmt.Fprintln(w, key)
+	if urlStr, err := sendEmail(email, "Your license key", key, []byte(key)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if urlStr != "" {
+		w.Header().Set("X-Email-URL", urlStr)
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"license.txt\"")
+	fmt.Fprint(w, key)
 }
 
 func adminRenewLicenseHandler(w http.ResponseWriter, r *http.Request) {
@@ -338,8 +402,15 @@ func adminRenewLicenseHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	sendEmail(email, "Your license has been renewed", key)
-	fmt.Fprintln(w, key)
+	if urlStr, err := sendEmail(email, "Your license has been renewed", key, []byte(key)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if urlStr != "" {
+		w.Header().Set("X-Email-URL", urlStr)
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"license.txt\"")
+	fmt.Fprint(w, key)
 }
 
 func adminResendLicenseHandler(w http.ResponseWriter, r *http.Request) {
@@ -360,8 +431,15 @@ func adminResendLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		key = newKey
 	}
-	sendEmail(email, "Your license key", key)
-	fmt.Fprintln(w, key)
+	if urlStr, err := sendEmail(email, "Your license key", key, []byte(key)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if urlStr != "" {
+		w.Header().Set("X-Email-URL", urlStr)
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"license.txt\"")
+	fmt.Fprint(w, key)
 }
 
 func adminRevokeLicenseHandler(w http.ResponseWriter, r *http.Request) {
@@ -377,7 +455,10 @@ func adminRevokeLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sendEmail(email, "Your license has been revoked", key)
+	if _, err := sendEmail(email, "Your license has been revoked", key, []byte(key)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	fmt.Fprintln(w, "revoked")
 }
 
