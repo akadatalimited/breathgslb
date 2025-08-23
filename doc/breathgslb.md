@@ -9,11 +9,55 @@ Service definitions for common init systems are under `services/`. Use the syste
 ## Full Option Reference
 Configuration keys allow fine‑grained control of behaviour including boolean toggles, interface lists, domain mappings, A/AAAA answers and zone types. The next appendix reproduces the full configuration manual derived from the `breathgslb.conf(5)` man page.
 
-## DNS64 Explanation
-When `dns64_prefix` is set, the server can synthesise AAAA records from A responses so IPv6‑only clients can reach IPv4 services. This follows RFC 6147 and applies only to zones where no AAAA records are defined.
+## DNS64 and NAT64
+Setting `dns64_prefix` enables DNS64 as defined in RFC 6147. When an IPv6‑only
+client asks for a AAAA record and none exist, BreathGSLB embeds the IPv4 A
+answer into the prefix and returns a synthetic AAAA. The client then connects
+through a NAT64 gateway to reach the legacy service.
+
+```
+[IPv6 client] --AAAA?--> [BreathGSLB DNS64] --A?--> [IPv4 server]
+                 <--AAAA--                  <--A--
+```
+
+This allows modern IPv6 networks to continue using IPv4‑only applications
+without assigning new public addresses.
 
 ## RFC1918 & ULA Addressing, Split-Horizon Design
-Private IPv4 space (RFC1918) and IPv6 Unique Local Addresses allow internal deployments without leaking routes to the public Internet. Split‑horizon DNS can present different answers internally and externally by serving separate zones or views.
+
+### Local vs. Global Routing
+RFC1918 defines private IPv4 ranges (10/8, 172.16/12, 192.168/16) that must
+never appear on the public Internet. IPv6 offers Unique Local Addresses (ULAs)
+under `fc00::/7` (commonly `fd00::/8`) which are likewise kept local but can be
+generated with globally unique prefixes. Publicly routable services should use
+global IPv6 and non‑RFC1918 IPv4 addresses; internal‑only hosts should reside in
+RFC1918 or ULA space.
+
+### Prioritising Internal Addresses
+Split‑horizon deployments run separate internal and external views. In the
+internal view, place private or ULA addresses before public ones so clients stay
+on local networks whenever possible:
+
+```
+a_master_private:
+  - 10.0.0.10
+  - 10.0.0.11
+a_master:
+  - 203.0.113.10
+
+ula_master:
+  - fd00:1::10
+aaaa_master:
+  - 2001:db8::10
+```
+
+```
+internal client -> resolver -> 10.0.0.10, 203.0.113.10
+                 (prefers first, remains on LAN)
+```
+
+External views omit the private records, ensuring global users only see
+publicly routable addresses.
 
 ## API & TSIG Key Creation/Rotation
 The optional HTTPS API exposes health and statistics endpoints. TSIG keys placed in the configured key directory enable signed zone transfers. Rotate keys by writing new key files and reloading the server; old keys can then be removed once slaves update.
@@ -52,6 +96,19 @@ live health checks.  It serves normal DNS records while optionally
 synthesising AAAA from A via DNS64.  The daemon listens on UDP and TCP for
 both IPv4 and IPv6 and can expose an HTTPS admin API for health and
 statistics.
+# DNS64
+When no AAAA record exists for a name,
+**breathgslb**
+can synthesise one from an A record using the configured
+**dns64_prefix .**
+The IPv4 address is embedded into the prefix and returned to the
+client, allowing an IPv6‑only host to reach a legacy IPv4 service via
+an external NAT64 gateway.
+
+Client AAAA?  -> BreathGSLB ->  A?   -> IPv4 server
+       <- AAAA   DNS64      <-  A   <-
+This bridges IPv6‑only networks to IPv4 infrastructure without exposing
+new public addresses.
 # OPTIONS
 ## -config " " file
 Path to the YAML configuration file.  Defaults to
@@ -277,6 +334,18 @@ and
 ## rawip
 **protocol**
 number to send.
+# DNS64
+When
+**dns64_prefix**
+is configured, the server synthesises AAAA responses from A records in
+zones lacking native IPv6. The IPv4 address is mapped into the prefix and
+returned to the client, which then connects through a NAT64 gateway to
+reach the IPv4-only endpoint.
+
+IPv6 client -> AAAA? -> breathgslb DNS64 -> A? -> IPv4 host
+             <- AAAA  <-             <- A  <-
+This enables IPv6-only networks to consume services that have not yet been
+modernised for dual stack.
 # DNSSEC
 The optional
 **dnssec**
@@ -348,6 +417,17 @@ openssl (1)
 or a certificate authority.  Rotate TLS material by replacing the
 underlying files and updating a stable symlink before reloading the
 service.
+# RFC1918 AND ULA
+Private IPv4 ranges defined by RFC1918
+(10/8, 172.16/12, 192.168/16) are never routed on the public Internet.
+IPv6 uses Unique Local Addresses under
+**fc00::/7**
+(typically
+**fd00::/8)**
+for the same purpose. ULAs are globally unique when generated with a
+random 40‑bit prefix yet remain local by policy. Use public addresses for
+globally reachable services and reserve RFC1918/ULA space for internal
+hosts.
 # SPLIT HORIZON
 For internal and external views run separate daemon instances with
 different configuration files and listening addresses.  Provide
@@ -359,6 +439,22 @@ lists while keeping public addresses in
 **a_master**
 and
 **aaaa_master .**
+Place private or ULA addresses first so clients prefer local paths before
+falling back to globals. Example:
+
+a_master_private:
+  - 10.0.0.10
+  - 10.0.0.11
+a_master:
+  - 203.0.113.10
+
+ula_master:
+  - fd00:1::10
+aaaa_master:
+  - 2001:db8::10
+
+internal client -> resolver -> 10.0.0.10, 203.0.113.10
+                 (prefers first, stays on LAN)
 Shared TSIG keys allow signed transfers between views.
 # FILES
 ## /etc/breathgslb/config.yaml
