@@ -592,3 +592,57 @@ is not a recursive resolver and should not be exposed as such.
 Keep TTLs conservative during early testing, and raise them once behaviour is
 stable.
 
+---
+
+## Licensing & Support
+
+BreathGSLB uses a simple license payload to gate features and track support
+contracts. Each license contains the following fields:
+
+| Field          | Purpose |
+| -------------- | ------- |
+| `build`        | Build date the license was issued for |
+| `os`           | Target operating system |
+| `email`        | Contact for the licensed user |
+| `expiry`       | When the license itself expires (or `"never"`) |
+| `support_expiry` | Date after which support is no longer available |
+| `supported`    | `true` when a support contract is active |
+| `customer_type` | User type such as `community`, `basic`, or `enterprise` |
+
+### Supported behaviour
+
+Help is provided for official binaries and documented configuration on
+supported platforms. Running modified code, straying outside documented
+behaviour, or operating past `support_expiry` is outside the support scope.
+
+### Requesting support
+
+1. Verify your status with `licensectl -db path list`.
+2. If support is active, open a ticket via the web service or email
+   `support@example.com`.
+3. Include logs, configuration, and the output of `licensectl` in the request.
+
+### Web interface and CLI tools
+
+Build the management tools and web interface from the repository root:
+
+```sh
+go build ./web              # license web service on :8080
+go build ./cmd/licensegen   # issue new license payloads
+go build ./cmd/licensectl   # list/revoke/regen keys
+```
+
+Run `./web` and visit `http://localhost:8080` to manage accounts and licenses.
+Use `licensegen` to create payloads and `licensectl` to manage stored keys.
+
+### Support tiers (pricing placeholders)
+
+| Tier       | Annual price |
+|------------|--------------|
+| Community  | $0 |
+| Basic      | $X |
+| Pro        | $Y |
+| Enterprise | $Z |
+
+See [doc/support.md](doc/support.md) for full details.
+
