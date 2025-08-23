@@ -16,6 +16,19 @@ live health checks.  It serves normal DNS records while optionally
 synthesising AAAA from A via DNS64.  The daemon listens on UDP and TCP for
 both IPv4 and IPv6 and can expose an HTTPS admin API for health and
 statistics.
+# DNS64
+When no AAAA record exists for a name,
+**breathgslb**
+can synthesise one from an A record using the configured
+**dns64_prefix .**
+The IPv4 address is embedded into the prefix and returned to the
+client, allowing an IPv6‑only host to reach a legacy IPv4 service via
+an external NAT64 gateway.
+
+Client AAAA?  -> BreathGSLB ->  A?   -> IPv4 server
+       <- AAAA   DNS64      <-  A   <-
+This bridges IPv6‑only networks to IPv4 infrastructure without exposing
+new public addresses.
 # OPTIONS
 ## -config " " file
 Path to the YAML configuration file.  Defaults to
