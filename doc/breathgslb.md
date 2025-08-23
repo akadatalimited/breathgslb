@@ -1,13 +1,22 @@
 # BreathGSLB Book
 
 ## Intro & Credits
-BreathGSLB provides a lightweight authoritative DNS server with health‑checked global load balancing. This book collates the manual pages and extended guidance for deployment. Development was initiated by Akadata Limited and benefits from community contributions.
+BreathGSLB provides a lightweight authoritative DNS server with health‑checked
+global load balancing. This book collates the manual pages and extended guidance
+for deployment. Development was initiated by Akadata Limited and benefits from
+community contributions.
 
 ## Per-OS Service Setup
-Service definitions for common init systems are under `services/`. Use the systemd unit on Linux distributions with systemd, the OpenRC script for Alpine and other OpenRC systems, and the Launchd plist for macOS. Each file is ready to install in `/etc` with the provided Makefile targets.
+Service definitions for common init systems are under `services/`. Use the
+systemd unit on Linux distributions with systemd, the OpenRC script for Alpine
+and other OpenRC systems, and the Launchd plist for macOS. Each file is ready to
+install in `/etc` with the provided Makefile targets.
 
 ## Full Option Reference
-Configuration keys allow fine‑grained control of behaviour including boolean toggles, interface lists, domain mappings, A/AAAA answers and zone types. The next appendix reproduces the full configuration manual derived from the `breathgslb.conf(5)` man page.
+Configuration keys allow fine‑grained control of behaviour including boolean
+toggles, interface lists, domain mappings, A/AAAA answers and zone types. The
+next appendix reproduces the full configuration manual derived from the
+`breathgslb.conf(5)` man page.
 
 ## DNS64 and NAT64
 Setting `dns64_prefix` enables DNS64 as defined in RFC 6147. When an IPv6‑only
@@ -60,17 +69,23 @@ External views omit the private records, ensuring global users only see
 publicly routable addresses.
 
 ## API & TSIG Key Creation/Rotation
-The optional HTTPS API exposes health and statistics endpoints. TSIG keys placed in the configured key directory enable signed zone transfers. Rotate keys by writing new key files and reloading the server; old keys can then be removed once slaves update.
+The optional HTTPS API exposes health and statistics endpoints. TSIG keys placed
+in the configured key directory enable signed zone transfers. Rotate keys by
+writing new key files and reloading the server; old keys can then be removed
+once slaves update.
 
 ## Deployment Scenarios
 ### Fast Primary
-Run a fast primary in a region close to your users. Health checks ensure only healthy endpoints are served.
+Run a fast primary in a region close to your users. Health checks ensure only
+healthy endpoints are served.
 
 ### Slow Backup
-A secondary instance on slower infrastructure can act as backup. Configure higher probe intervals so it fails over when the primary is unreachable.
+A secondary instance on slower infrastructure can act as backup. Configure
+higher probe intervals so it fails over when the primary is unreachable.
 
 ### Fallback Server
-A low‑cost fallback can provide minimal answers if both primary and backup fail. Populate zones with limited records and longer TTLs.
+A low‑cost fallback can provide minimal answers if both primary and backup fail.
+Populate zones with limited records and longer TTLs.
 
 ## Command Reference
 The following chapters were generated from the original man pages:
@@ -260,12 +275,12 @@ ALIAS‑style target used when no A or AAAA lists are present.
 Example with IPv4, IPv6, DNS64 and private ranges:
 
 zones:
-  - name: example.net.
-    a_master: ["203.0.113.10"]
-    aaaa_master: ["2001:db8::10"]
-    rfc_master: ["10.0.0.0/8"]
-    ula_master: ["fd00:1234::/48"]
-    dns64_prefix: "64:ff9b::"
+- name: example.net.
+a_master: ["203.0.113.10"]
+aaaa_master: ["2001:db8::10"]
+rfc_master: ["10.0.0.0/8"]
+ula_master: ["fd00:1234::/48"]
+dns64_prefix: "64:ff9b::"
 # GEOGRAPHIC ROUTING
 The optional
 **geoip**
@@ -343,7 +358,7 @@ returned to the client, which then connects through a NAT64 gateway to
 reach the IPv4-only endpoint.
 
 IPv6 client -> AAAA? -> breathgslb DNS64 -> A? -> IPv4 host
-             <- AAAA  <-             <- A  <-
+<- AAAA  <-             <- A  <-
 This enables IPv6-only networks to consume services that have not yet been
 modernised for dual stack.
 # DNSSEC
@@ -443,18 +458,18 @@ Place private or ULA addresses first so clients prefer local paths before
 falling back to globals. Example:
 
 a_master_private:
-  - 10.0.0.10
-  - 10.0.0.11
+- 10.0.0.10
+- 10.0.0.11
 a_master:
-  - 203.0.113.10
+- 203.0.113.10
 
 ula_master:
-  - fd00:1::10
+- fd00:1::10
 aaaa_master:
-  - 2001:db8::10
+- 2001:db8::10
 
 internal client -> resolver -> 10.0.0.10, 203.0.113.10
-                 (prefers first, stays on LAN)
+(prefers first, stays on LAN)
 Shared TSIG keys allow signed transfers between views.
 # FILES
 ## /etc/breathgslb/config.yaml
