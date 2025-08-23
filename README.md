@@ -1,9 +1,12 @@
 # BreathGSLB
 
-A compact, authoritative, health‑checked GSLB that answers A/AAAA based on live endpoint status, while also serving everyday 
-DNS records (TXT, MX, CAA, RP, SSHFP, SRV, NAPTR) and an optional ALIAS/ANAME‑like apex.
+A compact, authoritative, health‑checked GSLB that answers A/AAAA based on live
+endpoint status, while also serving everyday
+DNS records (TXT, MX, CAA, RP, SSHFP, SRV, NAPTR) and an optional
+ALIAS/ANAME‑like apex.
 
-> Goal: keep traffic on the big box with capacity when it’s healthy, fail over to the reliable box when it’s not. 
+> Goal: keep traffic on the big box with capacity when it’s healthy, fail over
+to the reliable box when it’s not.
 Minimal moving parts, RFC‑sane answers.
 
 ---
@@ -21,12 +24,17 @@ caught before runtime.
 
 Often there are two places to run a site:
 
-* a smaller host with near‑perfect uptime but limited CPU, RAM, or bandwidth; and
+* a smaller host with near‑perfect uptime but limited CPU, RAM, or bandwidth;
+  and
 * a larger host with plenty of headroom but a shakier last‑mile or ISP.
 
-BreathGSLB lets the zone apex serve the “best” A/AAAA only when the capacity host is passing health checks; otherwise the reliable host’s A/AAAA are returned. 
-Flap damping (rise/fall counters), cooldown, and jitter keep answers steady instead of chattering during short blips. At the same time, 
-the zone can publish normal records (TXT/MX/CAA/RP/SSHFP/SRV/NAPTR) so the sub‑zone is fully useful, not just a raw IP switch.
+BreathGSLB lets the zone apex serve the “best” A/AAAA only when the capacity
+host is passing health checks; otherwise the reliable host’s A/AAAA are
+returned.
+Flap damping (rise/fall counters), cooldown, and jitter keep answers steady
+instead of chattering during short blips. At the same time,
+the zone can publish normal records (TXT/MX/CAA/RP/SSHFP/SRV/NAPTR) so the
+sub‑zone is fully useful, not just a raw IP switch.
 
 DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 
@@ -34,20 +42,25 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 
 ## Documentation
 
-A combined manual and deployment guide is available as [doc/breathgslb.pdf](doc/breathgslb.pdf). Release archives also include this PDF for offline reference.
+A combined manual and deployment guide is available as
+[doc/breathgslb.pdf](doc/breathgslb.pdf). Release archives also include this PDF
+for offline reference.
 
 ---
 
 ## Features
 
 * **Authoritative only** for delegated sub‑zones (no recursion).
-* **Health‑based A/AAAA** at the apex: direct HTTPS checks to literal IPs with SNI/Host header.
-* **Flap damping**: rise/fall thresholds, **cooldown** window, and per‑check **jitter**.
+* **Health‑based A/AAAA** at the apex: direct HTTPS checks to literal IPs with
+  SNI/Host header.
+* **Flap damping**: rise/fall thresholds, **cooldown** window, and per‑check
+  **jitter**.
 * **Shared records**: TXT, MX, CAA, RP, SSHFP, SRV, NAPTR.
 * **ALIAS/ANAME‑like apex** synth when no A/AAAA lists are set.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
-* **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS, Windows, \*BSD).
+* **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS,
+  Windows, \*BSD).
 * **DNS64 synthesis** lets IPv6‑only clients reach IPv4‑only zones.
 
 
@@ -55,9 +68,14 @@ A combined manual and deployment guide is available as [doc/breathgslb.pdf](doc/
 
 ## How it works
 
-1. Parent zone delegates a sub‑zone (e.g., `gslb-sitetest.akadata.ltd.`) to `ns-gslb.akadata.ltd.` with glue.
+1. Parent zone delegates a sub‑zone (e.g., `gslb-sitetest.akadata.ltd.`) to `ns-
+   gslb.akadata.ltd.` with glue.
 2. BreathGSLB runs as an authoritative server for that sub‑zone only.
-3. A/AAAA at the **apex** come from either the **healthy** set or the **fallback** set. Health is checked per IP using probes such as HTTP/HTTPS, HTTP/3, TCP, UDP, ICMP, or raw IP protocols, with optional body `expect` matching. If only A records exist, IPv6 clients receive synthesized AAAA answers via DNS64.
+3. A/AAAA at the **apex** come from either the **healthy** set or the
+   **fallback** set. Health is checked per IP using probes such as HTTP/HTTPS,
+   HTTP/3, TCP, UDP, ICMP, or raw IP protocols, with optional body `expect`
+   matching. If only A records exist, IPv6 clients receive synthesized AAAA
+   answers via DNS64.
 4. Rise/fall thresholds, cooldown, and jitter prevent rapid oscillation.
 5. Other record types are served as configured.
 
@@ -89,18 +107,23 @@ install -m 0755 breathgslb /usr/local/bin/breathgslb
 setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
 ```
 
-macOS/Windows/\*BSD: build with Go. If binding to port 53 is restricted, either run elevated or use a higher port (e.g. `:5353`) and front with a system‑specific port forward.
+macOS/Windows/\*BSD: build with Go. If binding to port 53 is restricted, either
+run elevated or use a higher port (e.g. `:5353`) and front with a
+system‑specific port forward.
 
-On Windows, paths use the native `C:` style. Build the executable and point to a configuration file with Windows separators:
+On Windows, paths use the native `C:` style. Build the executable and point to a
+configuration file with Windows separators:
 
 ```powershell
 go build -trimpath -ldflags "-s -w" -o breathgslb.exe
 ./breathgslb.exe -config C:\breathgslb\config.yaml
 ```
 
-The server relies on Go's `filepath` package, so `C:\` paths are handled correctly.
+The server relies on Go's `filepath` package, so `C:\` paths are handled
+correctly.
 
-Service installation examples for systemd, OpenRC, Windows, and macOS are available in [doc/services.md](doc/services.md).
+Service installation examples for systemd, OpenRC, Windows, and macOS are
+available in [doc/services.md](doc/services.md).
 
 ### Delegate the sub‑zone
 
@@ -119,14 +142,22 @@ TTL 300–900 is fine during testing.
 On each origin, Nginx can respond:
 
 ```nginx
-location = /health { access_log off; default_type text/plain; return 200 "OK\n"; }
+location = /health {
+  access_log off;
+  default_type text/plain;
+  return 200 "OK\n";
+}
 ```
 
-Use valid TLS for the hostname being checked; during bootstrap, `insecure_tls: true` is acceptable temporarily.
+Use valid TLS for the hostname being checked; during bootstrap, `insecure_tls:
+true` is acceptable temporarily.
 
 ### Admin API
 
-An optional HTTPS admin API serves health and runtime statistics. It can be enabled either by supplying `-api-*` flags or by setting `api` options in `config.yaml`. Detailed cross-platform instructions are available in [doc/api.md](doc/api.md).
+An optional HTTPS admin API serves health and runtime statistics. It can be
+enabled either by supplying `-api-*` flags or by setting `api` options in
+`config.yaml`. Detailed cross-platform instructions are available in
+[doc/api.md](doc/api.md).
 
 ---
 
@@ -140,9 +171,11 @@ breathgslb -config /etc/breathgslb/config.yaml \
   -supervisor /var/run/breathgslb.sock
 ```
 
-Add `-debug-pprof` to expose Go pprof handlers on `localhost:6060` for deep inspection.
+Add `-debug-pprof` to expose Go pprof handlers on `localhost:6060` for deep
+inspection.
 
-Sample configuration files and a full option reference are available in the [`doc`](doc) directory.
+Sample configuration files and a full option reference are available in the
+[`doc`](doc) directory.
 
 ### Global
 
@@ -188,7 +221,8 @@ zones:
       path:        "/health"
       expect:      "OK"
       insecure_tls: false
-    # other kinds: http3, tcp (tls_enable:true, alpn: h2), udp, rawip (protocol: 47)
+    # other kinds: http3, tcp (tls_enable:true, alpn: h2), udp, rawip (protocol:
+    # 47)
 
     # Shared records (examples)
     txt:
@@ -236,20 +270,25 @@ zones:
         ttl: 60
 ```
 
-Supported `health.kind` values: `http`, `http3` (QUIC), `tcp`, `udp`, `icmp`, and `rawip`.
+Supported `health.kind` values: `http`, `http3` (QUIC), `tcp`, `udp`, `icmp`,
+and `rawip`.
 Use `kind: tcp` with `tls_enable: true` and `alpn: "h2"` for HTTP/2 checks.
 The optional `expect` field verifies a substring in the response body.
 `path` defaults to `/health` only for `http` and `http3` probes.
 
 
-**Trailing dots** are required for owner names that are absolute (NS, MX exchanges, SRV targets, NAPTR replacements).
-When `name` is omitted for TXT/MX/CAA/SSHFP/RP, the record is placed at the apex.
+**Trailing dots** are required for owner names that are absolute (NS, MX
+exchanges, SRV targets, NAPTR replacements).
+When `name` is omitted for TXT/MX/CAA/SSHFP/RP, the record is placed at the
+apex.
 
 ---
 
 ## Integration tests
 
-Optional integration tests exercise live zone transfers between BreathGSLB instances. They require a `tests.config` file in the repository root specifying the hosts involved. The file is YAML and ships with commented example values:
+Optional integration tests exercise live zone transfers between BreathGSLB
+instances. They require a `tests.config` file in the repository root specifying
+the hosts involved. The file is YAML and ships with commented example values:
 
 ```yaml
 # zone: example.org.
@@ -261,7 +300,8 @@ Optional integration tests exercise live zone transfers between BreathGSLB insta
 # tester: gslb-tester.breathtechnology.co.uk
 ```
 
-Uncomment and adjust these fields to match your environment. Tests automatically skip when a required host is missing.
+Uncomment and adjust these fields to match your environment. Tests automatically
+skip when a required host is missing.
 
 Run all tests with:
 
@@ -275,16 +315,20 @@ go test ./...
 
 ### ALIAS (apex synth)
 
-If `alias:` is set and no A/AAAA lists are defined, the server resolves the target using the host resolver and returns its A/AAAA at the apex. 
-This is useful when another hostname should drive the addressing but a CNAME at the apex would be illegal.
+If `alias:` is set and no A/AAAA lists are defined, the server resolves the
+target using the host resolver and returns its A/AAAA at the apex.
+This is useful when another hostname should drive the addressing but a CNAME at
+the apex would be illegal.
 
 ### MX/CAA/RP/TXT
 
-Standard static data. MX exchanges must be FQDNs. CAA `issue` and `iodef` common values are shown above. RP publishes a responsible mailbox and a TXT pointer.
+Standard static data. MX exchanges must be FQDNs. CAA `issue` and `iodef` common
+values are shown above. RP publishes a responsible mailbox and a TXT pointer.
 
 ### SSHFP
 
-Publishes SSH host key fingerprints so clients can verify hosts without TOFU prompts.
+Publishes SSH host key fingerprints so clients can verify hosts without TOFU
+prompts.
 
 **How to generate fingerprints:**
 
@@ -294,7 +338,8 @@ Publishes SSH host key fingerprints so clients can verify hosts without TOFU pro
   ssh-keygen -r gslb-sitetest.akadata.ltd -f /etc/ssh/ssh_host_ed25519_key.pub
   ```
 
-  This prints SSHFP lines with algorithm/type and hex. Copy the hex value into `fingerprint:`.
+  This prints SSHFP lines with algorithm/type and hex. Copy the hex value into
+`fingerprint:`.
 * Or list a key and convert:
 
   ```sh
@@ -303,11 +348,13 @@ Publishes SSH host key fingerprints so clients can verify hosts without TOFU pro
 
   Convert base64 SHA256 to hex if needed.
 
-Algorithm numbers: 1=RSA, 2=DSA, 3=ECDSA, 4=Ed25519, 6=Ed448. Type: 1=SHA1, 2=SHA256.
+Algorithm numbers: 1=RSA, 2=DSA, 3=ECDSA, 4=Ed25519, 6=Ed448. Type: 1=SHA1,
+2=SHA256.
 
 ### SRV/NAPTR
 
-Use service labels for SRV owners (e.g., `_sips._tcp.<zone>.`). Targets must be FQDNs with trailing dots. NAPTR can point to SRV owners. 
+Use service labels for SRV owners (e.g., `_sips._tcp.<zone>.`). Targets must be
+FQDNs with trailing dots. NAPTR can point to SRV owners.
 By pointing SRV/NAPTR targets to the apex, GSLB changes flow through naturally.
 
 ---
@@ -316,7 +363,8 @@ By pointing SRV/NAPTR targets to the apex, GSLB changes flow through naturally.
 
 ### Run under a dedicated system user (`breathgslb`)
 
-Create a non‑login service account, pre‑create config/log dirs, and run the daemon as that user.
+Create a non‑login service account, pre‑create config/log dirs, and run the
+daemon as that user.
 
 **Alpine (OpenRC)**
 
@@ -424,19 +472,28 @@ rc-update add breathgslb default
 rc-service breathgslb start
 ```
 
-> Logs also go to stderr; enable `log_syslog` to emit to the local syslog daemon.
+> Logs also go to stderr; enable `log_syslog` to emit to the local syslog
+daemon.
 
 ### Windows service
 
-On Windows (without WSL2), the executable can read configuration files from native `C:` paths. Run an elevated PowerShell to install the service and open firewall ports:
+On Windows (without WSL2), the executable can read configuration files from
+native `C:` paths. Run an elevated PowerShell to install the service and open
+firewall ports:
 
 ```powershell
 go build -trimpath -ldflags "-s -w" -o C:\breathgslb\breathgslb.exe
-New-Service -Name BreathGSLB -BinaryPathName 'C:\breathgslb\breathgslb.exe -config C:\breathgslb\config.yaml' -DisplayName 'BreathGSLB' -StartupType Automatic
+$bin = 'C:\breathgslb\breathgslb.exe -config C:\breathgslb\config.yaml'
+New-Service -Name BreathGSLB `
+  -BinaryPathName $bin `
+  -DisplayName 'BreathGSLB' -StartupType Automatic
 Start-Service BreathGSLB
-netsh advfirewall firewall add rule name="BreathGSLB DNS UDP" dir=in action=allow protocol=UDP localport=53
-netsh advfirewall firewall add rule name="BreathGSLB DNS TCP" dir=in action=allow protocol=TCP localport=53
-netsh advfirewall firewall add rule name="BreathGSLB Metrics" dir=in action=allow protocol=TCP localport=9090
+netsh advfirewall firewall add rule name="BreathGSLB DNS UDP" dir=in `
+  action=allow protocol=UDP localport=53
+netsh advfirewall firewall add rule name="BreathGSLB DNS TCP" dir=in `
+  action=allow protocol=TCP localport=53
+netsh advfirewall firewall add rule name="BreathGSLB Metrics" dir=in `
+  action=allow protocol=TCP localport=9090
 ```
 
 —
@@ -448,8 +505,11 @@ netsh advfirewall firewall add rule name="BreathGSLB Metrics" dir=in action=allo
   ```sh
   setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
   ```
-* **Logs** default to `/var/log/breathgslb/breathgslb.log` and also emit to stderr. On systems without `/var/log` write access, logs fall back to `./breathgslb.log`.
-* **Config changes**: restart the process to apply. (Hot reload can be added later.)
+* **Logs** default to `/var/log/breathgslb/breathgslb.log` and also emit to
+  stderr. On systems without `/var/log` write access, logs fall back to
+  `./breathgslb.log`.
+* **Config changes**: restart the process to apply. (Hot reload can be added
+  later.)
 * **Firewall/SG**: open UDP/TCP 53 on IPv4+IPv6 to the world.
 
 Basic troubleshooting:
@@ -471,8 +531,11 @@ dig +trace gslb-sitetest.akadata.ltd A
   ```sh
   setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
   ```
-* **Logs** default to `/var/log/breathgslb/breathgslb.log` and also emit to stderr. On systems without `/var/log` write access, logs fall back to `./breathgslb.log`.
-* **Config changes**: restart the process to apply. (Hot reload can be added later.)
+* **Logs** default to `/var/log/breathgslb/breathgslb.log` and also emit to
+  stderr. On systems without `/var/log` write access, logs fall back to
+  `./breathgslb.log`.
+* **Config changes**: restart the process to apply. (Hot reload can be added
+  later.)
 * **Firewall/SG**: open UDP/TCP 53 on IPv4+IPv6 to the world.
 
 Basic troubleshooting:
@@ -493,15 +556,20 @@ dig +trace gslb-sitetest.akadata.ltd A
 
 ## Roadmap (next)
 
-* **DNSSEC**: inline signing (ECDSA P‑256), DNSKEY/RRSIG and NSEC3, DS guidance for the parent.
-* **Per‑record GSLB**: extend health‑based logic to selected sub‑names if required.
-* **Weighted/geo policies**: optional weights or locality hints when multiple healthy addresses are present.
+* **DNSSEC**: inline signing (ECDSA P‑256), DNSKEY/RRSIG and NSEC3, DS guidance
+  for the parent.
+* **Per‑record GSLB**: extend health‑based logic to selected sub‑names if
+  required.
+* **Weighted/geo policies**: optional weights or locality hints when multiple
+  healthy addresses are present.
 * **Admin API / SIGHUP reload**: configuration reload and simple metrics.
 
 ---
 
 ## Safety & scope
 
-BreathGSLB is an authoritative nameserver for one or a few delegated zones. It is not a recursive resolver and should not be exposed as such. 
-Keep TTLs conservative during early testing, and raise them once behaviour is stable.
+BreathGSLB is an authoritative nameserver for one or a few delegated zones. It
+is not a recursive resolver and should not be exposed as such.
+Keep TTLs conservative during early testing, and raise them once behaviour is
+stable.
 
