@@ -51,12 +51,15 @@ Visit `http://localhost:8080` to create accounts, request licenses, and file sup
 
 ```sh
 go build ./cmd/licensegen
-./licensegen -email user@example.com -expiry 2025-05-01 -customerType pro -supported
+./licensegen -build 2025-05-01 -type supported -send -from sales@example.com
 ```
 
-The generated `key` should be entered at runtime, while the `payload` must be provided to the server via the `-license-payload` flag or an equivalent build option.
-
-The optional, case-insensitive `-os` flag defaults to the current platform but may be set to issue a license for another operating system.
+The `-type` flag presets expiry and support values (`trial`, `standard`,
+`supported`). Missing fields like email, expiry, and support status are read from
+flags, a JSON `-config` file, or prompted for interactively. When `-send` is
+specified the generated key is emailed to the requester. The optional,
+case-insensitive `-os` flag defaults to the current platform but may be set to
+issue a license for another operating system.
 
 ### licensectl
 
