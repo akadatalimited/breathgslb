@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# BreathGSLB legacy StartupItem script
+#
+. /etc/rc.common
+
+DAEMON=/usr/local/bin/breathgslb
+CONFIG=/usr/local/etc/breathgslb/config.yaml
+LOGFILE=/var/log/breathgslb.log
+PIDFILE=/var/run/breathgslb.pid
+
+StartService()
+{
+    ConsoleMessage "Starting BreathGSLB"
+    ${DAEMON} -config ${CONFIG} >>${LOGFILE} 2>&1 &
+    echo $! >${PIDFILE}
+}
+
+StopService()
+{
+    ConsoleMessage "Stopping BreathGSLB"
+    if [ -f ${PIDFILE} ]; then
+        kill "$(cat ${PIDFILE})" && rm -f ${PIDFILE}
+    else
+        killall breathgslb 2>/dev/null
+    fi
+}
+
+RestartService()
+{
+    StopService
+    StartService
+}
+
+RunService "$1"
