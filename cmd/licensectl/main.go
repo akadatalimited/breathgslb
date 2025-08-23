@@ -1,3 +1,7 @@
+//go:build tools
+// +build tools
+
+// licensectl provides an admin/operator utility for managing license keys.
 package main
 
 import (
@@ -17,10 +21,7 @@ func generateKey() (string, error) {
 	if _, err := rand.Read(keyBytes); err != nil {
 		return "", err
 	}
-	key := base64.StdEncoding.EncodeToString(keyBytes)
-	if len(key) > 32 {
-		key = key[:32]
-	}
+	key := base64.StdEncoding.EncodeToString(keyBytes)[:32]
 	return key, nil
 }
 
