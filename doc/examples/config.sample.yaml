@@ -139,7 +139,8 @@ zones:
       txt:  "contact.akadata.ltd."
       ttl: 900
 
-    # SSHFP examples (owner omitted => apex). Algorithm: 1=RSA,3=ECDSA,4=Ed25519; Type: 1=SHA1,2=SHA256
+    # SSHFP examples (owner omitted => apex).
+    # Algorithm: 1=RSA,3=ECDSA,4=Ed25519; Type: 1=SHA1,2=SHA256
     sshfp:
       - algorithm: 4
         type: 2
