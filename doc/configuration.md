@@ -5,10 +5,7 @@ BreathGSLB is configured via a YAML file. Sample configurations are provided in 
 Typical invocation:
 
 ```
-breathgslb -config /etc/breathgslb/config.yaml \ 
-  -metrics-listen :9090 \ 
-  -supervisor /var/run/breathgslb.sock \ 
-  -api-token $TOKEN
+breathgslb -config /etc/breathgslb/config.yaml
 ```
 
 ## Global Settings
@@ -33,6 +30,12 @@ breathgslb -config /etc/breathgslb/config.yaml \
 | `log_syslog` | bool | Send logs to syslog instead of stderr. |
 | `tsig.path` | string | Directory containing TSIG key files. |
 | `geoip.enabled` | bool | Enable GeoIP lookups. |
+| `api` | bool | Enable HTTPS admin API. |
+| `api-listen` | int | Port for admin API (default 9443). |
+| `api-interface` | string or list[string] | Interface(s) to bind the admin API. |
+| `api-token` | string | Path to file containing bearer token or literal token. |
+| `api-cert` | string | TLS certificate for admin API. |
+| `api-key` | string | TLS key for admin API. |
 
 ### GeoIP Block
 

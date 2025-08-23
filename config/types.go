@@ -102,6 +102,25 @@ type TSIGZoneConfig struct {
 	Keys             []TSIGKey `yaml:"keys,omitempty"`
 }
 
+// StringSlice allows a YAML field to be either a single string or a list.
+type StringSlice []string
+
+func (ss *StringSlice) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		if value.Value != "" {
+			*ss = []string{strings.TrimSpace(value.Value)}
+		}
+	case yaml.SequenceNode:
+		var list []string
+		for _, n := range value.Content {
+			list = append(list, strings.TrimSpace(n.Value))
+		}
+		*ss = list
+	}
+	return nil
+}
+
 // Config is the top-level YAML.
 type Config struct {
 	Listen      string   `yaml:"listen"`
@@ -133,6 +152,13 @@ type Config struct {
 	TSIG *TSIGGlobalConfig `yaml:"tsig,omitempty"`
 
 	GeoIP *GeoIPConfig `yaml:"geoip,omitempty"`
+
+	API          bool        `yaml:"api,omitempty"`
+	APIListen    int         `yaml:"api-listen,omitempty"`
+	APIInterface StringSlice `yaml:"api-interface,omitempty"`
+	APIToken     string      `yaml:"api-token,omitempty"`
+	APICert      string      `yaml:"api-cert,omitempty"`
+	APIKey       string      `yaml:"api-key,omitempty"`
 }
 
 // Shared record types.

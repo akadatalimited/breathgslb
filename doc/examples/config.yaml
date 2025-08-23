@@ -3,6 +3,13 @@ listen: ":53"                     # optional; default port 53 if omitted
 #listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets (overrides interfaces)
 # interfaces: ["enX0"]            # derive IPs from interface(s) and bind there
 
+api: true
+api-listen: 9443
+api-interface: ["eth0"]
+api-token: "/etc/breathgslb/token"       # Windows: C:\breathgslb\token
+api-cert: "/etc/breathgslb/cert.pem"     # Windows: C:\breathgslb\cert.pem
+api-key: "/etc/breathgslb/key.pem"       # Windows: C:\breathgslb\key.pem
+
 reverse_dir: "reverse_zones"      # where generated reverse zones are written
 
 timeout_sec: 3                # per health probe

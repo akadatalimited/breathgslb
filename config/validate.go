@@ -19,6 +19,11 @@ func ValidateConfig(cfg *Config) error {
 	if err := validatePersistenceMode(cfg.PersistenceMode); err != nil {
 		return fmt.Errorf("persistence_mode: %w", err)
 	}
+	if cfg.API {
+		if cfg.APIListen == 0 || cfg.APIToken == "" || cfg.APICert == "" || cfg.APIKey == "" {
+			return fmt.Errorf("api enabled but api-listen, api-token, api-cert, and api-key must be set")
+		}
+	}
 	for i := range cfg.Zones {
 		if err := ValidateZone(&cfg.Zones[i]); err != nil {
 			return fmt.Errorf("zone %q: %w", cfg.Zones[i].Name, err)

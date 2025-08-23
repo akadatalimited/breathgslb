@@ -1,6 +1,12 @@
 # breathgslb global settings
 listen: ":53"                 # port only; server binds udp4/udp6/tcp4/tcp6 automatically
 reverse_dir: "reverse_zones"   # directory for generated reverse zones
+api: true
+api-listen: 9443
+api-interface: ["eth0"]
+api-token: "/etc/breathgslb/token"       # Windows: C:\breathgslb\token
+api-cert: "/etc/breathgslb/cert.pem"     # Windows: C:\breathgslb\cert.pem
+api-key: "/etc/breathgslb/key.pem"       # Windows: C:\breathgslb\key.pem
 timeout_sec: 5                # per health probe
 interval_sec: 8               # base interval between probe rounds
 rise: 2                       # successes to mark UP
