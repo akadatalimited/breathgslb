@@ -1,6 +1,7 @@
 # macOS service files for BreathGSLB
 
-This directory provides launchd and legacy StartupItem configurations for running the BreathGSLB daemon on macOS.
+This directory provides launchd and legacy StartupItem configurations for
+running the BreathGSLB daemon on macOS.
 
 ## Installation (launchd)
 
@@ -22,14 +23,16 @@ sudo rm /Library/LaunchDaemons/breathgslb.plist
 ## Installation (StartupItem legacy)
 
 1. Create the directory `/Library/StartupItems/BreathGSLB`.
-2. Copy the `breathgslb` script to `/Library/StartupItems/BreathGSLB/BreathGSLB` and make it executable:
+2. Copy the `breathgslb` script to `/Library/StartupItems/BreathGSLB/BreathGSLB`
+   and make it executable:
 
    ```bash
    sudo cp breathgslb /Library/StartupItems/BreathGSLB/BreathGSLB
    sudo chmod +x /Library/StartupItems/BreathGSLB/BreathGSLB
    ```
 
-3. (Optional) Add a `StartupParameters.plist` if your platform requires dependency information.
+3. (Optional) Add a `StartupParameters.plist` if your platform requires
+   dependency information.
 
 The daemon will then start at boot via the legacy rc mechanism.
 
@@ -41,6 +44,9 @@ sudo rm -r /Library/StartupItems/BreathGSLB
 
 ## launchd vs. StartupItem
 
-* **launchd** is the modern service manager on macOS (10.4+). It supervises the daemon, restarts it if it exits unexpectedly, and is managed with `launchctl`.
-* **StartupItem** is a deprecated mechanism for pre-launchd systems. It merely runs the script at boot and offers no supervision or restart capability.
-* On current macOS releases, launchd is preferred and StartupItems may be ignored entirely.
+* **launchd** is the modern service manager on macOS (10.4+). It supervises the
+  daemon, restarts it if it exits unexpectedly, and is managed with `launchctl`.
+* **StartupItem** is a deprecated mechanism for pre-launchd systems. It merely
+  runs the script at boot and offers no supervision or restart capability.
+* On current macOS releases, launchd is preferred and StartupItems may be
+  ignored entirely.
