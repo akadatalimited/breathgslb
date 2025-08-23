@@ -20,10 +20,10 @@ admin:
 From the repository root run:
 
 ```bash
-go build ./web
+make web
 ```
 
-This produces a `web` binary.
+This produces a `web` binary at `web/web`.
 
 ## Running
 
@@ -32,4 +32,5 @@ This produces a `web` binary.
 ```
 
 The server listens on `:8080` and exposes endpoints for user signup,
-verification, license requests, and administrative actions.
+verification, license requests, and administrative actions for issuing,
+renewing, and revoking licenses.
