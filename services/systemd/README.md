@@ -26,7 +26,8 @@ This directory provides a systemd unit file for running the BreathGSLB daemon.
 
 Settings in `/etc/breathgslb/env` override defaults:
 
-- `BREATHGSLB_CONFIG` – path to the configuration file (default `/etc/breathgslb/config.yaml`).
+- `BREATHGSLB_CONFIG` – path to the configuration file (default
+  `/etc/breathgslb/config.yaml`).
 - `BREATHGSLB_FLAGS` – additional command-line flags for the daemon.
 
 After editing the environment file or configuration, reload the service without
