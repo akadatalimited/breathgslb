@@ -65,6 +65,8 @@ The core logic lives in `main.go`; zone indexing helpers are in
 
 Open UDP/TCP 53 on the chosen interface(s).
 
+Service installation examples for systemd, OpenRC, Windows, and macOS are in [doc/services.md](doc/services.md).
+
 ---
 
 ## Configuration (YAML)
