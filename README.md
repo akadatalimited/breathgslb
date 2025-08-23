@@ -32,6 +32,12 @@ DNSSEC is planned next; the codebase keeps the path clear for inline signing.
 
 ---
 
+## Documentation
+
+A combined manual and deployment guide is available as [doc/breathgslb.pdf](doc/breathgslb.pdf). Release archives also include this PDF for offline reference.
+
+---
+
 ## Features
 
 * **Authoritative only** for delegated sub‑zones (no recursion).
