@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -23,6 +25,11 @@ type Config struct {
 	Admin struct {
 		Email string `yaml:"email"`
 	} `yaml:"admin"`
+	Server struct {
+		Interface string `yaml:"interface"`
+		Port      int    `yaml:"port"`
+		IP        string `yaml:"ip"`
+	} `yaml:"server"`
 }
 
 var (
@@ -36,7 +43,37 @@ func loadConfig(path string) error {
 		return err
 	}
 	defer f.Close()
-	return yaml.NewDecoder(f).Decode(&cfg)
+	if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
+		return err
+	}
+	if cfg.Server.Port == 0 {
+		cfg.Server.Port = 8080
+	}
+	if cfg.Server.IP == "" && cfg.Server.Interface != "" {
+		ifi, err := net.InterfaceByName(cfg.Server.Interface)
+		if err != nil {
+			return err
+		}
+		addrs, err := ifi.Addrs()
+		if err != nil {
+			return err
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			cfg.Server.IP = ip.String()
+			break
+		}
+	}
+	return nil
 }
 
 func initDB() error {
@@ -301,6 +338,7 @@ func main() {
 	http.HandleFunc("/admin/revoke", requireAdmin(adminRevokeLicenseHandler))
 	http.HandleFunc("/admin/tier", requireAdmin(adminCreateTierHandler))
 
-	log.Println("listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	addr := net.JoinHostPort(cfg.Server.IP, strconv.Itoa(cfg.Server.Port))
+	log.Printf("listening on %s", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
