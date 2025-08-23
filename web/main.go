@@ -214,12 +214,8 @@ func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "dashboard.html", nil)
 }
 
-func adminLicenseFormHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		templates.ExecuteTemplate(w, "license_form.html", nil)
-		return
-	}
-	adminIssueLicenseHandler(w, r)
+func adminLicensePageHandler(w http.ResponseWriter, r *http.Request) {
+	templates.ExecuteTemplate(w, "license_form.html", nil)
 }
 
 func listLicensesHandler(w http.ResponseWriter, r *http.Request) {
@@ -308,24 +304,64 @@ func adminIssueLicenseHandler(w http.ResponseWriter, r *http.Request) {
 
 func adminRenewLicenseHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.FormValue("key")
-	licExp := time.Now().AddDate(1, 0, 0).Format(time.RFC3339)
-	supExp := time.Now().AddDate(0, 6, 0).Format(time.RFC3339)
-	res, err := db.Exec("UPDATE licenses SET license_expiry=?, support_expiry=? WHERE key=?", licExp, supExp, key)
+	regen := r.FormValue("newkey") != ""
+	var email string
+	err := db.QueryRow("SELECT u.email FROM licenses l JOIN users u ON l.user_id=u.id WHERE l.key=?", key).Scan(&email)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
 		http.Error(w, "license not found", http.StatusNotFound)
 		return
 	}
-	var email string
-	err = db.QueryRow("SELECT u.email FROM licenses l JOIN users u ON l.user_id=u.id WHERE l.key=?", key).Scan(&email)
-	if err == nil {
-		sendEmail(email, "Your license has been renewed", key)
+	licExp := time.Now().AddDate(1, 0, 0).Format(time.RFC3339)
+	supExp := time.Now().AddDate(0, 6, 0).Format(time.RFC3339)
+	if regen {
+		newKey := generateToken()
+		res, err := db.Exec("UPDATE licenses SET key=?, license_expiry=?, support_expiry=? WHERE key=?", newKey, licExp, supExp, key)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			http.Error(w, "license not found", http.StatusNotFound)
+			return
+		}
+		key = newKey
+	} else {
+		res, err := db.Exec("UPDATE licenses SET license_expiry=?, support_expiry=? WHERE key=?", licExp, supExp, key)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			http.Error(w, "license not found", http.StatusNotFound)
+			return
+		}
 	}
-	fmt.Fprintln(w, "renewed")
+	sendEmail(email, "Your license has been renewed", key)
+	fmt.Fprintln(w, key)
+}
+
+func adminResendLicenseHandler(w http.ResponseWriter, r *http.Request) {
+	key := r.FormValue("key")
+	regen := r.FormValue("newkey") != ""
+	var email string
+	err := db.QueryRow("SELECT u.email FROM licenses l JOIN users u ON l.user_id=u.id WHERE l.key=?", key).Scan(&email)
+	if err != nil {
+		http.Error(w, "license not found", http.StatusNotFound)
+		return
+	}
+	if regen {
+		newKey := generateToken()
+		_, err = db.Exec("UPDATE licenses SET key=? WHERE key=?", newKey, key)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		key = newKey
+	}
+	sendEmail(email, "Your license key", key)
+	fmt.Fprintln(w, key)
 }
 
 func adminRevokeLicenseHandler(w http.ResponseWriter, r *http.Request) {
@@ -372,11 +408,12 @@ func main() {
 	http.HandleFunc("/license/resend", requireLogin(resendLicenseHandler))
 
 	http.HandleFunc("/admin", requireAdmin(adminDashboardHandler))
-	http.HandleFunc("/admin/license", requireAdmin(adminLicenseFormHandler))
+	http.HandleFunc("/admin/license", requireAdmin(adminLicensePageHandler))
 	http.HandleFunc("/admin/accounts", requireAdmin(adminAccountsHandler))
 	http.HandleFunc("/admin/issue", requireAdmin(adminIssueLicenseHandler))
 	http.HandleFunc("/admin/renew", requireAdmin(adminRenewLicenseHandler))
 	http.HandleFunc("/admin/revoke", requireAdmin(adminRevokeLicenseHandler))
+	http.HandleFunc("/admin/resend", requireAdmin(adminResendLicenseHandler))
 	http.HandleFunc("/admin/tier", requireAdmin(adminCreateTierHandler))
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
