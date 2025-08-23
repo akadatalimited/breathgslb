@@ -1,35 +1,50 @@
 # BreathGSLB
 
-A tiny, self‑contained **authoritative GSLB** (Global Server Load‑Balancer) that answers A/AAAA (and friends) based on live HTTPS health checks, with **flap damping**, **local/private views**, **SIGHUP reload**, **file logging**, **EDNS(0)** controls, and **DNSSEC (alpha)** signing.
+A tiny, self‑contained **authoritative GSLB** (Global Server Load‑Balancer) that
+answers A/AAAA (and friends) based on live HTTPS health checks, with **flap
+damping**, **local/private views**, **SIGHUP reload**, **file logging**,
+**EDNS(0)** controls, and **DNSSEC (alpha)** signing.
 
 > Purpose
 >
-> Many teams run one reliable but modest host (e.g., cloud VM) and one fast but occasionally flaky host (e.g., FTTP at a site). BreathGSLB keeps service reachable: prefer the fast site when healthy; automatically fall back to the reliable site; optionally serve private RFC1918/ULA addresses to local clients. Simple, faithful, reproducible.
+> Many teams run one reliable but modest host (e.g., cloud VM) and one fast but
+> occasionally flaky host (e.g., FTTP at a site). BreathGSLB keeps service
+> reachable: prefer the fast site when healthy; automatically fall back to the
+> reliable site; optionally serve private RFC1918/ULA addresses to local
+> clients. Simple, faithful, reproducible.
 
 ---
 
 ## Code layout
 
-The core logic lives in `main.go`; zone indexing helpers are in
-`zone_index.go` and configuration validators reside in
-`record_validate.go` to fail fast on malformed records.
+The core logic lives in `main.go`; zone indexing helpers are in `zone_index.go`
+and configuration validators reside in `record_validate.go` to fail fast on
+malformed records.
 
 ---
 
 ## Features (current)
 
-* **Master → Standby → Fallback** tiers per family (IPv4/IPv6) with independent health.
-* **Local view**: serve **rfc\_**\* (RFC1918) or **ula\_**\* answers to clients in configured CIDRs; otherwise serve public.
+* **Master → Standby → Fallback** tiers per family (IPv4/IPv6) with independent
+  health.
+* **Local view**: serve **rfc\_**\* (RFC1918) or **ula\_**\* answers to clients
+  in configured CIDRs; otherwise serve public.
 * **Per‑tier private answers** (`*_private`) for on‑LAN clients.
-* **Health checking** over HTTPS with SNI/Host overrides; **rise/fall**, **cooldown**, and jittered intervals.
-* **EDNS(0) buffer** size control; responds to **ECS** (`+subnet` in dig) for local view selection.
-* **Shared records**: `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`; ALIAS‑like synth via target lookup.
-* **DNSSEC (alpha)**: in‑process signing of answers & DNSKEY; minimal NSEC for NXRRSET at apex.
+* **Health checking** over HTTPS with SNI/Host overrides; **rise/fall**,
+  **cooldown**, and jittered intervals.
+* **EDNS(0) buffer** size control; responds to **ECS** (`+subnet` in dig) for
+  local view selection.
+* **Shared records**: `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`;
+  ALIAS‑like synth via target lookup.
+* **DNSSEC (alpha)**: in‑process signing of answers & DNSKEY; minimal NSEC for
+  NXRRSET at apex.
 * **Hot reload**: `SIGHUP` (systemd `ExecReload=` or OpenRC `reload`).
 * **Logging**: to file (default `/var/log/breathgslb/breathgslb.log`) + stderr.
-* **Binding control**: `listen`, `listen_addrs`, or named `interfaces` (multi‑bind TCP+UDP, v4+v6).
+* **Binding control**: `listen`, `listen_addrs`, or named `interfaces`
+  (multi‑bind TCP+UDP, v4+v6).
 
-> Not a recursive resolver; not a full authoritative platform. It answers for the zones you delegate to it.
+> Not a recursive resolver; not a full authoritative platform. It answers for
+> the zones you delegate to it.
 
 ---
 
@@ -65,7 +80,8 @@ The core logic lives in `main.go`; zone indexing helpers are in
 
 Open UDP/TCP 53 on the chosen interface(s).
 
-Service installation examples for systemd, OpenRC, Windows, and macOS are in [doc/services.md](doc/services.md).
+Service installation examples for systemd, OpenRC, Windows, and macOS are in
+[doc/services.md](doc/services.md).
 
 ---
 
@@ -162,24 +178,29 @@ zones:
 
 * If `listen_addrs` is set, it **overrides** `interfaces`.
 * If neither is set, BreathGSLB binds all addresses on UDP/TCP 53 for v4+v6.
-* Apex‑only answers are supported today (owner name equals the zone). Per‑name records for shared types are supported via the `name:` field.
+* Apex‑only answers are supported today (owner name equals the zone). Per‑name
+  records for shared types are supported via the `name:` field.
 
 ---
 
 ## Health, flaps & softening
 
-* **Probes**: HTTPS `GET https://<ip>[/path]` with optional `Host` and `SNI` overrides.
+* **Probes**: HTTPS `GET https://<ip>[/path]` with optional `Host` and `SNI`
+  overrides.
 * **rise/fall**: consecutive successes/failures needed to change state.
 * **cooldown\_sec**: minimum dwell time between state flips per family.
-* **jitter\_ms**: random sleep added to `interval_sec` to avoid thundering herds.
-* The tier order is **master → standby → fallback** per family. Local view can serve `*_private` regardless of health if `private_allow_when_isolated: true`.
+* **jitter\_ms**: random sleep added to `interval_sec` to avoid thundering
+  herds.
+* The tier order is **master → standby → fallback** per family. Local view can
+  serve `*_private` regardless of health if `private_allow_when_isolated: true`.
 
 ---
 
 ## EDNS & ECS
 
 * `edns_buf` defaults to **1232** (works well over typical MTUs).
-* ECS is consumed when present; `dig +subnet=172.16.0.1/24 A zone` demonstrates local/private answers if `serve: "local"` and RFC/ULA CIDRs match.
+* ECS is consumed when present; `dig +subnet=172.16.0.1/24 A zone` demonstrates
+  local/private answers if `serve: "local"` and RFC/ULA CIDRs match.
 
 ---
 
@@ -218,7 +239,9 @@ dnssec-dsfromkey -2 /etc/breathgslb/keys/K<zone>...ksk.key \
 delv @ns-gslb.akadata.ltd -a /etc/breathgslb/anchor.conf zone A +vtrace
 ```
 
-> To achieve full validation by public resolvers (8.8.8.8, 1.1.1.1), publish a **DS** at the parent (your registrar/registry). Until then, some resolvers may SERVFAIL when the DO bit is set.
+> To achieve full validation by public resolvers (8.8.8.8, 1.1.1.1), publish a
+> **DS** at the parent (your registrar/registry). Until then, some resolvers may
+> SERVFAIL when the DO bit is set.
 
 ### Roadmap (DNSSEC)
 
@@ -229,7 +252,8 @@ delv @ns-gslb.akadata.ltd -a /etc/breathgslb/anchor.conf zone A +vtrace
 
 ## TSIG (roadmap)
 
-* Goal: **memory‑only** HMAC keys with rotation for zone transfer and administrative ops, plus optional disk emission for interoperability.
+* Goal: **memory‑only** HMAC keys with rotation for zone transfer and
+  administrative ops, plus optional disk emission for interoperability.
 * Planned config shape:
 
   ```yaml
@@ -328,24 +352,33 @@ Adjust by interface if required (e.g., restrict to `ppp0`).
   ```
 * Validation with `delv` as shown in DNSSEC section.
 
-> If a public resolver returns only NS/SOA shortly after a restart, it is likely building cache. Query the auth nameserver directly or allow TTLs to elapse.
+> If a public resolver returns only NS/SOA shortly after a restart, it is likely
+> building cache. Query the auth nameserver directly or allow TTLs to elapse.
 
 ---
 
 ## Troubleshooting
 
-* **SERVFAIL with +dnssec on public resolvers:** publish a DS at the parent; until then, use `delv -a anchor.conf` for local validation.
-* **Google Public DNS slow to pick up answers:** it may back off after timeouts. Ask the auth directly during maintenance windows.
-* **AAAA returns also A at an upstream:** that’s upstream behavior; ask your auth directly to verify.
-* **No answers for TXT:** ensure multiple TXT records are listed as separate map items under `txt:`.
-* **Health never UP:** confirm HTTPS path, SNI/Host, and that certs match. Try `curl -ik https://IP/health --resolve host:443:IP`.
-* **Reload didn’t apply:** check logs; ensure `SIGHUP` reached the process (`ExecReload`/OpenRC `reload`).
+* **SERVFAIL with +dnssec on public resolvers:** publish a DS at the parent;
+  until then, use `delv -a anchor.conf` for local validation.
+* **Google Public DNS slow to pick up answers:** it may back off after timeouts.
+  Ask the auth directly during maintenance windows.
+* **AAAA returns also A at an upstream:** that’s upstream behavior; ask your
+  auth directly to verify.
+* **No answers for TXT:** ensure multiple TXT records are listed as separate map
+  items under `txt:`.
+* **Health never UP:** confirm HTTPS path, SNI/Host, and that certs match. Try
+  `curl -ik https://IP/health --resolve host:443:IP`.
+* **Reload didn’t apply:** check logs; ensure `SIGHUP` reached the process
+  (`ExecReload`/OpenRC `reload`).
 
 ---
 
 ## Packaging & releases
 
-* Provide prebuilt archives for Alpine/Arch/Windows/macOS (amd64 + arm64). Static builds are simple (`CGO_ENABLED=0` for Linux if desired). Checksums + signatures recommended.
+* Provide prebuilt archives for Alpine/Arch/Windows/macOS (amd64 + arm64).
+  Static builds are simple (`CGO_ENABLED=0` for Linux if desired). Checksums +
+  signatures recommended.
 
 ---
 
@@ -356,7 +389,10 @@ Adjust by interface if required (e.g., restrict to `ppp0`).
 * Permissive, simple, widely understood.
 * Compatible with the `miekg/dns` BSD‑style license.
 
-> A dual‑track model (similar spirit to HAProxy Community vs Enterprise) can be introduced later. If releasing advanced GEO features freely as well, keep a **single MIT** codebase and differentiate via packaging/support rather than licensing.
+> A dual‑track model (similar spirit to HAProxy Community vs Enterprise) can be
+> introduced later. If releasing advanced GEO features freely as well, keep a
+> **single MIT** codebase and differentiate via packaging/support rather than
+> licensing.
 
 Add a `LICENSE` file with:
 
@@ -390,10 +426,13 @@ SOFTWARE.
 
 * **Persistence (hash‑based)**: stable pick across multi‑RR answers.
 * **Weighted RR/round‑robin** within each tier.
-* **Full DNSSEC (NSEC3, full NXDOMAIN)** and optional auto‑rotation of keys with disk export.
+* **Full DNSSEC (NSEC3, full NXDOMAIN)** and optional auto‑rotation of keys with
+  disk export.
 * **TSIG**: in‑memory rotating secrets + disk emission.
-* **GEO**: optional country/continent policy via MaxMind (mmdb) or simple CIDR tables.
-* **Status endpoint**: JSON snapshot of health state and served tier for observability.
+* **GEO**: optional country/continent policy via MaxMind (mmdb) or simple CIDR
+  tables.
+* **Status endpoint**: JSON snapshot of health state and served tier for
+  observability.
 
 ---
 
