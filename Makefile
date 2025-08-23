@@ -23,7 +23,7 @@ endif
 # Version injection
 VERSION_TXT := $(shell cat version.txt)
 GIT_COMMIT  := $(shell git rev-parse --short HEAD)
-BUILD_OS    := $(shell uname -s)$$(. /etc/os-release 2>/dev/null && echo '('$$ID')')
+BUILD_OS    := $(shell uname -s)
 BUILD_DATE  := $(shell date -u +%Y-%m-%d)
 BUILD_LDFLAGS := $(LDFLAGS) -X 'main.version=$(VERSION_TXT).$(GIT_COMMIT)' -X 'main.buildOS=$(BUILD_OS)' -X 'main.buildDate=$(BUILD_DATE)'
 

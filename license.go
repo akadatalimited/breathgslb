@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -26,6 +28,22 @@ type licensePayload struct {
 
 var supportActive bool
 var supportExpiry time.Time
+
+func baseOS(s string) string {
+	s = strings.ToLower(s)
+	switch {
+	case strings.HasPrefix(s, "linux"):
+		return "linux"
+	case strings.HasPrefix(s, "darwin"):
+		return "darwin"
+	case strings.HasPrefix(s, "windows"):
+		return "windows"
+	case strings.Contains(s, "bsd"):
+		return "bsd"
+	default:
+		return s
+	}
+}
 
 // validateLicense decrypts an AES-256 encrypted payload using key and validates
 // the license against the compiled build OS and build date. If the license is
@@ -61,7 +79,11 @@ func validateLicense(key string, payload []byte) error {
 	if err := json.Unmarshal(plaintext, &lp); err != nil {
 		return err
 	}
-	if lp.OS != buildOS {
+	binOS := buildOS
+	if binOS == "" {
+		binOS = runtime.GOOS
+	}
+	if !strings.EqualFold(baseOS(lp.OS), baseOS(binOS)) {
 		return fmt.Errorf("os mismatch")
 	}
 	if lp.Build != buildDate {
