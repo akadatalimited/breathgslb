@@ -13,11 +13,31 @@ db:
   dsn: web.db      # for mysql use user:pass@tcp(host:3306)/dbname
 admin:
   email: admin@example.com
+  password_hash: "$2a$10$UakOiKAu3PG9.7nJzLqRKe0sHlxHeHUB7UK7Y/wKvJ5ScJf9WX4Zi"
 server:
   interface: eth0      # optional network interface to bind
   port: 8080
   ip: 0.0.0.0         # optional explicit IP; overrides interface
 ```
+
+Generate a bcrypt hash for the admin password and place it in
+`admin.password_hash`. One way to create a hash is with Go:
+
+```bash
+go run - <<'EOF'
+package main
+import (
+  "fmt"
+  "golang.org/x/crypto/bcrypt"
+)
+func main(){
+  h, _ := bcrypt.GenerateFromPassword([]byte("adminpass"), bcrypt.DefaultCost)
+  fmt.Println(string(h))
+}
+EOF
+```
+
+Then copy the printed hash into `config.yaml`.
 
 ## Building
 
