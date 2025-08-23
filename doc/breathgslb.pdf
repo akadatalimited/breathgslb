@@ -1,507 +1,976 @@
 %PDF-1.4
 1 0 obj<</Type /Catalog /Pages 2 0 R>>endobj
-2 0 obj<</Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R] /Count 9>>endobj
-3 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-4 0 obj<</Length 2884>>stream
-BT /F1 12 Tf
-72 760 Td (BreathGSLB Book) Tj
-0 -28 Td (Intro & Credits) Tj
-0 -14 Td (BreathGSLB provides a lightweight authoritative DNS server with health?checked global load balancing. This book collates the manual pages and extended guidance for deployment. Development was initiated by Akadata Limited and benefits from community contributions.) Tj
-0 -28 Td (Per-OS Service Setup) Tj
-0 -14 Td (Service definitions for common init systems are under `services/`. Use the systemd unit on Linux distributions with systemd, the OpenRC script for Alpine and other OpenRC systems, and the Launchd plist for macOS. Each file is ready to install in `/etc` with the provided Makefile targets.) Tj
-0 -28 Td (Full Option Reference) Tj
-0 -14 Td (Configuration keys allow fine?grained control of behaviour including boolean toggles, interface lists, domain mappings, A/AAAA answers and zone types. The next appendix reproduces the full configuration manual derived from the `breathgslb.conf\\(5\\)` man page.) Tj
-0 -28 Td (DNS64 and NAT64) Tj
-0 -14 Td (Setting `dns64_prefix` enables DNS64 as defined in RFC 6147. When an IPv6?only) Tj
-0 -14 Td (client asks for a AAAA record and none exist, BreathGSLB embeds the IPv4 A) Tj
-0 -14 Td (answer into the prefix and returns a synthetic AAAA. The client then connects) Tj
-0 -14 Td (through a NAT64 gateway to reach the legacy service.) Tj
-0 -28 Td (```) Tj
-0 -14 Td ([IPv6 client] --AAAA?--> [BreathGSLB DNS64] --A?--> [IPv4 server]) Tj
-0 -14 Td (                 <--AAAA--                  <--A--) Tj
-0 -14 Td (```) Tj
-0 -28 Td (This allows modern IPv6 networks to continue using IPv4?only applications) Tj
-0 -14 Td (without assigning new public addresses.) Tj
-0 -28 Td (RFC1918 & ULA Addressing, Split-Horizon Design) Tj
-0 -28 Td (Local vs. Global Routing) Tj
-0 -14 Td (RFC1918 defines private IPv4 ranges \\(10/8, 172.16/12, 192.168/16\\) that must) Tj
-0 -14 Td (never appear on the public Internet. IPv6 offers Unique Local Addresses \\(ULAs\\)) Tj
-0 -14 Td (under `fc00::/7` \\(commonly `fd00::/8`\\) which are likewise kept local but can be) Tj
-0 -14 Td (generated with globally unique prefixes. Publicly routable services should use) Tj
-0 -14 Td (global IPv6 and non?RFC1918 IPv4 addresses; internal?only hosts should reside in) Tj
-0 -14 Td (RFC1918 or ULA space.) Tj
-0 -28 Td (Prioritising Internal Addresses) Tj
-0 -14 Td (Split?horizon deployments run separate internal and external views. In the) Tj
-0 -14 Td (internal view, place private or ULA addresses before public ones so clients stay) Tj
-0 -14 Td (on local networks whenever possible:) Tj
-0 -28 Td (```) Tj
-0 -14 Td (a_master_private:) Tj
-0 -14 Td (  - 10.0.0.10) Tj
-0 -14 Td (  - 10.0.0.11) Tj
-0 -14 Td (a_master:) Tj
-0 -14 Td (  - 203.0.113.10) Tj
-0 -28 Td (ula_master:) Tj
-0 -14 Td (  - fd00:1::10) Tj
-0 -14 Td (aaaa_master:) Tj
-0 -14 Td (  - 2001:db8::10) Tj
-0 -14 Td (```) Tj
+2 0 obj<</Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R 21 0 R] /Count 10>>endobj
+3 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+4 0 obj<</Length 3206>>stream
+BT
+72 760 Td
+/F1 12 Tf (BreathGSLB Book) Tj
+0 -28 Td
+/F1 12 Tf (Intro & Credits) Tj
+0 -14 Td
+/F1 12 Tf (BreathGSLB provides a lightweight authoritative DNS server with health?checked) Tj
+0 -14 Td
+/F1 12 Tf (global load balancing. This book collates the manual pages and extended guidance) Tj
+0 -14 Td
+/F1 12 Tf (for deployment. Development was initiated by Akadata Limited and benefits from) Tj
+0 -14 Td
+/F1 12 Tf (community contributions.) Tj
+0 -28 Td
+/F1 12 Tf (Per-OS Service Setup) Tj
+0 -14 Td
+/F1 12 Tf (Service definitions for common init systems are under `services/`. Use the) Tj
+0 -14 Td
+/F1 12 Tf (systemd unit on Linux distributions with systemd, the OpenRC script for Alpine) Tj
+0 -14 Td
+/F1 12 Tf (and other OpenRC systems, and the Launchd plist for macOS. Each file is ready to) Tj
+0 -14 Td
+/F1 12 Tf (install in `/etc` with the provided Makefile targets.) Tj
+0 -28 Td
+/F1 12 Tf (Full Option Reference) Tj
+0 -14 Td
+/F1 12 Tf (Configuration keys allow fine?grained control of behaviour including boolean) Tj
+0 -14 Td
+/F1 12 Tf (toggles, interface lists, domain mappings, A/AAAA answers and zone types. The) Tj
+0 -14 Td
+/F1 12 Tf (next appendix reproduces the full configuration manual derived from the) Tj
+0 -14 Td
+/F1 12 Tf (`breathgslb.conf\\(5\\)` man page.) Tj
+0 -28 Td
+/F1 12 Tf (DNS64 and NAT64) Tj
+0 -14 Td
+/F1 12 Tf (Setting `dns64_prefix` enables DNS64 as defined in RFC 6147. When an IPv6?only) Tj
+0 -14 Td
+/F1 12 Tf (client asks for a AAAA record and none exist, BreathGSLB embeds the IPv4 A) Tj
+0 -14 Td
+/F1 12 Tf (answer into the prefix and returns a synthetic AAAA. The client then connects) Tj
+0 -14 Td
+/F1 12 Tf (through a NAT64 gateway to reach the legacy service.) Tj
+0 -28 Td
+/F1 12 Tf (```) Tj
+0 -14 Td
+/F1 12 Tf ([IPv6 client] --AAAA?--> [BreathGSLB DNS64] --A?--> [IPv4 server]) Tj
+0 -14 Td
+/F1 12 Tf (                 <--AAAA--                  <--A--) Tj
+0 -14 Td
+/F1 12 Tf (```) Tj
+0 -28 Td
+/F1 12 Tf (This allows modern IPv6 networks to continue using IPv4?only applications) Tj
+0 -14 Td
+/F1 12 Tf (without assigning new public addresses.) Tj
+0 -28 Td
+/F1 12 Tf (RFC1918 & ULA Addressing, Split-Horizon Design) Tj
+0 -28 Td
+/F1 12 Tf (Local vs. Global Routing) Tj
+0 -14 Td
+/F1 12 Tf (RFC1918 defines private IPv4 ranges \\(10/8, 172.16/12, 192.168/16\\) that must) Tj
+0 -14 Td
+/F1 12 Tf (never appear on the public Internet. IPv6 offers Unique Local Addresses \\(ULAs\\)) Tj
+0 -14 Td
+/F1 12 Tf (under `fc00::/7` \\(commonly `fd00::/8`\\) which are likewise kept local but can be) Tj
+0 -14 Td
+/F1 12 Tf (generated with globally unique prefixes. Publicly routable services should use) Tj
+0 -14 Td
+/F1 12 Tf (global IPv6 and non?RFC1918 IPv4 addresses; internal?only hosts should reside in) Tj
+0 -14 Td
+/F1 12 Tf (RFC1918 or ULA space.) Tj
+0 -28 Td
+/F1 12 Tf (Prioritising Internal Addresses) Tj
+0 -14 Td
+/F1 12 Tf (Split?horizon deployments run separate internal and external views. In the) Tj
+0 -14 Td
+/F1 12 Tf (internal view, place private or ULA addresses before public ones so clients stay) Tj
+0 -14 Td
+/F1 12 Tf (on local networks whenever possible:) Tj
+0 -28 Td
+/F1 12 Tf (```) Tj
+0 -14 Td
+/F1 12 Tf (a_master_private:) Tj
+0 -14 Td
+/F1 12 Tf (  - 10.0.0.10) Tj
 ET
 endstream endobj
-5 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-6 0 obj<</Length 2451>>stream
-BT /F1 12 Tf
-72 746 Td (```) Tj
-0 -14 Td (internal client -> resolver -> 10.0.0.10, 203.0.113.10) Tj
-0 -14 Td (                 \\(prefers first, remains on LAN\\)) Tj
-0 -14 Td (```) Tj
-0 -28 Td (External views omit the private records, ensuring global users only see) Tj
-0 -14 Td (publicly routable addresses.) Tj
-0 -28 Td (API & TSIG Key Creation/Rotation) Tj
-0 -14 Td (The optional HTTPS API exposes health and statistics endpoints. TSIG keys placed in the configured key directory enable signed zone transfers. Rotate keys by writing new key files and reloading the server; old keys can then be removed once slaves update.) Tj
-0 -28 Td (Deployment Scenarios) Tj
-0 -14 Td (Fast Primary) Tj
-0 -14 Td (Run a fast primary in a region close to your users. Health checks ensure only healthy endpoints are served.) Tj
-0 -28 Td (Slow Backup) Tj
-0 -14 Td (A secondary instance on slower infrastructure can act as backup. Configure higher probe intervals so it fails over when the primary is unreachable.) Tj
-0 -28 Td (Fallback Server) Tj
-0 -14 Td (A low?cost fallback can provide minimal answers if both primary and backup fail. Populate zones with limited records and longer TTLs.) Tj
-0 -28 Td (Command Reference) Tj
-0 -14 Td (The following chapters were generated from the original man pages:) Tj
-0 -28 Td (breathgslb\\(8\\)) Tj
-0 -28 Td (```markdown) Tj
-0 -14 Td (NAME) Tj
-0 -14 Td (breathgslb - health?checked authoritative DNS with global load balancing) Tj
-0 -14 Td (SYNOPSIS) Tj
-0 -14 Td (**breathgslb**) Tj
-0 -14 Td ([ -config file ]) Tj
-0 -14 Td ([ -api-listen addr ]) Tj
-0 -14 Td ([ -api-token token ]) Tj
-0 -14 Td ([ -api-cert file ]) Tj
-0 -14 Td ([ -api-key file ]) Tj
-0 -14 Td ([ -supervisor path ]) Tj
-0 -14 Td ([ -debug-pprof ]) Tj
-0 -14 Td (DESCRIPTION) Tj
-0 -14 Td (**BreathGSLB**) Tj
-0 -14 Td (is a compact authoritative server that selects A and AAAA answers based on) Tj
-0 -14 Td (live health checks.  It serves normal DNS records while optionally) Tj
-0 -14 Td (synthesising AAAA from A via DNS64.  The daemon listens on UDP and TCP for) Tj
-0 -14 Td (both IPv4 and IPv6 and can expose an HTTPS admin API for health and) Tj
-0 -14 Td (statistics.) Tj
-0 -14 Td (DNS64) Tj
-0 -14 Td (When no AAAA record exists for a name,) Tj
-0 -14 Td (**breathgslb**) Tj
-0 -14 Td (can synthesise one from an A record using the configured) Tj
-0 -14 Td (**dns64_prefix .**) Tj
-0 -14 Td (The IPv4 address is embedded into the prefix and returned to the) Tj
+5 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+6 0 obj<</Length 2382>>stream
+BT
+72 760 Td
+/F1 12 Tf (  - 10.0.0.11) Tj
+0 -14 Td
+/F1 12 Tf (a_master:) Tj
+0 -14 Td
+/F1 12 Tf (  - 203.0.113.10) Tj
+0 -28 Td
+/F1 12 Tf (ula_master:) Tj
+0 -14 Td
+/F1 12 Tf (  - fd00:1::10) Tj
+0 -14 Td
+/F1 12 Tf (aaaa_master:) Tj
+0 -14 Td
+/F1 12 Tf (  - 2001:db8::10) Tj
+0 -14 Td
+/F1 12 Tf (```) Tj
+0 -28 Td
+/F1 12 Tf (```) Tj
+0 -14 Td
+/F1 12 Tf (internal client -> resolver -> 10.0.0.10, 203.0.113.10) Tj
+0 -14 Td
+/F1 12 Tf (                 \\(prefers first, remains on LAN\\)) Tj
+0 -14 Td
+/F1 12 Tf (```) Tj
+0 -28 Td
+/F1 12 Tf (External views omit the private records, ensuring global users only see) Tj
+0 -14 Td
+/F1 12 Tf (publicly routable addresses.) Tj
+0 -28 Td
+/F1 12 Tf (API & TSIG Key Creation/Rotation) Tj
+0 -14 Td
+/F1 12 Tf (The optional HTTPS API exposes health and statistics endpoints. TSIG keys placed) Tj
+0 -14 Td
+/F1 12 Tf (in the configured key directory enable signed zone transfers. Rotate keys by) Tj
+0 -14 Td
+/F1 12 Tf (writing new key files and reloading the server; old keys can then be removed) Tj
+0 -14 Td
+/F1 12 Tf (once slaves update.) Tj
+0 -28 Td
+/F1 12 Tf (Deployment Scenarios) Tj
+0 -14 Td
+/F1 12 Tf (Fast Primary) Tj
+0 -14 Td
+/F1 12 Tf (Run a fast primary in a region close to your users. Health checks ensure only) Tj
+0 -14 Td
+/F1 12 Tf (healthy endpoints are served.) Tj
+0 -28 Td
+/F1 12 Tf (Slow Backup) Tj
+0 -14 Td
+/F1 12 Tf (A secondary instance on slower infrastructure can act as backup. Configure) Tj
+0 -14 Td
+/F1 12 Tf (higher probe intervals so it fails over when the primary is unreachable.) Tj
+0 -28 Td
+/F1 12 Tf (Fallback Server) Tj
+0 -14 Td
+/F1 12 Tf (A low?cost fallback can provide minimal answers if both primary and backup fail.) Tj
+0 -14 Td
+/F1 12 Tf (Populate zones with limited records and longer TTLs.) Tj
+0 -28 Td
+/F1 12 Tf (Command Reference) Tj
+0 -14 Td
+/F1 12 Tf (The following chapters were generated from the original man pages:) Tj
+0 -28 Td
+/F1 12 Tf (breathgslb\\(8\\)) Tj
+0 -28 Td
+/F1 12 Tf (```markdown) Tj
+0 -14 Td
+/F1 12 Tf (NAME) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb - health?checked authoritative DNS with global load balancing) Tj
+0 -14 Td
+/F1 12 Tf (SYNOPSIS) Tj
+0 -14 Td
+/F2 12 Tf (breathgslb) Tj
+0 -14 Td
+/F1 12 Tf ([ -config file ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-listen addr ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-token token ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-cert file ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-key file ]) Tj
 ET
 endstream endobj
-7 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 8 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-8 0 obj<</Length 2242>>stream
-BT /F1 12 Tf
-72 760 Td (client, allowing an IPv6?only host to reach a legacy IPv4 service via) Tj
-0 -14 Td (an external NAT64 gateway.) Tj
-0 -28 Td (Client AAAA?  -> BreathGSLB ->  A?   -> IPv4 server) Tj
-0 -14 Td (       <- AAAA   DNS64      <-  A   <-) Tj
-0 -14 Td (This bridges IPv6?only networks to IPv4 infrastructure without exposing) Tj
-0 -14 Td (new public addresses.) Tj
-0 -14 Td (OPTIONS) Tj
-0 -14 Td (-config " " file) Tj
-0 -14 Td (Path to the YAML configuration file.  Defaults to) Tj
-0 -14 Td (-api-listen " " addr) Tj
-0 -14 Td (Bind address for the optional HTTPS admin API, e.g.) Tj
-0 -14 Td (**:9443**) Tj
-0 -14 Td (or) Tj
-0 -14 Td (127.0.0.1:9443 .) Tj
-0 -14 Td (-api-token " " token) Tj
-0 -14 Td (Bearer token for API requests.  May be a literal string or) Tj
-0 -14 Td (path to a file whose contents are used.) Tj
-0 -14 Td (-api-cert " " file) Tj
-0 -14 Td (TLS certificate file for the admin API.) Tj
-0 -14 Td (-api-key " " file) Tj
-0 -14 Td (TLS private key for the admin API.) Tj
-0 -14 Td (-supervisor " " path) Tj
-0 -14 Td (Send service state change notifications to the given supervisor socket) Tj
-0 -14 Td (or FIFO.  The format of the messages is supervisor specific.) Tj
-0 -14 Td (-debug-pprof) Tj
-0 -14 Td (Enable Go's pprof debug server on) Tj
-0 -14 Td (localhost:6060 .) Tj
-0 -14 Td (USAGE) Tj
-0 -14 Td (Start the daemon with a configuration file:) Tj
-0 -28 Td (breathgslb -config /etc/breathgslb/config.yaml) Tj
-0 -28 Td (For split?horizon deployments run separate instances with differing) Tj
-0 -14 Td (configuration files and distinct listeners.  Share TSIG keys between) Tj
-0 -14 Td (instances when signed zone transfers are required.) Tj
-0 -28 Td (TLS certificates and API tokens are read from the paths supplied on the) Tj
-0 -14 Td (command line or in the configuration file.  To rotate them atomically,) Tj
-0 -14 Td (write the new material to a separate file, update a symlink, and reload) Tj
-0 -14 Td (**breathgslb**) Tj
-0 -14 Td (with) Tj
-0 -14 Td (**SIGHUP**) Tj
-0 -14 Td (or a restart.) Tj
-0 -14 Td (SEE ALSO) Tj
-0 -14 Td (breathgslb.conf \\(5\\)```) Tj
-0 -28 Td (breathgslb.conf\\(5\\)) Tj
-0 -28 Td (```markdown) Tj
-0 -14 Td (NAME) Tj
-0 -14 Td (breathgslb.conf - configuration file for breathgslb) Tj
+7 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 8 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+8 0 obj<</Length 2899>>stream
+BT
+72 760 Td
+/F1 12 Tf ([ -supervisor path ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -debug-pprof ]) Tj
+0 -14 Td
+/F1 12 Tf (DESCRIPTION) Tj
+0 -14 Td
+/F2 12 Tf (BreathGSLB) Tj
+0 -14 Td
+/F1 12 Tf (is a compact authoritative server that selects A and AAAA answers based on) Tj
+0 -14 Td
+/F1 12 Tf (live health checks.  It serves normal DNS records while optionally) Tj
+0 -14 Td
+/F1 12 Tf (synthesising AAAA from A via DNS64.  The daemon listens on UDP and TCP for) Tj
+0 -14 Td
+/F1 12 Tf (both IPv4 and IPv6 and can expose an HTTPS admin API for health and) Tj
+0 -14 Td
+/F1 12 Tf (statistics.) Tj
+0 -14 Td
+/F1 12 Tf (DNS64) Tj
+0 -14 Td
+/F1 12 Tf (When no AAAA record exists for a name,) Tj
+0 -14 Td
+/F2 12 Tf (breathgslb) Tj
+0 -14 Td
+/F1 12 Tf (can synthesise one from an A record using the configured) Tj
+0 -14 Td
+/F2 12 Tf (dns64_prefix .) Tj
+0 -14 Td
+/F1 12 Tf (The IPv4 address is embedded into the prefix and returned to the) Tj
+0 -14 Td
+/F1 12 Tf (client, allowing an IPv6?only host to reach a legacy IPv4 service via) Tj
+0 -14 Td
+/F1 12 Tf (an external NAT64 gateway.) Tj
+0 -28 Td
+/F1 12 Tf (Client AAAA?  -> BreathGSLB ->  A?   -> IPv4 server) Tj
+0 -14 Td
+/F1 12 Tf (       <- AAAA   DNS64      <-  A   <-) Tj
+0 -14 Td
+/F1 12 Tf (This bridges IPv6?only networks to IPv4 infrastructure without exposing) Tj
+0 -14 Td
+/F1 12 Tf (new public addresses.) Tj
+0 -14 Td
+/F1 12 Tf (OPTIONS) Tj
+0 -14 Td
+/F1 12 Tf (-config " " file) Tj
+0 -14 Td
+/F1 12 Tf (Path to the YAML configuration file.  Defaults to) Tj
+0 -14 Td
+/F1 12 Tf (-api-listen " " addr) Tj
+0 -14 Td
+/F1 12 Tf (Bind address for the optional HTTPS admin API, e.g.) Tj
+0 -14 Td
+/F2 12 Tf (:9443) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F1 12 Tf (127.0.0.1:9443 .) Tj
+0 -14 Td
+/F1 12 Tf (-api-token " " token) Tj
+0 -14 Td
+/F1 12 Tf (Bearer token for API requests.  May be a literal string or) Tj
+0 -14 Td
+/F1 12 Tf (path to a file whose contents are used.) Tj
+0 -14 Td
+/F1 12 Tf (-api-cert " " file) Tj
+0 -14 Td
+/F1 12 Tf (TLS certificate file for the admin API.) Tj
+0 -14 Td
+/F1 12 Tf (-api-key " " file) Tj
+0 -14 Td
+/F1 12 Tf (TLS private key for the admin API.) Tj
+0 -14 Td
+/F1 12 Tf (-supervisor " " path) Tj
+0 -14 Td
+/F1 12 Tf (Send service state change notifications to the given supervisor socket) Tj
+0 -14 Td
+/F1 12 Tf (or FIFO.  The format of the messages is supervisor specific.) Tj
+0 -14 Td
+/F1 12 Tf (-debug-pprof) Tj
+0 -14 Td
+/F1 12 Tf (Enable Go's pprof debug server on) Tj
+0 -14 Td
+/F1 12 Tf (localhost:6060 .) Tj
+0 -14 Td
+/F1 12 Tf (USAGE) Tj
+0 -14 Td
+/F1 12 Tf (Start the daemon with a configuration file:) Tj
+0 -28 Td
+/F1 12 Tf (breathgslb -config /etc/breathgslb/config.yaml) Tj
+0 -28 Td
+/F1 12 Tf (For split?horizon deployments run separate instances with differing) Tj
+0 -14 Td
+/F1 12 Tf (configuration files and distinct listeners.  Share TSIG keys between) Tj
+0 -14 Td
+/F1 12 Tf (instances when signed zone transfers are required.) Tj
 ET
 endstream endobj
-9 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 10 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-10 0 obj<</Length 2156>>stream
-BT /F1 12 Tf
-72 760 Td (DESCRIPTION) Tj
-0 -14 Td (The configuration file is written in YAML and controls listener) Tj
-0 -14 Td (addresses, health checking, and record synthesis.  A minimal file) Tj
-0 -14 Td (contains global settings followed by one or more zone blocks.) Tj
-0 -14 Td (GLOBAL KEYS) Tj
-0 -14 Td (listen) Tj
-0 -14 Td (Address or) Tj
-0 -14 Td (:port) Tj
-0 -14 Td (on which to bind.  The daemon listens on UDP and TCP for both) Tj
-0 -14 Td (IPv4 and IPv6.) Tj
-0 -14 Td (listen_addrs) Tj
-0 -14 Td (List of explicit) Tj
-0 -14 Td (**host:port**) Tj
-0 -14 Td (bindings.  Overrides) Tj
-0 -14 Td (interfaces .) Tj
-0 -14 Td (interfaces) Tj
-0 -14 Td (List of network interface names whose addresses are used for) Tj
-0 -14 Td (binding.) Tj
-0 -14 Td (reverse_dir) Tj
-0 -14 Td (Directory where automatically generated reverse zones are written.) Tj
-0 -14 Td (timeout_sec) Tj
-0 -14 Td (Per?probe timeout in seconds.) Tj
-0 -14 Td (interval_sec) Tj
-0 -14 Td (Base interval between probe rounds in seconds.) Tj
-0 -14 Td (rise) Tj
-0 -14 Td (Consecutive successes required to mark an endpoint up.) Tj
-0 -14 Td (fall) Tj
-0 -14 Td (Consecutive failures required to mark an endpoint down.) Tj
-0 -14 Td (jitter_ms) Tj
-0 -14 Td (Random jitter added to each interval.) Tj
-0 -14 Td (cooldown_sec) Tj
-0 -14 Td (Minimum seconds between state flips for an address family.) Tj
-0 -14 Td (dns64_prefix) Tj
-0 -14 Td (IPv6 prefix used when synthesizing AAAA from A records.) Tj
-0 -14 Td (edns_buf) Tj
-0 -14 Td (Advertised EDNS0 UDP payload size.) Tj
-0 -14 Td (max_records) Tj
-0 -14 Td (Hard limit on A/AAAA records per response.) Tj
-0 -14 Td (log_queries) Tj
-0 -14 Td (Log DNS queries and health transitions.) Tj
-0 -14 Td (max_workers) Tj
-0 -14 Td (Number of UDP worker goroutines.) Tj
-0 -14 Td (log_syslog) Tj
-0 -14 Td (Send logs to syslog instead of stderr.) Tj
-0 -14 Td (tsig.path) Tj
-0 -14 Td (Directory containing emitted TSIG key files.) Tj
-0 -14 Td (geoip.enabled) Tj
-0 -14 Td (Enable GeoIP lookups for location based routing.) Tj
-0 -14 Td (api) Tj
-0 -14 Td (Enable the HTTPS admin API.) Tj
-0 -14 Td (api-listen) Tj
-0 -14 Td (Port for the admin API; default 9443.) Tj
+9 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 10 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+10 0 obj<</Length 2605>>stream
+BT
+72 760 Td
+/F1 12 Tf (TLS certificates and API tokens are read from the paths supplied on the) Tj
+0 -14 Td
+/F1 12 Tf (command line or in the configuration file.  To rotate them atomically,) Tj
+0 -14 Td
+/F1 12 Tf (write the new material to a separate file, update a symlink, and reload) Tj
+0 -14 Td
+/F2 12 Tf (breathgslb) Tj
+0 -14 Td
+/F1 12 Tf (with) Tj
+0 -14 Td
+/F2 12 Tf (SIGHUP) Tj
+0 -14 Td
+/F1 12 Tf (or a restart.) Tj
+0 -14 Td
+/F1 12 Tf (SEE ALSO) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb.conf \\(5\\)```) Tj
+0 -28 Td
+/F1 12 Tf (breathgslb.conf\\(5\\)) Tj
+0 -28 Td
+/F1 12 Tf (```markdown) Tj
+0 -14 Td
+/F1 12 Tf (NAME) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb.conf - configuration file for breathgslb) Tj
+0 -14 Td
+/F1 12 Tf (DESCRIPTION) Tj
+0 -14 Td
+/F1 12 Tf (The configuration file is written in YAML and controls listener) Tj
+0 -14 Td
+/F1 12 Tf (addresses, health checking, and record synthesis.  A minimal file) Tj
+0 -14 Td
+/F1 12 Tf (contains global settings followed by one or more zone blocks.) Tj
+0 -14 Td
+/F1 12 Tf (GLOBAL KEYS) Tj
+0 -14 Td
+/F1 12 Tf (listen) Tj
+0 -14 Td
+/F1 12 Tf (Address or) Tj
+0 -14 Td
+/F1 12 Tf (:port) Tj
+0 -14 Td
+/F1 12 Tf (on which to bind.  The daemon listens on UDP and TCP for both) Tj
+0 -14 Td
+/F1 12 Tf (IPv4 and IPv6.) Tj
+0 -14 Td
+/F1 12 Tf (listen_addrs) Tj
+0 -14 Td
+/F1 12 Tf (List of explicit) Tj
+0 -14 Td
+/F2 12 Tf (host:port) Tj
+0 -14 Td
+/F1 12 Tf (bindings.  Overrides) Tj
+0 -14 Td
+/F1 12 Tf (interfaces .) Tj
+0 -14 Td
+/F1 12 Tf (interfaces) Tj
+0 -14 Td
+/F1 12 Tf (List of network interface names whose addresses are used for) Tj
+0 -14 Td
+/F1 12 Tf (binding.) Tj
+0 -14 Td
+/F1 12 Tf (reverse_dir) Tj
+0 -14 Td
+/F1 12 Tf (Directory where automatically generated reverse zones are written.) Tj
+0 -14 Td
+/F1 12 Tf (timeout_sec) Tj
+0 -14 Td
+/F1 12 Tf (Per?probe timeout in seconds.) Tj
+0 -14 Td
+/F1 12 Tf (interval_sec) Tj
+0 -14 Td
+/F1 12 Tf (Base interval between probe rounds in seconds.) Tj
+0 -14 Td
+/F1 12 Tf (rise) Tj
+0 -14 Td
+/F1 12 Tf (Consecutive successes required to mark an endpoint up.) Tj
+0 -14 Td
+/F1 12 Tf (fall) Tj
+0 -14 Td
+/F1 12 Tf (Consecutive failures required to mark an endpoint down.) Tj
+0 -14 Td
+/F1 12 Tf (jitter_ms) Tj
+0 -14 Td
+/F1 12 Tf (Random jitter added to each interval.) Tj
+0 -14 Td
+/F1 12 Tf (cooldown_sec) Tj
+0 -14 Td
+/F1 12 Tf (Minimum seconds between state flips for an address family.) Tj
+0 -14 Td
+/F1 12 Tf (dns64_prefix) Tj
+0 -14 Td
+/F1 12 Tf (IPv6 prefix used when synthesizing AAAA from A records.) Tj
+0 -14 Td
+/F1 12 Tf (edns_buf) Tj
+0 -14 Td
+/F1 12 Tf (Advertised EDNS0 UDP payload size.) Tj
+0 -14 Td
+/F1 12 Tf (max_records) Tj
 ET
 endstream endobj
-11 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 12 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-12 0 obj<</Length 2118>>stream
-BT /F1 12 Tf
-72 760 Td (api-interface) Tj
-0 -14 Td (Interface name or list of interfaces to bind the API.) Tj
-0 -14 Td (api-token) Tj
-0 -14 Td (Path to a file containing the bearer token or the literal token) Tj
-0 -14 Td (string.) Tj
-0 -14 Td (api-cert) Tj
-0 -14 Td (Path to the TLS certificate for the admin API.) Tj
-0 -14 Td (api-key) Tj
-0 -14 Td (Path to the TLS key for the admin API.) Tj
-0 -14 Td (ZONES) Tj
-0 -14 Td (Each element of the) Tj
-0 -14 Td (**zones**) Tj
-0 -14 Td (list defines an authoritative zone.) Tj
-0 -14 Td (name) Tj
-0 -14 Td (Zone name in fully qualified domain form.) Tj
-0 -14 Td (ns) Tj
-0 -14 Td (List of authoritative nameservers; the parent zone must delegate to) Tj
-0 -14 Td (these.) Tj
-0 -14 Td (admin) Tj
-0 -14 Td (Administrator mailbox in dotted form.) Tj
-0 -14 Td (ttl_soa) Tj
-0 -14 Td (TTL of the SOA record.) Tj
-0 -14 Td (ttl_answer) Tj
-0 -14 Td (Default TTL for synthesized apex answers.) Tj
-0 -14 Td (serve) Tj
-0 -14 Td (Set to) Tj
-0 -14 Td (**local**) Tj
-0 -14 Td (to have the zone served from this instance.) Tj
-0 -14 Td (ADDRESS POOLS) Tj
-0 -14 Td (The following lists control A and AAAA answers at the apex.) Tj
-0 -14 Td (a_master , aaaa_master) Tj
-0 -14 Td (Primary address pool returned when healthy.  Items may be plain) Tj
-0 -14 Td (addresses or objects with) Tj
-0 -14 Td (**ip**) Tj
-0 -14 Td (and optional) Tj
-0 -14 Td (**reverse**) Tj
-0 -14 Td (boolean to generate PTRs under) Tj
-0 -14 Td (reverse_dir .) Tj
-0 -14 Td (a_standby , aaaa_standby) Tj
-0 -14 Td (Used when the master pool is unhealthy.) Tj
-0 -14 Td (a_fallback , aaaa_fallback) Tj
-0 -14 Td (Returned when master and standby pools are down.) Tj
-0 -14 Td (rfc_master) Tj
-0 -14 Td (List of RFC1918 IPv4 ranges to advertise internally.) Tj
-0 -14 Td (a_master_private , aaaa_master_private) Tj
-0 -14 Td (Internal?only addresses for split?horizon deployments.) Tj
-0 -14 Td (ula_master) Tj
-0 -14 Td (IPv6 ULA prefixes served only to internal clients.) Tj
-0 -14 Td (alias) Tj
-0 -14 Td (ALIAS?style target used when no A or AAAA lists are present.) Tj
-0 -28 Td (Example with IPv4, IPv6, DNS64 and private ranges:) Tj
+11 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 12 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+12 0 obj<</Length 2522>>stream
+BT
+72 760 Td
+/F1 12 Tf (Hard limit on A/AAAA records per response.) Tj
+0 -14 Td
+/F1 12 Tf (log_queries) Tj
+0 -14 Td
+/F1 12 Tf (Log DNS queries and health transitions.) Tj
+0 -14 Td
+/F1 12 Tf (max_workers) Tj
+0 -14 Td
+/F1 12 Tf (Number of UDP worker goroutines.) Tj
+0 -14 Td
+/F1 12 Tf (log_syslog) Tj
+0 -14 Td
+/F1 12 Tf (Send logs to syslog instead of stderr.) Tj
+0 -14 Td
+/F1 12 Tf (tsig.path) Tj
+0 -14 Td
+/F1 12 Tf (Directory containing emitted TSIG key files.) Tj
+0 -14 Td
+/F1 12 Tf (geoip.enabled) Tj
+0 -14 Td
+/F1 12 Tf (Enable GeoIP lookups for location based routing.) Tj
+0 -14 Td
+/F1 12 Tf (api) Tj
+0 -14 Td
+/F1 12 Tf (Enable the HTTPS admin API.) Tj
+0 -14 Td
+/F1 12 Tf (api-listen) Tj
+0 -14 Td
+/F1 12 Tf (Port for the admin API; default 9443.) Tj
+0 -14 Td
+/F1 12 Tf (api-interface) Tj
+0 -14 Td
+/F1 12 Tf (Interface name or list of interfaces to bind the API.) Tj
+0 -14 Td
+/F1 12 Tf (api-token) Tj
+0 -14 Td
+/F1 12 Tf (Path to a file containing the bearer token or the literal token) Tj
+0 -14 Td
+/F1 12 Tf (string.) Tj
+0 -14 Td
+/F1 12 Tf (api-cert) Tj
+0 -14 Td
+/F1 12 Tf (Path to the TLS certificate for the admin API.) Tj
+0 -14 Td
+/F1 12 Tf (api-key) Tj
+0 -14 Td
+/F1 12 Tf (Path to the TLS key for the admin API.) Tj
+0 -14 Td
+/F1 12 Tf (ZONES) Tj
+0 -14 Td
+/F1 12 Tf (Each element of the) Tj
+0 -14 Td
+/F2 12 Tf (zones) Tj
+0 -14 Td
+/F1 12 Tf (list defines an authoritative zone.) Tj
+0 -14 Td
+/F1 12 Tf (name) Tj
+0 -14 Td
+/F1 12 Tf (Zone name in fully qualified domain form.) Tj
+0 -14 Td
+/F1 12 Tf (ns) Tj
+0 -14 Td
+/F1 12 Tf (List of authoritative nameservers; the parent zone must delegate to) Tj
+0 -14 Td
+/F1 12 Tf (these.) Tj
+0 -14 Td
+/F1 12 Tf (admin) Tj
+0 -14 Td
+/F1 12 Tf (Administrator mailbox in dotted form.) Tj
+0 -14 Td
+/F1 12 Tf (ttl_soa) Tj
+0 -14 Td
+/F1 12 Tf (TTL of the SOA record.) Tj
+0 -14 Td
+/F1 12 Tf (ttl_answer) Tj
+0 -14 Td
+/F1 12 Tf (Default TTL for synthesized apex answers.) Tj
+0 -14 Td
+/F1 12 Tf (serve) Tj
+0 -14 Td
+/F1 12 Tf (Set to) Tj
+0 -14 Td
+/F2 12 Tf (local) Tj
+0 -14 Td
+/F1 12 Tf (to have the zone served from this instance.) Tj
+0 -14 Td
+/F1 12 Tf (ADDRESS POOLS) Tj
+0 -14 Td
+/F1 12 Tf (The following lists control A and AAAA answers at the apex.) Tj
+0 -14 Td
+/F1 12 Tf (a_master , aaaa_master) Tj
+0 -14 Td
+/F1 12 Tf (Primary address pool returned when healthy.  Items may be plain) Tj
+0 -14 Td
+/F1 12 Tf (addresses or objects with) Tj
+0 -14 Td
+/F2 12 Tf (ip) Tj
+0 -14 Td
+/F1 12 Tf (and optional) Tj
+0 -14 Td
+/F2 12 Tf (reverse) Tj
+0 -14 Td
+/F1 12 Tf (boolean to generate PTRs under) Tj
 ET
 endstream endobj
-13 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 14 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-14 0 obj<</Length 1543>>stream
-BT /F1 12 Tf
-72 746 Td (zones:) Tj
-0 -14 Td (  - name: example.net.) Tj
-0 -14 Td (    a_master: ["203.0.113.10"]) Tj
-0 -14 Td (    aaaa_master: ["2001:db8::10"]) Tj
-0 -14 Td (    rfc_master: ["10.0.0.0/8"]) Tj
-0 -14 Td (    ula_master: ["fd00:1234::/48"]) Tj
-0 -14 Td (    dns64_prefix: "64:ff9b::") Tj
-0 -14 Td (GEOGRAPHIC ROUTING) Tj
-0 -14 Td (The optional) Tj
-0 -14 Td (**geoip**) Tj
-0 -14 Td (block enables country or continent based routing.  Keys mirror the) Tj
-0 -14 Td (global GeoIP options:) Tj
-0 -14 Td (database) Tj
-0 -14 Td (Path to a MaxMind style database.) Tj
-0 -14 Td (prefer_ecs) Tj
-0 -14 Td (Trust EDNS Client Subnet data.) Tj
-0 -14 Td (prefer_field) Tj
-0 -14 Td (Either) Tj
-0 -14 Td (**country**) Tj
-0 -14 Td (or) Tj
-0 -14 Td (**registered_country .**) Tj
-0 -14 Td (cache_ttl_sec) Tj
-0 -14 Td (TTL for the lookup cache.) Tj
-0 -28 Td (Within a zone, a) Tj
-0 -14 Td (**geo**) Tj
-0 -14 Td (block may specify allow lists for) Tj
-0 -14 Td (**master**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**standby**) Tj
-0 -14 Td (and) Tj
-0 -14 Td (**fallback**) Tj
-0 -14 Td (pools using) Tj
-0 -14 Td (**allow_countries**) Tj
-0 -14 Td (or) Tj
-0 -14 Td (**allow_continents .**) Tj
-0 -14 Td (HEALTH CHECKS) Tj
-0 -14 Td (Each zone may contain a) Tj
-0 -14 Td (**health**) Tj
-0 -14 Td (object describing how endpoints are probed.) Tj
-0 -14 Td (kind) Tj
-0 -14 Td (One of) Tj
-0 -14 Td (**http**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**http3**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**tcp**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**udp**) Tj
-0 -14 Td (or) Tj
-0 -14 Td (**rawip .**) Tj
+13 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 14 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+14 0 obj<</Length 2283>>stream
+BT
+72 760 Td
+/F1 12 Tf (reverse_dir .) Tj
+0 -14 Td
+/F1 12 Tf (a_standby , aaaa_standby) Tj
+0 -14 Td
+/F1 12 Tf (Used when the master pool is unhealthy.) Tj
+0 -14 Td
+/F1 12 Tf (a_fallback , aaaa_fallback) Tj
+0 -14 Td
+/F1 12 Tf (Returned when master and standby pools are down.) Tj
+0 -14 Td
+/F1 12 Tf (rfc_master) Tj
+0 -14 Td
+/F1 12 Tf (List of RFC1918 IPv4 ranges to advertise internally.) Tj
+0 -14 Td
+/F1 12 Tf (a_master_private , aaaa_master_private) Tj
+0 -14 Td
+/F1 12 Tf (Internal?only addresses for split?horizon deployments.) Tj
+0 -14 Td
+/F1 12 Tf (ula_master) Tj
+0 -14 Td
+/F1 12 Tf (IPv6 ULA prefixes served only to internal clients.) Tj
+0 -14 Td
+/F1 12 Tf (alias) Tj
+0 -14 Td
+/F1 12 Tf (ALIAS?style target used when no A or AAAA lists are present.) Tj
+0 -28 Td
+/F1 12 Tf (Example with IPv4, IPv6, DNS64 and private ranges:) Tj
+0 -28 Td
+/F1 12 Tf (zones:) Tj
+0 -14 Td
+/F1 12 Tf (- name: example.net.) Tj
+0 -14 Td
+/F1 12 Tf (a_master: ["203.0.113.10"]) Tj
+0 -14 Td
+/F1 12 Tf (aaaa_master: ["2001:db8::10"]) Tj
+0 -14 Td
+/F1 12 Tf (rfc_master: ["10.0.0.0/8"]) Tj
+0 -14 Td
+/F1 12 Tf (ula_master: ["fd00:1234::/48"]) Tj
+0 -14 Td
+/F1 12 Tf (dns64_prefix: "64:ff9b::") Tj
+0 -14 Td
+/F1 12 Tf (GEOGRAPHIC ROUTING) Tj
+0 -14 Td
+/F1 12 Tf (The optional) Tj
+0 -14 Td
+/F2 12 Tf (geoip) Tj
+0 -14 Td
+/F1 12 Tf (block enables country or continent based routing.  Keys mirror the) Tj
+0 -14 Td
+/F1 12 Tf (global GeoIP options:) Tj
+0 -14 Td
+/F1 12 Tf (database) Tj
+0 -14 Td
+/F1 12 Tf (Path to a MaxMind style database.) Tj
+0 -14 Td
+/F1 12 Tf (prefer_ecs) Tj
+0 -14 Td
+/F1 12 Tf (Trust EDNS Client Subnet data.) Tj
+0 -14 Td
+/F1 12 Tf (prefer_field) Tj
+0 -14 Td
+/F1 12 Tf (Either) Tj
+0 -14 Td
+/F2 12 Tf (country) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F2 12 Tf (registered_country .) Tj
+0 -14 Td
+/F1 12 Tf (cache_ttl_sec) Tj
+0 -14 Td
+/F1 12 Tf (TTL for the lookup cache.) Tj
+0 -28 Td
+/F1 12 Tf (Within a zone, a) Tj
+0 -14 Td
+/F2 12 Tf (geo) Tj
+0 -14 Td
+/F1 12 Tf (block may specify allow lists for) Tj
+0 -14 Td
+/F2 12 Tf (master) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (standby) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (fallback) Tj
+0 -14 Td
+/F1 12 Tf (pools using) Tj
+0 -14 Td
+/F2 12 Tf (allow_countries) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F2 12 Tf (allow_continents .) Tj
 ET
 endstream endobj
-15 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 16 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-16 0 obj<</Length 1821>>stream
-BT /F1 12 Tf
-72 760 Td (expect) Tj
-0 -14 Td (Substring or pattern expected in the response.) Tj
-0 -28 Td (Per?kind options include:) Tj
-0 -14 Td (http / http3) Tj
-0 -14 Td (host_header ,) Tj
-0 -14 Td (sni ,) Tj
-0 -14 Td (path ,) Tj
-0 -14 Td (**insecure_tls**) Tj
-0 -14 Td (boolean.) Tj
-0 -14 Td (tcp) Tj
-0 -14 Td (port ,) Tj
-0 -14 Td (tls_enable ,) Tj
-0 -14 Td (sni) Tj
-0 -14 Td (and) Tj
-0 -14 Td (**alpn .**) Tj
-0 -14 Td (udp) Tj
-0 -14 Td (port ,) Tj
-0 -14 Td (udp_payload_b64) Tj
-0 -14 Td (and) Tj
-0 -14 Td (**udp_expect_re .**) Tj
-0 -14 Td (rawip) Tj
-0 -14 Td (**protocol**) Tj
-0 -14 Td (number to send.) Tj
-0 -14 Td (DNS64) Tj
-0 -14 Td (When) Tj
-0 -14 Td (**dns64_prefix**) Tj
-0 -14 Td (is configured, the server synthesises AAAA responses from A records in) Tj
-0 -14 Td (zones lacking native IPv6. The IPv4 address is mapped into the prefix and) Tj
-0 -14 Td (returned to the client, which then connects through a NAT64 gateway to) Tj
-0 -14 Td (reach the IPv4-only endpoint.) Tj
-0 -28 Td (IPv6 client -> AAAA? -> breathgslb DNS64 -> A? -> IPv4 host) Tj
-0 -14 Td (             <- AAAA  <-             <- A  <-) Tj
-0 -14 Td (This enables IPv6-only networks to consume services that have not yet been) Tj
-0 -14 Td (modernised for dual stack.) Tj
-0 -14 Td (DNSSEC) Tj
-0 -14 Td (The optional) Tj
-0 -14 Td (**dnssec**) Tj
-0 -14 Td (block enables inline signing with:) Tj
-0 -14 Td (dnssec.enable) Tj
-0 -14 Td (Enable signing.) Tj
-0 -14 Td (dnssec.zsk_keyfile , dnssec.ksk_keyfile) Tj
-0 -14 Td (Paths to the ZSK and KSK PEM files.) Tj
-0 -14 Td (TSIG) Tj
-0 -14 Td (Global TSIG settings reside in the) Tj
-0 -14 Td (**tsig**) Tj
-0 -14 Td (block.  Secrets are generated on start if missing and, when) Tj
-0 -14 Td (**tsig.path**) Tj
-0 -14 Td (is set, written to that directory as) Tj
-0 -14 Td (files.) Tj
-0 -14 Td (seed_env) Tj
+15 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 16 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+16 0 obj<</Length 2074>>stream
+BT
+72 760 Td
+/F1 12 Tf (HEALTH CHECKS) Tj
+0 -14 Td
+/F1 12 Tf (Each zone may contain a) Tj
+0 -14 Td
+/F2 12 Tf (health) Tj
+0 -14 Td
+/F1 12 Tf (object describing how endpoints are probed.) Tj
+0 -14 Td
+/F1 12 Tf (kind) Tj
+0 -14 Td
+/F1 12 Tf (One of) Tj
+0 -14 Td
+/F2 12 Tf (http) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (http3) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (tcp) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (udp) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F2 12 Tf (rawip .) Tj
+0 -14 Td
+/F1 12 Tf (expect) Tj
+0 -14 Td
+/F1 12 Tf (Substring or pattern expected in the response.) Tj
+0 -28 Td
+/F1 12 Tf (Per?kind options include:) Tj
+0 -14 Td
+/F1 12 Tf (http / http3) Tj
+0 -14 Td
+/F1 12 Tf (host_header ,) Tj
+0 -14 Td
+/F1 12 Tf (sni ,) Tj
+0 -14 Td
+/F1 12 Tf (path ,) Tj
+0 -14 Td
+/F2 12 Tf (insecure_tls) Tj
+0 -14 Td
+/F1 12 Tf (boolean.) Tj
+0 -14 Td
+/F1 12 Tf (tcp) Tj
+0 -14 Td
+/F1 12 Tf (port ,) Tj
+0 -14 Td
+/F1 12 Tf (tls_enable ,) Tj
+0 -14 Td
+/F1 12 Tf (sni) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (alpn .) Tj
+0 -14 Td
+/F1 12 Tf (udp) Tj
+0 -14 Td
+/F1 12 Tf (port ,) Tj
+0 -14 Td
+/F1 12 Tf (udp_payload_b64) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (udp_expect_re .) Tj
+0 -14 Td
+/F1 12 Tf (rawip) Tj
+0 -14 Td
+/F2 12 Tf (protocol) Tj
+0 -14 Td
+/F1 12 Tf (number to send.) Tj
+0 -14 Td
+/F1 12 Tf (DNS64) Tj
+0 -14 Td
+/F1 12 Tf (When) Tj
+0 -14 Td
+/F2 12 Tf (dns64_prefix) Tj
+0 -14 Td
+/F1 12 Tf (is configured, the server synthesises AAAA responses from A records in) Tj
+0 -14 Td
+/F1 12 Tf (zones lacking native IPv6. The IPv4 address is mapped into the prefix and) Tj
+0 -14 Td
+/F1 12 Tf (returned to the client, which then connects through a NAT64 gateway to) Tj
+0 -14 Td
+/F1 12 Tf (reach the IPv4-only endpoint.) Tj
+0 -28 Td
+/F1 12 Tf (IPv6 client -> AAAA? -> breathgslb DNS64 -> A? -> IPv4 host) Tj
+0 -14 Td
+/F1 12 Tf (<- AAAA  <-             <- A  <-) Tj
+0 -14 Td
+/F1 12 Tf (This enables IPv6-only networks to consume services that have not yet been) Tj
+0 -14 Td
+/F1 12 Tf (modernised for dual stack.) Tj
+0 -14 Td
+/F1 12 Tf (DNSSEC) Tj
 ET
 endstream endobj
-17 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 18 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-18 0 obj<</Length 1815>>stream
-BT /F1 12 Tf
-72 760 Td (Environment variable name used to deterministically derive secrets.) Tj
-0 -14 Td (default_algorithm) Tj
-0 -14 Td (Default HMAC algorithm when not specified per key.) Tj
-0 -14 Td (keys) Tj
-0 -14 Td (List of key objects containing) Tj
-0 -14 Td (**name**) Tj
-0 -14 Td (\\(owner form with trailing dot\\), optional) Tj
-0 -14 Td (**algorithm**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**secret**) Tj
-0 -14 Td (\\(leave empty to derive\\), and) Tj
-0 -14 Td (**allow_xfr_from**) Tj
-0 -14 Td (list of IPs permitted to perform AXFR.) Tj
-0 -28 Td (Increase the optional) Tj
-0 -14 Td (**epoch**) Tj
-0 -14 Td (field to rotate a derived key.  For security, rotate TSIG keys at) Tj
-0 -14 Td (least every 90 days.  When) Tj
-0 -14 Td (**tsig.path**) Tj
-0 -14 Td (is used, replace the key file atomically and update any dependent) Tj
-0 -14 Td (symlinks before reloading the daemon.) Tj
-0 -14 Td (STATIC RECORDS) Tj
-0 -14 Td (Zone blocks may include lists named) Tj
-0 -14 Td (**txt**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**mx**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**caa**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**rp**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**sshfp**) Tj
-0 -14 Td (,) Tj
-0 -14 Td (**srv**) Tj
-0 -14 Td (and) Tj
-0 -14 Td (**naptr**) Tj
-0 -14 Td (matching their respective DNS RR formats.  Each entry accepts a) Tj
-0 -14 Td (**ttl**) Tj
-0 -14 Td (in seconds.) Tj
-0 -14 Td (API) Tj
-0 -14 Td (The admin API serves) Tj
-0 -14 Td (**/health**) Tj
-0 -14 Td (and) Tj
-0 -14 Td (**/stats**) Tj
-0 -14 Td (endpoints over HTTPS.  Generate an API token with a random tool such as) Tj
-0 -14 Td (openssl rand -hex 16 ,) Tj
-0 -14 Td (store it in a file, and reference it via) Tj
-0 -14 Td (**api-token**) Tj
-0 -14 Td (or the) Tj
-0 -14 Td (**-api-token**) Tj
-0 -14 Td (flag.  Certificates and keys may be produced with) Tj
-0 -14 Td (openssl \\(1\\)) Tj
+17 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 18 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+18 0 obj<</Length 2282>>stream
+BT
+72 760 Td
+/F1 12 Tf (The optional) Tj
+0 -14 Td
+/F2 12 Tf (dnssec) Tj
+0 -14 Td
+/F1 12 Tf (block enables inline signing with:) Tj
+0 -14 Td
+/F1 12 Tf (dnssec.enable) Tj
+0 -14 Td
+/F1 12 Tf (Enable signing.) Tj
+0 -14 Td
+/F1 12 Tf (dnssec.zsk_keyfile , dnssec.ksk_keyfile) Tj
+0 -14 Td
+/F1 12 Tf (Paths to the ZSK and KSK PEM files.) Tj
+0 -14 Td
+/F1 12 Tf (TSIG) Tj
+0 -14 Td
+/F1 12 Tf (Global TSIG settings reside in the) Tj
+0 -14 Td
+/F2 12 Tf (tsig) Tj
+0 -14 Td
+/F1 12 Tf (block.  Secrets are generated on start if missing and, when) Tj
+0 -14 Td
+/F2 12 Tf (tsig.path) Tj
+0 -14 Td
+/F1 12 Tf (is set, written to that directory as) Tj
+0 -14 Td
+/F1 12 Tf (files.) Tj
+0 -14 Td
+/F1 12 Tf (seed_env) Tj
+0 -14 Td
+/F1 12 Tf (Environment variable name used to deterministically derive secrets.) Tj
+0 -14 Td
+/F1 12 Tf (default_algorithm) Tj
+0 -14 Td
+/F1 12 Tf (Default HMAC algorithm when not specified per key.) Tj
+0 -14 Td
+/F1 12 Tf (keys) Tj
+0 -14 Td
+/F1 12 Tf (List of key objects containing) Tj
+0 -14 Td
+/F2 12 Tf (name) Tj
+0 -14 Td
+/F1 12 Tf (\\(owner form with trailing dot\\), optional) Tj
+0 -14 Td
+/F2 12 Tf (algorithm) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (secret) Tj
+0 -14 Td
+/F1 12 Tf (\\(leave empty to derive\\), and) Tj
+0 -14 Td
+/F2 12 Tf (allow_xfr_from) Tj
+0 -14 Td
+/F1 12 Tf (list of IPs permitted to perform AXFR.) Tj
+0 -28 Td
+/F1 12 Tf (Increase the optional) Tj
+0 -14 Td
+/F2 12 Tf (epoch) Tj
+0 -14 Td
+/F1 12 Tf (field to rotate a derived key.  For security, rotate TSIG keys at) Tj
+0 -14 Td
+/F1 12 Tf (least every 90 days.  When) Tj
+0 -14 Td
+/F2 12 Tf (tsig.path) Tj
+0 -14 Td
+/F1 12 Tf (is used, replace the key file atomically and update any dependent) Tj
+0 -14 Td
+/F1 12 Tf (symlinks before reloading the daemon.) Tj
+0 -14 Td
+/F1 12 Tf (STATIC RECORDS) Tj
+0 -14 Td
+/F1 12 Tf (Zone blocks may include lists named) Tj
+0 -14 Td
+/F2 12 Tf (txt) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (mx) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (caa) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (rp) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (sshfp) Tj
+0 -14 Td
+/F1 12 Tf (,) Tj
+0 -14 Td
+/F2 12 Tf (srv) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (naptr) Tj
+0 -14 Td
+/F1 12 Tf (matching their respective DNS RR formats.  Each entry accepts a) Tj
 ET
 endstream endobj
-19 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 20 0 R /Resources<</Font<</F1 21 0 R>>>>>>endobj
-20 0 obj<</Length 2078>>stream
-BT /F1 12 Tf
-72 760 Td (or a certificate authority.  Rotate TLS material by replacing the) Tj
-0 -14 Td (underlying files and updating a stable symlink before reloading the) Tj
-0 -14 Td (service.) Tj
-0 -14 Td (RFC1918 AND ULA) Tj
-0 -14 Td (Private IPv4 ranges defined by RFC1918) Tj
-0 -14 Td (\\(10/8, 172.16/12, 192.168/16\\) are never routed on the public Internet.) Tj
-0 -14 Td (IPv6 uses Unique Local Addresses under) Tj
-0 -14 Td (**fc00::/7**) Tj
-0 -14 Td (\\(typically) Tj
-0 -14 Td (**fd00::/8\\)**) Tj
-0 -14 Td (for the same purpose. ULAs are globally unique when generated with a) Tj
-0 -14 Td (random 40?bit prefix yet remain local by policy. Use public addresses for) Tj
-0 -14 Td (globally reachable services and reserve RFC1918/ULA space for internal) Tj
-0 -14 Td (hosts.) Tj
-0 -14 Td (SPLIT HORIZON) Tj
-0 -14 Td (For internal and external views run separate daemon instances with) Tj
-0 -14 Td (different configuration files and listening addresses.  Provide) Tj
-0 -14 Td (internal addresses in) Tj
-0 -14 Td (**a_master_private**) Tj
-0 -14 Td (and) Tj
-0 -14 Td (**ula_master**) Tj
-0 -14 Td (lists while keeping public addresses in) Tj
-0 -14 Td (**a_master**) Tj
-0 -14 Td (and) Tj
-0 -14 Td (**aaaa_master .**) Tj
-0 -14 Td (Place private or ULA addresses first so clients prefer local paths before) Tj
-0 -14 Td (falling back to globals. Example:) Tj
-0 -28 Td (a_master_private:) Tj
-0 -14 Td (  - 10.0.0.10) Tj
-0 -14 Td (  - 10.0.0.11) Tj
-0 -14 Td (a_master:) Tj
-0 -14 Td (  - 203.0.113.10) Tj
-0 -28 Td (ula_master:) Tj
-0 -14 Td (  - fd00:1::10) Tj
-0 -14 Td (aaaa_master:) Tj
-0 -14 Td (  - 2001:db8::10) Tj
-0 -28 Td (internal client -> resolver -> 10.0.0.10, 203.0.113.10) Tj
-0 -14 Td (                 \\(prefers first, stays on LAN\\)) Tj
-0 -14 Td (Shared TSIG keys allow signed transfers between views.) Tj
-0 -14 Td (FILES) Tj
-0 -14 Td (/etc/breathgslb/config.yaml) Tj
-0 -14 Td (Typical configuration path.) Tj
-0 -14 Td (/etc/breathgslb/keys) Tj
-0 -14 Td (Default directory for generated TSIG key files.) Tj
-0 -14 Td (SEE ALSO) Tj
-0 -14 Td (breathgslb \\(8\\)```) Tj
+19 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 20 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+20 0 obj<</Length 2542>>stream
+BT
+72 760 Td
+/F2 12 Tf (ttl) Tj
+0 -14 Td
+/F1 12 Tf (in seconds.) Tj
+0 -14 Td
+/F1 12 Tf (API) Tj
+0 -14 Td
+/F1 12 Tf (The admin API serves) Tj
+0 -14 Td
+/F2 12 Tf (/health) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (/stats) Tj
+0 -14 Td
+/F1 12 Tf (endpoints over HTTPS.  Generate an API token with a random tool such as) Tj
+0 -14 Td
+/F1 12 Tf (openssl rand -hex 16 ,) Tj
+0 -14 Td
+/F1 12 Tf (store it in a file, and reference it via) Tj
+0 -14 Td
+/F2 12 Tf (api-token) Tj
+0 -14 Td
+/F1 12 Tf (or the) Tj
+0 -14 Td
+/F2 12 Tf (-api-token) Tj
+0 -14 Td
+/F1 12 Tf (flag.  Certificates and keys may be produced with) Tj
+0 -14 Td
+/F1 12 Tf (openssl \\(1\\)) Tj
+0 -14 Td
+/F1 12 Tf (or a certificate authority.  Rotate TLS material by replacing the) Tj
+0 -14 Td
+/F1 12 Tf (underlying files and updating a stable symlink before reloading the) Tj
+0 -14 Td
+/F1 12 Tf (service.) Tj
+0 -14 Td
+/F1 12 Tf (RFC1918 AND ULA) Tj
+0 -14 Td
+/F1 12 Tf (Private IPv4 ranges defined by RFC1918) Tj
+0 -14 Td
+/F1 12 Tf (\\(10/8, 172.16/12, 192.168/16\\) are never routed on the public Internet.) Tj
+0 -14 Td
+/F1 12 Tf (IPv6 uses Unique Local Addresses under) Tj
+0 -14 Td
+/F2 12 Tf (fc00::/7) Tj
+0 -14 Td
+/F1 12 Tf (\\(typically) Tj
+0 -14 Td
+/F2 12 Tf (fd00::/8\\)) Tj
+0 -14 Td
+/F1 12 Tf (for the same purpose. ULAs are globally unique when generated with a) Tj
+0 -14 Td
+/F1 12 Tf (random 40?bit prefix yet remain local by policy. Use public addresses for) Tj
+0 -14 Td
+/F1 12 Tf (globally reachable services and reserve RFC1918/ULA space for internal) Tj
+0 -14 Td
+/F1 12 Tf (hosts.) Tj
+0 -14 Td
+/F1 12 Tf (SPLIT HORIZON) Tj
+0 -14 Td
+/F1 12 Tf (For internal and external views run separate daemon instances with) Tj
+0 -14 Td
+/F1 12 Tf (different configuration files and listening addresses.  Provide) Tj
+0 -14 Td
+/F1 12 Tf (internal addresses in) Tj
+0 -14 Td
+/F2 12 Tf (a_master_private) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (ula_master) Tj
+0 -14 Td
+/F1 12 Tf (lists while keeping public addresses in) Tj
+0 -14 Td
+/F2 12 Tf (a_master) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (aaaa_master .) Tj
+0 -14 Td
+/F1 12 Tf (Place private or ULA addresses first so clients prefer local paths before) Tj
+0 -14 Td
+/F1 12 Tf (falling back to globals. Example:) Tj
+0 -28 Td
+/F1 12 Tf (a_master_private:) Tj
+0 -14 Td
+/F1 12 Tf (- 10.0.0.10) Tj
+0 -14 Td
+/F1 12 Tf (- 10.0.0.11) Tj
+0 -14 Td
+/F1 12 Tf (a_master:) Tj
+0 -14 Td
+/F1 12 Tf (- 203.0.113.10) Tj
+0 -28 Td
+/F1 12 Tf (ula_master:) Tj
+0 -14 Td
+/F1 12 Tf (- fd00:1::10) Tj
+0 -14 Td
+/F1 12 Tf (aaaa_master:) Tj
 ET
 endstream endobj
-21 0 obj<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>endobj
+21 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 22 0 R /Resources<</Font<</F1 23 0 R /F2 24 0 R>>>>>>endobj
+22 0 obj<</Length 591>>stream
+BT
+72 760 Td
+/F1 12 Tf (- 2001:db8::10) Tj
+0 -28 Td
+/F1 12 Tf (internal client -> resolver -> 10.0.0.10, 203.0.113.10) Tj
+0 -14 Td
+/F1 12 Tf (\\(prefers first, stays on LAN\\)) Tj
+0 -14 Td
+/F1 12 Tf (Shared TSIG keys allow signed transfers between views.) Tj
+0 -14 Td
+/F1 12 Tf (FILES) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/config.yaml) Tj
+0 -14 Td
+/F1 12 Tf (Typical configuration path.) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/keys) Tj
+0 -14 Td
+/F1 12 Tf (Default directory for generated TSIG key files.) Tj
+0 -14 Td
+/F1 12 Tf (SEE ALSO) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb \\(8\\)```) Tj
+ET
+endstream endobj
+23 0 obj<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>endobj
+24 0 obj<</Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold>>endobj
 xref
-0 22
+0 25
 0000000000 65535 f 
 0000000009 00000 n 
 0000000054 00000 n 
-0000000160 00000 n 
-0000000277 00000 n 
-0000003209 00000 n 
-0000003326 00000 n 
-0000005825 00000 n 
-0000005942 00000 n 
-0000008232 00000 n 
-0000008350 00000 n 
-0000010555 00000 n 
-0000010674 00000 n 
-0000012841 00000 n 
-0000012960 00000 n 
-0000014552 00000 n 
-0000014671 00000 n 
-0000016541 00000 n 
-0000016660 00000 n 
-0000018524 00000 n 
-0000018643 00000 n 
-0000020770 00000 n 
-trailer<</Root 1 0 R /Size 22>>
+0000000168 00000 n 
+0000000296 00000 n 
+0000003550 00000 n 
+0000003678 00000 n 
+0000006108 00000 n 
+0000006236 00000 n 
+0000009183 00000 n 
+0000009312 00000 n 
+0000011966 00000 n 
+0000012096 00000 n 
+0000014667 00000 n 
+0000014797 00000 n 
+0000017129 00000 n 
+0000017259 00000 n 
+0000019382 00000 n 
+0000019512 00000 n 
+0000021843 00000 n 
+0000021973 00000 n 
+0000024564 00000 n 
+0000024694 00000 n 
+0000025333 00000 n 
+0000025400 00000 n 
+trailer<</Root 1 0 R /Size 25>>
 startxref
-20837
+25472
 %%EOF
