@@ -33,7 +33,12 @@ import (
 	maxminddb "github.com/oschwald/maxminddb-golang"
 )
 
-const version = "0.0.1"
+//go:embed version.txt
+var version string
+
+func init() {
+	version = strings.TrimSpace(version)
+}
 
 // ---- state: per-tier, per-family ----
 
@@ -520,7 +525,7 @@ func main() {
 
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		log.Fatalf("read config: %v", err)
+		log.Fatalf("read config: %v\nadd -h or --help to get help", err)
 	}
 	config.SetupDefaults(cfg)
 	config.GenerateTSIGKeys(cfg)
