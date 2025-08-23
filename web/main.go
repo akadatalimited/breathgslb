@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -38,6 +39,7 @@ var (
 	cfg          Config
 	db           *sql.DB
 	adminSession string
+	templates    = template.Must(template.ParseGlob("templates/*.html"))
 )
 
 func loadConfig(path string) error {
@@ -200,6 +202,26 @@ func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func adminLoginPageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		templates.ExecuteTemplate(w, "login.html", nil)
+		return
+	}
+	adminLoginHandler(w, r)
+}
+
+func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
+	templates.ExecuteTemplate(w, "dashboard.html", nil)
+}
+
+func adminLicenseFormHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		templates.ExecuteTemplate(w, "license_form.html", nil)
+		return
+	}
+	adminIssueLicenseHandler(w, r)
+}
+
 func listLicensesHandler(w http.ResponseWriter, r *http.Request) {
 	c, _ := r.Cookie("email")
 	rows, err := db.Query("SELECT key, license_expiry, support_expiry, support_level FROM licenses l JOIN users u ON l.user_id=u.id WHERE u.email=?", c.Value)
@@ -344,16 +366,20 @@ func main() {
 	http.HandleFunc("/signup", signupHandler)
 	http.HandleFunc("/verify", verifyHandler)
 	http.HandleFunc("/login", loginHandler)
-	http.HandleFunc("/admin/login", adminLoginHandler)
+	http.HandleFunc("/admin/login", adminLoginPageHandler)
 	http.HandleFunc("/licenses", requireLogin(listLicensesHandler))
 	http.HandleFunc("/license/request", requireLogin(requestLicenseHandler))
 	http.HandleFunc("/license/resend", requireLogin(resendLicenseHandler))
 
+	http.HandleFunc("/admin", requireAdmin(adminDashboardHandler))
+	http.HandleFunc("/admin/license", requireAdmin(adminLicenseFormHandler))
 	http.HandleFunc("/admin/accounts", requireAdmin(adminAccountsHandler))
 	http.HandleFunc("/admin/issue", requireAdmin(adminIssueLicenseHandler))
 	http.HandleFunc("/admin/renew", requireAdmin(adminRenewLicenseHandler))
 	http.HandleFunc("/admin/revoke", requireAdmin(adminRevokeLicenseHandler))
 	http.HandleFunc("/admin/tier", requireAdmin(adminCreateTierHandler))
+
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	addr := net.JoinHostPort(cfg.Server.IP, strconv.Itoa(cfg.Server.Port))
 	log.Printf("listening on %s", addr)

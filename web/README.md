@@ -58,3 +58,15 @@ This produces a `web` binary at `web/web`.
 The server listens on the configured `server` address (default `:8080`) and exposes endpoints for user signup,
 verification, license requests, and administrative actions for issuing,
 renewing, and revoking licenses.
+
+## Admin Portal
+
+An HTML admin portal is available for common management tasks. After
+starting the server, visit `http://<host>:<port>/admin/login` to log in
+with the configured administrator credentials. Successful login redirects
+to `/admin`, which shows a simple dashboard linking to other admin
+functions.
+
+Licenses can be issued through the form at `/admin/license`. Static
+assets like CSS are served from `/static/`, keeping presentation files
+out of the Go source.
