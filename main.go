@@ -472,6 +472,23 @@ Designed from the ground up for IPv6 with full legacy IPv4 Support
 `, version, buildOS)
 }
 
+func printSupportStatus() {
+	supported, days := supportStatus()
+	status := "Unsupported"
+	if supported {
+		status = "Supported"
+	}
+	fmt.Printf("%s (%d days remaining)\n", status, days)
+	if supported {
+		fmt.Println("dns-support@breathtechnology.co.uk")
+	}
+}
+
+func supportRequest() error {
+	fmt.Println("support request initiated")
+	return nil
+}
+
 func main() {
 	var cfgPath string
 	var apiListen string
@@ -483,6 +500,7 @@ func main() {
 	var debugPprof bool
 	var showHelp bool
 	var showAbout bool
+	var supportReq bool
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "path to YAML config")
 	flag.StringVar(&cfgPath, "c", "config.yaml", "path to YAML config")
@@ -504,6 +522,8 @@ func main() {
 	flag.BoolVar(&showHelp, "h", false, "returns help for BreathGSLB")
 	flag.BoolVar(&showAbout, "about", false, "returns a detailed about page")
 	flag.BoolVar(&showAbout, "a", false, "returns a detailed about page")
+	flag.BoolVar(&supportReq, "support-request", false, "create a support request and exit")
+	flag.BoolVar(&supportReq, "sr", false, "create a support request and exit")
 
 	flag.Usage = func() {
 		fmt.Fprint(flag.CommandLine.Output(), aboutText())
@@ -516,6 +536,7 @@ func main() {
 		fmt.Fprint(flag.CommandLine.Output(), "-d --debug-pprof\nenable pprof debug server on localhost:6060\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-s --supervisor string\nsupervisor notification target\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-k --activate string\nactivate license with provided key and exit\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-sr --support-request\ncreate a support request and exit\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-h --help\nreturns help for BreathGSLB\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-a --about\nreturns a detailed about page\n")
 	}
@@ -534,6 +555,7 @@ func main() {
 		if err := validateLicense(strings.TrimSpace(activateKey), licensePayloadBytes); err != nil {
 			log.Fatalf("activate license: %v", err)
 		}
+		printSupportStatus()
 		fmt.Println("license activated")
 		return
 	}
@@ -558,6 +580,17 @@ func main() {
 		if err := validateLicense(strings.TrimSpace(key), licensePayloadBytes); err != nil {
 			log.Fatalf("activate license: %v", err)
 		}
+	}
+	printSupportStatus()
+
+	if supportReq {
+		if !isSupportActive() {
+			log.Fatalf("support request requires active support")
+		}
+		if err := supportRequest(); err != nil {
+			log.Fatalf("support request: %v", err)
+		}
+		return
 	}
 
 	fmt.Printf("BreathGSLB - V%s %s Release\n", version, buildOS)
