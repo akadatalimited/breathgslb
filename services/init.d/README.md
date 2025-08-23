@@ -8,7 +8,7 @@ daemon.
 1. Copy `breathgslb` to `/etc/init.d/breathgslb`.
 2. Review and adjust the variables at the top of the script to match your
    environment.
-3. Ensure the configured user and group exist on the system.
+3. Create the `breathgslb` user and group (or ensure they already exist).
 4. Make the script executable: `chmod +x /etc/init.d/breathgslb`.
 5. Add the service to the desired runlevel: `rc-update add breathgslb`.
 6. Start the service: `rc-service breathgslb start`.
