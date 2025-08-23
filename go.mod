@@ -3,11 +3,13 @@ module github.com/akadatalimited/breathgslb
 go 1.24.5
 
 require (
-	github.com/miekg/dns v1.1.68
-	github.com/oschwald/maxminddb-golang v1.13.1
-	github.com/quic-go/quic-go v0.54.0
-	golang.org/x/net v0.43.0
-	gopkg.in/yaml.v3 v3.0.1
+        github.com/miekg/dns v1.1.68
+        github.com/oschwald/maxminddb-golang v1.13.1
+        github.com/quic-go/quic-go v0.54.0
+        golang.org/x/net v0.43.0
+        github.com/go-sql-driver/mysql v1.8.0
+        modernc.org/sqlite v1.30.0
+        gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
