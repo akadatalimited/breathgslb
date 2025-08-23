@@ -523,6 +523,8 @@ func main() {
 		return
 	}
 
+	fmt.Printf("BreathGSLB - V%s %s Release\n", version, buildOS)
+
 	_ = supervisor
 
 	adminAPIToken = apiToken
