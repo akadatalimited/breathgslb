@@ -2,15 +2,69 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Issue License</title>
+  <title>License Management</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+  function submitForm(event, form, resultId) {
+    event.preventDefault();
+    fetch(form.action, {method: 'POST', body: new FormData(form)})
+      .then(r => r.text())
+      .then(t => {
+        const res = document.getElementById(resultId);
+        const trimmed = t.trim();
+        if (trimmed && trimmed !== 'revoked' && trimmed !== 'renewed' && trimmed !== 'resent') {
+          const blob = new Blob([trimmed], {type: 'text/plain'});
+          const url = URL.createObjectURL(blob);
+          res.innerHTML = '<pre>' + trimmed + '</pre><a href="' + url + '" download="license.txt">Download</a>';
+        } else {
+          res.textContent = trimmed;
+        }
+      });
+    return false;
+  }
+  </script>
 </head>
 <body>
-  <h1>Issue License</h1>
-  <form method="POST" action="/admin/license">
-    <label>User Email: <input type="email" name="email" required></label><br>
-    <label>Support Level: <input type="text" name="level" required></label><br>
-    <button type="submit">Issue</button>
-  </form>
+  <h1>License Management</h1>
+
+  <section>
+    <h2>Issue License</h2>
+    <form method="POST" action="/admin/issue" onsubmit="submitForm(event, this, 'issueResult')">
+      <label>User Email: <input type="email" name="email" required></label><br>
+      <label>Support Level: <input type="text" name="level" required></label><br>
+      <button type="submit">Issue</button>
+    </form>
+    <div id="issueResult"></div>
+  </section>
+
+  <section>
+    <h2>Renew License</h2>
+    <form method="POST" action="/admin/renew" onsubmit="submitForm(event, this, 'renewResult')">
+      <label>License Key: <input type="text" name="key" required></label><br>
+      <label><input type="checkbox" name="newkey"> Generate new key</label><br>
+      <button type="submit">Renew</button>
+    </form>
+    <div id="renewResult"></div>
+  </section>
+
+  <section>
+    <h2>Revoke License</h2>
+    <form method="POST" action="/admin/revoke" onsubmit="submitForm(event, this, 'revokeResult')">
+      <label>License Key: <input type="text" name="key" required></label><br>
+      <button type="submit">Revoke</button>
+    </form>
+    <div id="revokeResult"></div>
+  </section>
+
+  <section>
+    <h2>Resend License</h2>
+    <form method="POST" action="/admin/resend" onsubmit="submitForm(event, this, 'resendResult')">
+      <label>License Key: <input type="text" name="key" required></label><br>
+      <label><input type="checkbox" name="newkey"> Generate new key</label><br>
+      <button type="submit">Resend</button>
+    </form>
+    <div id="resendResult"></div>
+  </section>
+
 </body>
 </html>
