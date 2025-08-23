@@ -154,13 +154,13 @@ install: build install-man
 	# dirs used by the service
 	install -d -m 0750 $(DESTDIR)$(CFGDIR)
 	install -d -m 0755 $(DESTDIR)$(KEYDIR)
-        install -d -m 0755 $(DESTDIR)$(LOGDIR)
+	install -d -m 0755 $(DESTDIR)$(LOGDIR)
 
 install-man:
-        install -d $(DESTDIR)$(MAN8DIR) $(DESTDIR)$(MAN5DIR)
-        install -m 0644 man/breathgslb.8 $(DESTDIR)$(MAN8DIR)/breathgslb.8
-        install -m 0644 man/breathgslb.conf.5 $(DESTDIR)$(MAN5DIR)/breathgslb.conf.5
-        ln -sf breathgslb.conf.5 $(DESTDIR)$(MAN5DIR)/breathgslb.5
+	install -d $(DESTDIR)$(MAN8DIR) $(DESTDIR)$(MAN5DIR)
+	install -m 0644 man/breathgslb.8 $(DESTDIR)$(MAN8DIR)/breathgslb.8
+	install -m 0644 man/breathgslb.conf.5 $(DESTDIR)$(MAN5DIR)/breathgslb.conf.5
+	ln -sf breathgslb.conf.5 $(DESTDIR)$(MAN5DIR)/breathgslb.5
 
 install-systemd: install
 	install -d $(DESTDIR)$(SYSD_PREFIX)
