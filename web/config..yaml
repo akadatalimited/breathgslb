@@ -1,0 +1,5 @@
+db:
+  driver: sqlite
+  dsn: web.db
+admin:
+  email: admin@example.com
