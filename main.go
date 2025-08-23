@@ -36,6 +36,7 @@ import (
 //go:embed version.txt
 var version string
 var buildOS string
+var buildDate string
 
 func init() {
 	version = strings.TrimSpace(version)
@@ -521,6 +522,16 @@ func main() {
 	if showAbout {
 		fmt.Print(aboutText())
 		return
+	}
+
+	if buildDate != "" {
+		if t, err := time.Parse("2006-01-02", buildDate); err == nil {
+			if time.Since(t) >= 30*24*time.Hour {
+				log.Fatalf("build expired on %s", buildDate)
+			}
+		} else {
+			log.Fatalf("invalid build date: %v", err)
+		}
 	}
 
 	fmt.Printf("BreathGSLB - V%s %s Release\n", version, buildOS)
