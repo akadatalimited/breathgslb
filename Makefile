@@ -1,6 +1,7 @@
 # --- Project
 BINARY      ?= breathgslb
 PKG         ?= github.com/akadatalimited/breathgslb
+WEB_BINARY  ?= web/web
 
 # --- Tooling / flags
 GO          ?= go
@@ -51,7 +52,7 @@ SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || ech
 DOC_PDF := doc/breathgslb.pdf
 
 # -------------------- standard targets --------------------
-.PHONY: all build vendor clean fmt vet test help \
+.PHONY: all build vendor clean fmt vet test help web \
         release release-linux release-musl release-macos release-freebsd release-bsd release-windows \
         package docs licensegen install install-man install-systemd install-openrc uninstall
 
@@ -75,6 +76,10 @@ help:
 build:
 	@echo "==> building ($(BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(BINARY)
+
+web:
+	@echo "==> building ($(WEB_BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" -mod=mod $(GOFLAGS) -o $(WEB_BINARY) ./web
 
 vendor:
 	$(GO) mod tidy

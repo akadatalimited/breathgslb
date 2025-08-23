@@ -231,6 +231,45 @@ func adminIssueLicenseHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, key)
 }
 
+func adminRenewLicenseHandler(w http.ResponseWriter, r *http.Request) {
+	key := r.FormValue("key")
+	licExp := time.Now().AddDate(1, 0, 0).Format(time.RFC3339)
+	supExp := time.Now().AddDate(0, 6, 0).Format(time.RFC3339)
+	res, err := db.Exec("UPDATE licenses SET license_expiry=?, support_expiry=? WHERE key=?", licExp, supExp, key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		http.Error(w, "license not found", http.StatusNotFound)
+		return
+	}
+	var email string
+	err = db.QueryRow("SELECT u.email FROM licenses l JOIN users u ON l.user_id=u.id WHERE l.key=?", key).Scan(&email)
+	if err == nil {
+		sendEmail(email, "Your license has been renewed", key)
+	}
+	fmt.Fprintln(w, "renewed")
+}
+
+func adminRevokeLicenseHandler(w http.ResponseWriter, r *http.Request) {
+	key := r.FormValue("key")
+	var email string
+	err := db.QueryRow("SELECT u.email FROM licenses l JOIN users u ON l.user_id=u.id WHERE l.key=?", key).Scan(&email)
+	if err != nil {
+		http.Error(w, "license not found", http.StatusNotFound)
+		return
+	}
+	_, err = db.Exec("DELETE FROM licenses WHERE key=?", key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sendEmail(email, "Your license has been revoked", key)
+	fmt.Fprintln(w, "revoked")
+}
+
 func adminCreateTierHandler(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	_, err := db.Exec("INSERT INTO tiers(name) VALUES(?)", name)
@@ -258,6 +297,8 @@ func main() {
 
 	http.HandleFunc("/admin/accounts", requireAdmin(adminAccountsHandler))
 	http.HandleFunc("/admin/issue", requireAdmin(adminIssueLicenseHandler))
+	http.HandleFunc("/admin/renew", requireAdmin(adminRenewLicenseHandler))
+	http.HandleFunc("/admin/revoke", requireAdmin(adminRevokeLicenseHandler))
 	http.HandleFunc("/admin/tier", requireAdmin(adminCreateTierHandler))
 
 	log.Println("listening on :8080")
