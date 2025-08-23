@@ -33,6 +33,9 @@ LOGDIR      ?= /var/log/breathgslb
 CFGDIR      ?= /etc/breathgslb
 KEYDIR      ?= $(CFGDIR)/keys
 DISTDIR     ?= dist
+MANDIR      ?= $(PREFIX)/share/man
+MAN5DIR     ?= $(MANDIR)/man5
+MAN8DIR     ?= $(MANDIR)/man8
 
 # Utils
 MKDIR_P := mkdir -p
@@ -44,7 +47,7 @@ SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || ech
 # -------------------- standard targets --------------------
 .PHONY: all build vendor clean fmt vet test help \
         release release-linux release-musl release-macos release-freebsd release-bsd release-windows \
-        package install install-systemd install-openrc uninstall
+        package install install-man install-systemd install-openrc uninstall
 
 all: build
 
@@ -138,7 +141,7 @@ package: release
 	fi
 
 # -------------------- install targets --------------------
-install: build
+install: build install-man
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 0755 $(BINARY) $(DESTDIR)$(BINDIR)/$(BINARY)
 	# helper scripts
@@ -151,7 +154,13 @@ install: build
 	# dirs used by the service
 	install -d -m 0750 $(DESTDIR)$(CFGDIR)
 	install -d -m 0755 $(DESTDIR)$(KEYDIR)
-	install -d -m 0755 $(DESTDIR)$(LOGDIR)
+        install -d -m 0755 $(DESTDIR)$(LOGDIR)
+
+install-man:
+        install -d $(DESTDIR)$(MAN8DIR) $(DESTDIR)$(MAN5DIR)
+        install -m 0644 man/breathgslb.8 $(DESTDIR)$(MAN8DIR)/breathgslb.8
+        install -m 0644 man/breathgslb.conf.5 $(DESTDIR)$(MAN5DIR)/breathgslb.conf.5
+        ln -sf breathgslb.conf.5 $(DESTDIR)$(MAN5DIR)/breathgslb.5
 
 install-systemd: install
 	install -d $(DESTDIR)$(SYSD_PREFIX)

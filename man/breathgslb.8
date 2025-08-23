@@ -1,0 +1,68 @@
+.TH BREATHGSLB 8 "September 2023" "BreathGSLB" "System Administration"
+.SH NAME
+breathgslb \- health‑checked authoritative DNS with global load balancing
+.SH SYNOPSIS
+.B breathgslb
+.RB [ \-config\ \fIfile\fR ]
+.RB [ \-api\-listen\ \fIaddr\fR ]
+.RB [ \-api\-token\ \fItoken\fR ]
+.RB [ \-api\-cert\ \fIfile\fR ]
+.RB [ \-api\-key\ \fIfile\fR ]
+.RB [ \-supervisor\ \fIpath\fR ]
+.RB [ \-debug\-pprof ]
+.SH DESCRIPTION
+.B BreathGSLB
+is a compact authoritative server that selects A and AAAA answers based on
+live health checks.  It serves normal DNS records while optionally
+synthesising AAAA from A via DNS64.  The daemon listens on UDP and TCP for
+both IPv4 and IPv6 and can expose an HTTPS admin API for health and
+statistics.
+.SH OPTIONS
+.TP
+.BR \-config " " \fIfile\fR
+Path to the YAML configuration file.  Defaults to
+.IR config.yaml .
+.TP
+.BR \-api\-listen " " \fIaddr\fR
+Bind address for the optional HTTPS admin API, e.g.
+.B :9443
+or
+.BR 127.0.0.1:9443 .
+.TP
+.BR \-api\-token " " \fItoken\fR
+Bearer token for API requests.  May be a literal string or
+path to a file whose contents are used.
+.TP
+.BR \-api\-cert " " \fIfile\fR
+TLS certificate file for the admin API.
+.TP
+.BR \-api\-key " " \fIfile\fR
+TLS private key for the admin API.
+.TP
+.BR \-supervisor " " \fIpath\fR
+Send service state change notifications to the given supervisor socket
+or FIFO.  The format of the messages is supervisor specific.
+.TP
+.BR \-debug\-pprof
+Enable Go's pprof debug server on
+.BR localhost:6060 .
+.SH USAGE
+Start the daemon with a configuration file:
+.PP
+.nf
+breathgslb \-config /etc/breathgslb/config.yaml
+.fi
+.PP
+For split‑horizon deployments run separate instances with differing
+configuration files and distinct listeners.  Share TSIG keys between
+instances when signed zone transfers are required.
+.PP
+TLS certificates and API tokens are read from the paths supplied on the
+command line or in the configuration file.  To rotate them atomically,
+write the new material to a separate file, update a symlink, and reload
+.B breathgslb
+with
+.B SIGHUP
+or a restart.
+.SH SEE ALSO
+.BR breathgslb.conf (5)
