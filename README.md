@@ -137,7 +137,7 @@ go build -tags tools ./cmd/licensegen
 It may also be run without producing a binary:
 
 ```sh
-go run -tags tools ./cmd/licensegen -email user@example.com -build 2024-01-02 -os linux
+go run -tags tools ./cmd/licensegen -email user@example.com -expiry 2024-06-01 -customerType pro -supported
 ```
 
 Compiling `license.go` by itself will error because it depends on build-time
@@ -597,23 +597,21 @@ stable.
 ## Licensing & Support
 
 BreathGSLB uses a simple license payload to gate features and track support
-contracts. Each license contains the following fields:
+contracts. Each license now includes only the following fields:
 
 | Field          | Purpose |
 | -------------- | ------- |
-| `build`        | Build date the license was issued for |
-| `os`           | Target operating system |
 | `email`        | Contact for the licensed user |
-| `expiry`       | When the license itself expires (or `"never"`) |
-| `support_expiry` | Date after which support is no longer available |
+| `expiry`       | License expiry date (defaults to 31 days; `"never"` for perpetual) |
+| `customer_type` | Customer tier such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 | `supported`    | `true` when a support contract is active |
-| `customer_type` | User type such as `community`, `basic`, or `enterprise` |
 
 ### Supported behaviour
 
 Help is provided for official binaries and documented configuration on
 supported platforms. Running modified code, straying outside documented
-behaviour, or operating past `support_expiry` is outside the support scope.
+behaviour, or operating without an active support contract is outside the
+support scope.
 
 ### Requesting support
 
