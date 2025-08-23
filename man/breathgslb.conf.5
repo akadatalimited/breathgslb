@@ -1,0 +1,330 @@
+.TH BREATHGSLB.CONF 5 "September 2023" "BreathGSLB" "File Formats"
+.SH NAME
+breathgslb.conf \- configuration file for breathgslb
+.SH DESCRIPTION
+The configuration file is written in YAML and controls listener
+addresses, health checking, and record synthesis.  A minimal file
+contains global settings followed by one or more zone blocks.
+.SH GLOBAL KEYS
+.TP
+.B listen
+Address or
+.BR :port
+on which to bind.  The daemon listens on UDP and TCP for both
+IPv4 and IPv6.
+.TP
+.B listen_addrs
+List of explicit
+.B host:port
+bindings.  Overrides
+.BR interfaces .
+.TP
+.B interfaces
+List of network interface names whose addresses are used for
+binding.
+.TP
+.B reverse_dir
+Directory where automatically generated reverse zones are written.
+.TP
+.B timeout_sec
+Per‑probe timeout in seconds.
+.TP
+.B interval_sec
+Base interval between probe rounds in seconds.
+.TP
+.B rise
+Consecutive successes required to mark an endpoint up.
+.TP
+.B fall
+Consecutive failures required to mark an endpoint down.
+.TP
+.B jitter_ms
+Random jitter added to each interval.
+.TP
+.B cooldown_sec
+Minimum seconds between state flips for an address family.
+.TP
+.B dns64_prefix
+IPv6 prefix used when synthesizing AAAA from A records.
+.TP
+.B edns_buf
+Advertised EDNS0 UDP payload size.
+.TP
+.B max_records
+Hard limit on A/AAAA records per response.
+.TP
+.B log_queries
+Log DNS queries and health transitions.
+.TP
+.B max_workers
+Number of UDP worker goroutines.
+.TP
+.B log_syslog
+Send logs to syslog instead of stderr.
+.TP
+.B tsig.path
+Directory containing emitted TSIG key files.
+.TP
+.B geoip.enabled
+Enable GeoIP lookups for location based routing.
+.TP
+.B api
+Enable the HTTPS admin API.
+.TP
+.B api-listen
+Port for the admin API; default 9443.
+.TP
+.B api-interface
+Interface name or list of interfaces to bind the API.
+.TP
+.B api-token
+Path to a file containing the bearer token or the literal token
+string.
+.TP
+.B api-cert
+Path to the TLS certificate for the admin API.
+.TP
+.B api-key
+Path to the TLS key for the admin API.
+.SH ZONES
+Each element of the
+.B zones
+list defines an authoritative zone.
+.TP
+.B name
+Zone name in fully qualified domain form.
+.TP
+.B ns
+List of authoritative nameservers; the parent zone must delegate to
+these.
+.TP
+.B admin
+Administrator mailbox in dotted form.
+.TP
+.B ttl_soa
+TTL of the SOA record.
+.TP
+.B ttl_answer
+Default TTL for synthesized apex answers.
+.TP
+.B serve
+Set to
+.B local
+to have the zone served from this instance.
+.SH ADDRESS POOLS
+The following lists control A and AAAA answers at the apex.
+.TP
+.B a_master , aaaa_master
+Primary address pool returned when healthy.  Items may be plain
+addresses or objects with
+.B ip
+and optional
+.B reverse
+boolean to generate PTRs under
+.BR reverse_dir .
+.TP
+.B a_standby , aaaa_standby
+Used when the master pool is unhealthy.
+.TP
+.B a_fallback , aaaa_fallback
+Returned when master and standby pools are down.
+.TP
+.B rfc_master
+List of RFC1918 IPv4 ranges to advertise internally.
+.TP
+.B a_master_private , aaaa_master_private
+Internal‑only addresses for split‑horizon deployments.
+.TP
+.B ula_master
+IPv6 ULA prefixes served only to internal clients.
+.TP
+.B alias
+ALIAS‑style target used when no A or AAAA lists are present.
+.PP
+Example with IPv4, IPv6, DNS64 and private ranges:
+.PP
+.nf
+zones:
+  - name: example.net.
+    a_master: ["203.0.113.10"]
+    aaaa_master: ["2001:db8::10"]
+    rfc_master: ["10.0.0.0/8"]
+    ula_master: ["fd00:1234::/48"]
+    dns64_prefix: "64:ff9b::"
+.fi
+.SH GEOGRAPHIC ROUTING
+The optional
+.B geoip
+block enables country or continent based routing.  Keys mirror the
+global GeoIP options:
+.TP
+.B database
+Path to a MaxMind style database.
+.TP
+.B prefer_ecs
+Trust EDNS Client Subnet data.
+.TP
+.B prefer_field
+Either
+.B country
+or
+.B registered_country .
+.TP
+.B cache_ttl_sec
+TTL for the lookup cache.
+.PP
+Within a zone, a
+.B geo
+block may specify allow lists for
+.B master
+,
+.B standby
+and
+.B fallback
+pools using
+.B allow_countries
+or
+.B allow_continents .
+.SH HEALTH CHECKS
+Each zone may contain a
+.B health
+object describing how endpoints are probed.
+.TP
+.B kind
+One of
+.B http
+,
+.B http3
+,
+.B tcp
+,
+.B udp
+or
+.B rawip .
+.TP
+.B expect
+Substring or pattern expected in the response.
+.PP
+Per‑kind options include:
+.TP
+.B http / http3
+.BR host_header ,
+.BR sni ,
+.BR path ,
+.B insecure_tls
+boolean.
+.TP
+.B tcp
+.BR port ,
+.BR tls_enable ,
+.BR sni
+and
+.B alpn .
+.TP
+.B udp
+.BR port ,
+.BR udp_payload_b64
+and
+.B udp_expect_re .
+.TP
+.B rawip
+.B protocol
+number to send.
+.SH DNSSEC
+The optional
+.B dnssec
+block enables inline signing with:
+.TP
+.B dnssec.enable
+Enable signing.
+.TP
+.B dnssec.zsk_keyfile , dnssec.ksk_keyfile
+Paths to the ZSK and KSK PEM files.
+.SH TSIG
+Global TSIG settings reside in the
+.B tsig
+block.  Secrets are generated on start if missing and, when
+.B tsig.path
+is set, written to that directory as
+.IR name.key
+files.
+.TP
+.B seed_env
+Environment variable name used to deterministically derive secrets.
+.TP
+.B default_algorithm
+Default HMAC algorithm when not specified per key.
+.TP
+.B keys
+List of key objects containing
+.B name
+(owner form with trailing dot), optional
+.B algorithm
+,
+.B secret
+(leave empty to derive), and
+.B allow_xfr_from
+list of IPs permitted to perform AXFR.
+.PP
+Increase the optional
+.B epoch
+field to rotate a derived key.  For security, rotate TSIG keys at
+least every 90 days.  When
+.B tsig.path
+is used, replace the key file atomically and update any dependent
+symlinks before reloading the daemon.
+.SH STATIC RECORDS
+Zone blocks may include lists named
+.B txt
+,
+.B mx
+,
+.B caa
+,
+.B rp
+,
+.B sshfp
+,
+.B srv
+and
+.B naptr
+matching their respective DNS RR formats.  Each entry accepts a
+.B ttl
+in seconds.
+.SH API
+The admin API serves
+.B /health
+and
+.B /stats
+endpoints over HTTPS.  Generate an API token with a random tool such as
+.BR "openssl rand -hex 16" ,
+store it in a file, and reference it via
+.B api-token
+or the
+.B \-api-token
+flag.  Certificates and keys may be produced with
+.BR openssl (1)
+or a certificate authority.  Rotate TLS material by replacing the
+underlying files and updating a stable symlink before reloading the
+service.
+.SH SPLIT HORIZON
+For internal and external views run separate daemon instances with
+different configuration files and listening addresses.  Provide
+internal addresses in
+.B a_master_private
+and
+.B ula_master
+lists while keeping public addresses in
+.B a_master
+and
+.B aaaa_master .
+Shared TSIG keys allow signed transfers between views.
+.SH FILES
+.TP
+.I /etc/breathgslb/config.yaml
+Typical configuration path.
+.TP
+.I /etc/breathgslb/keys
+Default directory for generated TSIG key files.
+.SH SEE ALSO
+.BR breathgslb (8)
