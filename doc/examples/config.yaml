@@ -1,6 +1,7 @@
 # breathgslb global settings
 listen: ":53"                     # optional; default port 53 if omitted
-#listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets (overrides interfaces)
+#listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets (overrides
+# interfaces)
 # interfaces: ["enX0"]            # derive IPs from interface(s) and bind there
 
 api: true
@@ -17,9 +18,11 @@ interval_sec: 4               # base interval between probe rounds
 rise: 1                       # successes to mark UP
 fall: 2                       # failures to mark DOWN
 jitter_ms: 600                # add 0..600ms jitter to each interval
-cooldown_sec: 30              # minimum seconds between state flips (per A/AAAA family)
+cooldown_sec: 30              # minimum seconds between state flips (per
+# A/AAAA family)
 dns64_prefix: "64:ff9b::"     # synthesize AAAA from A when needed
-edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6 without frag)
+edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6
+# without frag)
 log_queries: true             # log queries and health transitions
 log_syslog: true
 tsig:
@@ -39,7 +42,8 @@ zones:
   # ZONE 1 — gslb-sitetest.akadata.ltd. (apex answers are GSLB-controlled)
   #
   - name: "gslb-sitetest.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]        # parent must delegate to this NS, with glue A/AAAA
+    ns: ["ns-gslb.akadata.ltd."]        # parent must delegate to this NS, with
+    # glue A/AAAA
     admin: "hostmaster.akadata.ltd."
     ttl_soa: 60
     ttl_answer: 20
@@ -50,16 +54,20 @@ zones:
     a_master:
       - ip: "217.155.241.55"        # e.g., home/Zen v4
         reverse: true
-    rfc_master:          ["172.16.0.0/24"]                          # e.g., the private rfc_1918 address
+    rfc_master:          ["172.16.0.0/24"]                          # e.g., the
+    # private rfc_1918 address
     a_master_private:    ["172.16.0.1"]
     aaaa_master_private: ["2a02:8012:bc57:1::2"]
-    ula_master:          ["2a02:8012:bc57:1::/64"]                  # e.g., the private ipv6 address space, local network or ULA RFC 4193
-    aaaa_master:         ["2a02:8012:bc57::1"]                      # e.g., home/Zen v6
+    ula_master:          ["2a02:8012:bc57:1::/64"]                  # e.g., the
+    # private ipv6 address space, local network or ULA RFC 4193
+    aaaa_master:         ["2a02:8012:bc57::1"]                      # e.g.,
+    # home/Zen v6
 
     a_standby:    ["13.41.102.86"]                           # e.g., AWS v4
     aaaa_standby: ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]   # e.g., AWS v6
 
-    a_fallback:    ["217.155.241.55"]                           # e.g.,same as master to test
+    a_fallback:    ["217.155.241.55"]                           # e.g.,same as
+    # master to test
     aaaa_fallback:
       - ip: "2a02:8012:bc57:cafe:f00d:babe::2"   # e.g., part of /48 to test v6
         reverse: true
@@ -121,27 +129,31 @@ zones:
 
 
     tsig:
-      seed_env: "BREATH_TSIG_SEED"      # optional; derive deterministically from this env var
+      seed_env: "BREATH_TSIG_SEED"      # optional; derive
+      # deterministically from this env var
       default_algorithm: ["hmac-sha256"]
       keys:
-        - name: "gslb-xfr."             # TSIG key name (owner form, trailing dot)
+        - name: "gslb-xfr."             # TSIG key name (owner form,
+        # trailing dot)
           algorithm: "hmac-sha256"      # optional; defaults to above
-          secret: "24823612"                    # if empty → derive from seed; if no seed → random per start
+          secret: "24823612"                    # if empty → derive from
+          # seed; if no seed → random per start
           allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
 
     # Shared/static records served authoritatively
 
     # TXT at apex (omit name => apex). Multiple strings supported.
     txt:
-      - text: 
-          - "Breath Technology - a DNS Zone by BreathGSLB - In YHVH we trust"
-        ttl: 300
-      - text:
-          - "google-site-verification=Ge2Ewklz6s4_jHy6bawlp3w-LWUWljX8y2nyy2p6a5Q"
-        ttl: 300
-      - name: "_dmarc.gslb-sitetest.akadata.ltd."
-        text:
-          - "v=DMARC1; p=quarantine; rua=mailto:postmaster@akadata.ltd"
+        - text:
+            - "Breath Technology - a DNS Zone by BreathGSLB - In YHVH we trust"
+          ttl: 300
+        - text:
+            - "google-site-verification=Ge2Ewklz6s4_jHy6bawlp3w-LWUWljX8y2nyy2p"
+            - "6a5Q"
+          ttl: 300
+        - name: "_dmarc.gslb-sitetest.akadata.ltd."
+          text:
+            - "v=DMARC1; p=quarantine; rua=mailto:postmaster@akadata.ltd"
         ttl: 900
 
     # MX at apex (use FQDN for Exchange)
