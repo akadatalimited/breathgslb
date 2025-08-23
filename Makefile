@@ -21,8 +21,10 @@ MODFLAG := -mod=vendor
 endif
 
 # Version injection
-GIT_TAG        := $(shell git describe --tags --always --dirty 2>/dev/null)
-BUILD_LDFLAGS  := $(LDFLAGS) -X 'main.version=$(GIT_TAG)'
+VERSION_TXT := $(shell cat version.txt)
+GIT_COMMIT  := $(shell git rev-parse --short HEAD)
+BUILD_OS    := $(shell uname -s)$$(. /etc/os-release 2>/dev/null && echo '('$$ID')')
+BUILD_LDFLAGS := $(LDFLAGS) -X 'main.version=$(VERSION_TXT).$(GIT_COMMIT)' -X 'main.buildOS=$(BUILD_OS)'
 
 # Paths
 PREFIX      ?= /usr/local
