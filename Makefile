@@ -16,7 +16,7 @@ LDFLAGS     ?= -s -w
 # Vendor by default (NOVENDOR=1 to bypass)
 ifeq ($(NOVENDOR),1)
 MODFLAG :=
-else
+	else
 MODFLAG := -mod=vendor
 endif
 
@@ -44,12 +44,17 @@ ZIP     ?= zip -9
 SHA256  := $(shell command -v sha256sum 2>/dev/null || command -v shasum 2>/dev/null)
 SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || echo )
 
+# Documentation paths
+DOC_PDF := doc/breathgslb.pdf
+
 # -------------------- standard targets --------------------
 .PHONY: all build vendor clean fmt vet test help \
         release release-linux release-musl release-macos release-freebsd release-bsd release-windows \
-        package install install-man install-systemd install-openrc uninstall
+        package docs install install-man install-systemd install-openrc uninstall
 
 all: build
+
+docs: $(DOC_PDF)
 
 help:
 	@echo "Available targets:"
@@ -74,7 +79,7 @@ vendor:
 
 clean:
 	rm -f $(BINARY)
-	rm -rf $(DISTDIR)
+	rm -rf $(DISTDIR) $(DOC_PDF) doc/breathgslb.md
 
 fmt:
 	$(GO) fmt ./...
@@ -84,6 +89,16 @@ vet:
 
 test:
 	$(GO) test -race ./...
+
+# -------------------- documentation --------------------
+doc/man/%.md: man/% scripts/man2md.py
+	scripts/man2md.py $< $@
+
+doc/breathgslb.md: doc/breathgslb-book.md doc/man/breathgslb.md doc/man/breathgslb.conf.md
+	sed -e '/{{breathgslb_manual}}/r doc/man/breathgslb.md' -e '/{{breathgslb_manual}}/d' -e '/{{breathgslb_conf_manual}}/r doc/man/breathgslb.conf.md' -e '/{{breathgslb_conf_manual}}/d' doc/breathgslb-book.md > $@
+
+$(DOC_PDF): doc/breathgslb.md scripts/md2pdf.py
+	scripts/md2pdf.py doc/breathgslb.md $(DOC_PDF)
 
 # -------------------- release matrices --------------------
 release: clean release-linux release-musl release-macos release-freebsd release-bsd release-windows
@@ -122,22 +137,24 @@ release-windows:
 	GOOS=windows GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-windows-arm64.exe
 
 # -------------------- packaging --------------------
-package: release
+package: release $(DOC_PDF)
 	@echo "==> packaging archives"
 	cd $(DISTDIR) && \
 	for f in *; do \
-	  base="$${f%.*}"; \
-	  case "$$f" in \
-	    *.exe) $(ZIP) "$$f.zip" "$$f" >/dev/null && rm -f "$$f";; \
-	    *)     $(TAR) -czf "$$f.tar.gz" "$$f" && rm -f "$$f";; \
-	  esac; \
+	base="$${f%.*}"; \
+	case "$$f" in \
+	*.exe) $(ZIP) "$$f.zip" "$$f" >/dev/null && rm -f "$$f";; \
+	*.pdf) ;; \
+	*)     $(TAR) -czf "$$f.tar.gz" "$$f" && rm -f "$$f";; \
+	esac; \
 	done
+	cp $(DOC_PDF) $(DISTDIR)/
 	@# checksums
 	@if [ -n "$(SHA256)" ]; then \
-	  (cd $(DISTDIR) && $(SHA256) $(SHA256FLAGS) * > SHA256SUMS); \
-	  echo "==> wrote $(DISTDIR)/SHA256SUMS"; \
+	(cd $(DISTDIR) && $(SHA256) $(SHA256FLAGS) * > SHA256SUMS); \
+	echo "==> wrote $(DISTDIR)/SHA256SUMS"; \
 	else \
-	  echo "!! sha256 tool not found; skipping sums"; \
+	echo "!! sha256 tool not found; skipping sums"; \
 	fi
 
 # -------------------- install targets --------------------
@@ -149,7 +166,7 @@ install: build install-man
 	  install -d $(DESTDIR)$(BINDIR); \
 	  for f in scripts/*; do \
 	    [ -f $$f ] && install -m 0755 $$f $(DESTDIR)$(BINDIR)/$$(basename $$f); \
-	  done; \
+	done; \
 	fi
 	# dirs used by the service
 	install -d -m 0750 $(DESTDIR)$(CFGDIR)
