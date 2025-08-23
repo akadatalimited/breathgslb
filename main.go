@@ -18,6 +18,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -391,6 +392,54 @@ func sampleMemStats() {
 	}
 }
 
+func apiAddrs(ifaces []string, port int) []string {
+	p := strconv.Itoa(port)
+	seen := map[string]bool{}
+	var addrs []string
+	for _, ifn := range ifaces {
+		ifn = strings.TrimSpace(ifn)
+		if ifn == "" {
+			continue
+		}
+		ifi, err := net.InterfaceByName(ifn)
+		if err != nil {
+			log.Printf("warn: api interface %s not found: %v", ifn, err)
+			continue
+		}
+		addrsList, err := ifi.Addrs()
+		if err != nil {
+			log.Printf("warn: cannot read addrs for %s: %v", ifn, err)
+			continue
+		}
+		for _, a := range addrsList {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			addr := ip.String()
+			if ip.To4() != nil {
+				addr = addr + ":" + p
+			} else {
+				addr = "[" + addr + "]:" + p
+			}
+			if !seen[addr] {
+				addrs = append(addrs, addr)
+				seen[addr] = true
+			}
+		}
+	}
+	if len(addrs) == 0 {
+		addrs = append(addrs, ":"+p)
+	}
+	return addrs
+}
+
 //go:embed doc/openapi.yaml
 var openapiSpec []byte
 
@@ -430,6 +479,25 @@ func main() {
 	config.SetupDefaults(cfg)
 	config.GenerateTSIGKeys(cfg)
 
+	if adminAPIToken == "" && cfg.APIToken != "" {
+		if b, err := os.ReadFile(cfg.APIToken); err == nil {
+			adminAPIToken = strings.TrimSpace(string(b))
+		} else {
+			adminAPIToken = cfg.APIToken
+		}
+	}
+	if apiListen == "" && cfg.API {
+		if cfg.APIListen > 0 {
+			apiListen = ":" + strconv.Itoa(cfg.APIListen)
+		}
+		if cfg.APICert != "" {
+			apiCert = cfg.APICert
+		}
+		if cfg.APIKey != "" {
+			apiKey = cfg.APIKey
+		}
+	}
+
 	w := logging.Setup(cfg)
 	rand.Seed(time.Now().UnixNano())
 
@@ -467,12 +535,19 @@ func main() {
 		mux.HandleFunc("/stats", statsHandler)
 		mux.HandleFunc("/openapi.yaml", openapiHandler)
 		mux.HandleFunc("/swagger/", swaggerHandler)
-		go func() {
-			log.Printf("admin https listening on %s", apiListen)
-			if err := http.ListenAndServeTLS(apiListen, apiCert, apiKey, mux); err != nil {
+		serve := func(addr string) {
+			log.Printf("admin https listening on %s", addr)
+			if err := http.ListenAndServeTLS(addr, apiCert, apiKey, mux); err != nil {
 				log.Printf("admin https: %v", err)
 			}
-		}()
+		}
+		addrs := []string{apiListen}
+		if cfg.API && cfg.APIListen > 0 && len(cfg.APIInterface) > 0 && apiListen == ":"+strconv.Itoa(cfg.APIListen) {
+			addrs = apiAddrs(cfg.APIInterface, cfg.APIListen)
+		}
+		for _, a := range addrs {
+			go serve(a)
+		}
 	}
 
 	handleSignals(cfgPath)

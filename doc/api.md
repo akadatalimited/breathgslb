@@ -4,9 +4,24 @@ BreathGSLB exposes optional HTTPS endpoints for health and runtime statistics.
 
 ## Enabling
 
-Provide a listen address, token, and TLS certificate/key when launching the server.
+Add the following to `config.yaml`:
 
-### Linux/macOS
+```yaml
+api: true
+api-listen: 9443
+api-interface: ["eth0"]          # optional
+api-token: "/etc/breathgslb/token"   # Windows: C:\\breathgslb\\token
+api-cert: "/etc/breathgslb/cert.pem" # Windows: C:\\breathgslb\\cert.pem
+api-key: "/etc/breathgslb/key.pem"   # Windows: C:\\breathgslb\\key.pem
+```
+
+Start the server with:
+
+```sh
+breathgslb -config /etc/breathgslb/config.yaml
+```
+
+### Alternative: command-line flags
 
 ```sh
 breathgslb -config /etc/breathgslb/config.yaml \
@@ -16,7 +31,7 @@ breathgslb -config /etc/breathgslb/config.yaml \
   -api-key /etc/breathgslb/key.pem
 ```
 
-### Windows PowerShell
+On Windows PowerShell:
 
 ```powershell
 breathgslb.exe -config C:\breathgslb\config.yaml `

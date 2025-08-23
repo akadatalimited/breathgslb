@@ -65,6 +65,9 @@ func SetupDefaults(cfg *Config) {
 	if cfg.DNS64Prefix == "" {
 		cfg.DNS64Prefix = "64:ff9b::"
 	}
+	if cfg.API && cfg.APIListen == 0 {
+		cfg.APIListen = 9443
+	}
 	if cfg.LogFile == "" && !cfg.LogSyslog {
 		cfg.LogFile = "/var/log/breathgslb/breathgslb.log"
 	}

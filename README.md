@@ -118,7 +118,7 @@ Use valid TLS for the hostname being checked; during bootstrap, `insecure_tls: t
 
 ### Admin API
 
-An optional HTTPS admin API serves health and runtime statistics. Enable it by supplying `-api-listen`, `-api-token`, `-api-cert`, and `-api-key` flags. Detailed cross-platform instructions are available in [doc/api.md](doc/api.md).
+An optional HTTPS admin API serves health and runtime statistics. It can be enabled either by supplying `-api-*` flags or by setting `api` options in `config.yaml`. Detailed cross-platform instructions are available in [doc/api.md](doc/api.md).
 
 ---
 
@@ -129,8 +129,7 @@ Create `/etc/breathgslb/config.yaml` and run:
 ```
 breathgslb -config /etc/breathgslb/config.yaml \
   -metrics-listen :9090 \
-  -supervisor /var/run/breathgslb.sock \
-  -api-token $(cat /etc/breathgslb/token)
+  -supervisor /var/run/breathgslb.sock
 ```
 
 Add `-debug-pprof` to expose Go pprof handlers on `localhost:6060` for deep inspection.
