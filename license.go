@@ -21,6 +21,7 @@ type licensePayload struct {
 }
 
 var supportActive bool
+var supportExpiry time.Time
 
 // validateLicense decrypts an AES-256 encrypted payload using key and validates
 // the license against the compiled build OS and build date. If the license is
@@ -74,11 +75,13 @@ func validateLicense(key string, payload []byte) error {
 	}
 
 	supportActive = false
+	supportExpiry = time.Time{}
 	if lp.Supported {
 		se, err := time.Parse("2006-01-02", lp.SupportExpiry)
 		if err != nil {
 			return fmt.Errorf("invalid support expiry: %w", err)
 		}
+		supportExpiry = se
 		if time.Now().Before(se) {
 			supportActive = true
 		}
@@ -101,4 +104,15 @@ func validateLicense(key string, payload []byte) error {
 
 func isSupportActive() bool {
 	return supportActive
+}
+
+func supportStatus() (bool, int) {
+	days := 0
+	if !supportExpiry.IsZero() {
+		days = int(time.Until(supportExpiry).Hours() / 24)
+		if days < 0 {
+			days = 0
+		}
+	}
+	return supportActive, days
 }
