@@ -13,6 +13,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 	_ "modernc.org/sqlite"
 )
@@ -23,7 +24,8 @@ type Config struct {
 		DSN    string `yaml:"dsn"`
 	} `yaml:"db"`
 	Admin struct {
-		Email string `yaml:"email"`
+		Email        string `yaml:"email"`
+		PasswordHash string `yaml:"password_hash"`
 	} `yaml:"admin"`
 	Server struct {
 		Interface string `yaml:"interface"`
@@ -33,8 +35,9 @@ type Config struct {
 }
 
 var (
-	cfg Config
-	db  *sql.DB
+	cfg          Config
+	db           *sql.DB
+	adminSession string
 )
 
 func loadConfig(path string) error {
@@ -162,6 +165,19 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "logged in")
 }
 
+func adminLoginHandler(w http.ResponseWriter, r *http.Request) {
+	email := r.FormValue("email")
+	password := r.FormValue("password")
+	if email != cfg.Admin.Email || bcrypt.CompareHashAndPassword([]byte(cfg.Admin.PasswordHash), []byte(password)) != nil {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
+	token := generateToken()
+	adminSession = token
+	http.SetCookie(w, &http.Cookie{Name: "admin", Value: token, Path: "/", HttpOnly: true})
+	fmt.Fprintln(w, "admin logged in")
+}
+
 func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, err := r.Cookie("email")
@@ -175,8 +191,8 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 
 func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie("email")
-		if err != nil || c.Value != cfg.Admin.Email {
+		c, err := r.Cookie("admin")
+		if err != nil || c.Value != adminSession || adminSession == "" {
 			http.Error(w, "admin only", http.StatusForbidden)
 			return
 		}
@@ -328,6 +344,7 @@ func main() {
 	http.HandleFunc("/signup", signupHandler)
 	http.HandleFunc("/verify", verifyHandler)
 	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("/admin/login", adminLoginHandler)
 	http.HandleFunc("/licenses", requireLogin(listLicensesHandler))
 	http.HandleFunc("/license/request", requireLogin(requestLicenseHandler))
 	http.HandleFunc("/license/resend", requireLogin(resendLicenseHandler))
