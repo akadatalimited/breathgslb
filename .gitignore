@@ -3,3 +3,8 @@
 /vendor/
 /*.log
 .DS_Store
+
+/cmd/licensegen/licensegen
+/cmd/licensegen/licensegen.exe
+/licensegen
+/licensegen.exe
