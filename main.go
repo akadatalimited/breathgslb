@@ -33,6 +33,8 @@ import (
 	maxminddb "github.com/oschwald/maxminddb-golang"
 )
 
+const version = "0.0.1"
+
 // ---- state: per-tier, per-family ----
 
 type famState struct {
@@ -446,6 +448,18 @@ var openapiSpec []byte
 //go:embed doc/swagger.html
 var swaggerPage []byte
 
+func aboutText() string {
+	return fmt.Sprintf(`BreathGSLB - V%s Release
+
+A Native IPv6 DNS Global Server Loadbalancer thats RFC and ULA Local Networks
+With Primary, Secondary and Fallback servers fully health checked,
+API Endpoint pprof debug server and memory GC
+Designed from the ground up for IPv6 with full legacy IPv4 Support
+(C) 2025 Breath Technology //breathtechnology.co.uk
+
+`, version)
+}
+
 func main() {
 	var cfgPath string
 	var apiListen string
@@ -454,19 +468,51 @@ func main() {
 	var apiCert string
 	var apiKey string
 	var debugPprof bool
+	var showHelp bool
+	var showAbout bool
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "path to YAML config")
+	flag.StringVar(&cfgPath, "c", "config.yaml", "path to YAML config")
 	flag.StringVar(&apiListen, "api-listen", "", "HTTPS listen address for admin API")
+	flag.StringVar(&apiListen, "al", "", "HTTPS listen address for admin API")
 	flag.StringVar(&supervisor, "supervisor", "", "supervisor notification target")
+	flag.StringVar(&supervisor, "s", "", "supervisor notification target")
 	flag.StringVar(&apiToken, "api-token", "", "admin API bearer token")
+	flag.StringVar(&apiToken, "at", "", "admin API bearer token")
 	flag.StringVar(&apiCert, "api-cert", "", "TLS certificate for admin API")
+	flag.StringVar(&apiCert, "ac", "", "TLS certificate for admin API")
 	flag.StringVar(&apiKey, "api-key", "", "TLS key for admin API")
+	flag.StringVar(&apiKey, "ak", "", "TLS key for admin API")
 	flag.BoolVar(&debugPprof, "debug-pprof", false, "enable pprof debug server on localhost:6060")
+	flag.BoolVar(&debugPprof, "d", false, "enable pprof debug server on localhost:6060")
+	flag.BoolVar(&showHelp, "help", false, "returns help for BreathGSLB")
+	flag.BoolVar(&showHelp, "h", false, "returns help for BreathGSLB")
+	flag.BoolVar(&showAbout, "about", false, "returns a detailed about page")
+	flag.BoolVar(&showAbout, "a", false, "returns a detailed about page")
+
 	flag.Usage = func() {
+		fmt.Fprint(flag.CommandLine.Output(), aboutText())
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
-		flag.PrintDefaults()
+		fmt.Fprint(flag.CommandLine.Output(), "-ac --api-cert string\nTLS certificate for admin API\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-ak --api-key string\nTLS key for admin API\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-al --api-listen string\nHTTPS listen address for admin API\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-at --api-token string\nadmin API bearer token\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-c --config string\npath to YAML config (default \"config.yaml\")\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-d --debug-pprof\nenable pprof debug server on localhost:6060\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-s --supervisor string\nsupervisor notification target\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-h --help\nreturns help for BreathGSLB\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-a --about\nreturns a detailed about page\n")
 	}
 	flag.Parse()
+
+	if showHelp {
+		flag.Usage()
+		return
+	}
+	if showAbout {
+		fmt.Print(aboutText())
+		return
+	}
 
 	_ = supervisor
 
