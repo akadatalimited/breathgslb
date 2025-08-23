@@ -140,6 +140,9 @@ It may also be run without producing a binary:
 go run -tags tools ./cmd/licensegen -email user@example.com -expiry 2024-06-01 -customerType pro -supported
 ```
 
+The `-os` flag defaults to the host's platform and is case-insensitive, but may
+be provided to generate a license for another operating system.
+
 Compiling `license.go` by itself will error because it depends on build-time
 variables defined in `main.go`; build the entire server or the tool as shown
 above.

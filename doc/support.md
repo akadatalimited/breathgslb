@@ -56,6 +56,8 @@ go build ./cmd/licensegen
 
 The generated `key` should be entered at runtime, while the `payload` must be provided to the server via the `-license-payload` flag or an equivalent build option.
 
+The optional, case-insensitive `-os` flag defaults to the current platform but may be set to issue a license for another operating system.
+
 ### licensectl
 
 ```sh
