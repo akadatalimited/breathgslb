@@ -1,0 +1,57 @@
+#!/sbin/openrc-run
+
+name="BreathGSLB"
+description="Authoritative GSLB DNS"
+
+# Customize these variables to match your environment
+# User account the service runs as
+SERVICE_USER="breathgslb"
+# Group the service runs as
+SERVICE_GROUP="breathgslb"
+# Directory where log files are written
+LOG_DIR="/var/log/breathgslb"
+# Log file for both stdout and stderr
+LOG_FILE="$LOG_DIR/breathgslb.log"
+# Location of the PID file
+PID_FILE="/run/breathgslb.pid"
+
+# Path to the BreathGSLB executable
+command="/usr/local/bin/breathgslb"
+# Command line arguments
+command_args="-config /etc/breathgslb/config.yaml"
+# Run the command as the configured user and group
+command_user="${SERVICE_USER}:${SERVICE_GROUP}"
+
+# Use OpenRC's supervise-daemon for process supervision
+supervisor="supervise-daemon"
+# PID file used by supervise-daemon
+pidfile="$PID_FILE"
+# Log files used by supervise-daemon
+output_log="$LOG_FILE"
+error_log="$LOG_FILE"
+
+# advertise custom commands
+extra_started_commands="reload"
+description_reload="Reload configuration (SIGHUP)"
+
+depend() {
+        # Ensure the network stack is available before starting
+        need net
+}
+
+start_pre() {
+        # Create the log directory with appropriate ownership and permissions
+        checkpath -d -o "${SERVICE_USER}:${SERVICE_GROUP}" -m 0755 "$LOG_DIR"
+}
+
+reload() {
+        if ! service_started ; then
+                eerror "$name is not running"
+                return 1
+        fi
+        ebegin "Reloading $name (SIGHUP)"
+        # Rely on supervise-daemon to send SIGHUP to the running process
+        /sbin/supervise-daemon "$RC_SVCNAME" --signal HUP
+        eend $?
+}
+
