@@ -37,8 +37,6 @@ import (
 
 //go:embed version.txt
 var version string
-var buildOS string
-var buildDate string
 
 func init() {
 	version = strings.TrimSpace(version)

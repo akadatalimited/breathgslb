@@ -28,6 +28,8 @@ type licensePayload struct {
 
 var supportActive bool
 var supportExpiry time.Time
+var buildOS string
+var buildDate string
 
 func baseOS(s string) string {
 	s = strings.ToLower(s)

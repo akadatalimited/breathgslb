@@ -53,7 +53,7 @@ DOC_PDF := doc/breathgslb.pdf
 # -------------------- standard targets --------------------
 .PHONY: all build vendor clean fmt vet test help \
         release release-linux release-musl release-macos release-freebsd release-bsd release-windows \
-        package docs install install-man install-systemd install-openrc uninstall
+        package docs licensegen install install-man install-systemd install-openrc uninstall
 
 all: build
 
@@ -92,6 +92,9 @@ vet:
 
 test:
 	$(GO) test -race ./...
+
+licensegen:
+	$(GO) build -tags tools ./cmd/licensegen
 
 # -------------------- documentation --------------------
 doc/man/%.md: man/% scripts/man2md.py
