@@ -131,7 +131,7 @@ zones:
     tsig:
       seed_env: "BREATH_TSIG_SEED"      # optional; derive
       # deterministically from this env var
-      default_algorithm: ["hmac-sha256"]
+      default_algorithm: "hmac-sha256"
       keys:
         - name: "gslb-xfr."             # TSIG key name (owner form,
         # trailing dot)
@@ -154,7 +154,7 @@ zones:
         - name: "_dmarc.gslb-sitetest.akadata.ltd."
           text:
             - "v=DMARC1; p=quarantine; rua=mailto:postmaster@akadata.ltd"
-        ttl: 900
+          ttl: 900
 
     # MX at apex (use FQDN for Exchange)
     mx:
