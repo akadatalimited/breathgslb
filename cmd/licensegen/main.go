@@ -93,6 +93,7 @@ func main() {
 
 	fmt.Printf("key: %s\n", key)
 	fmt.Printf("payload: %s\n", base64.StdEncoding.EncodeToString(payload))
+	fmt.Println("hint: enter the key at runtime; supply the payload to the server via the -license-payload flag or build option")
 
 	if *send {
 		if strings.TrimSpace(*from) == "" {

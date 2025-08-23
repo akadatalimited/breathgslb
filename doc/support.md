@@ -54,6 +54,8 @@ go build ./cmd/licensegen
 ./licensegen -email user@example.com -expiry 2025-05-01 -customerType pro -supported
 ```
 
+The generated `key` should be entered at runtime, while the `payload` must be provided to the server via the `-license-payload` flag or an equivalent build option.
+
 ### licensectl
 
 ```sh
