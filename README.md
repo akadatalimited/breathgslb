@@ -137,10 +137,15 @@ go build -tags tools ./cmd/licensegen
 It may also be run without producing a binary:
 
 ```sh
-go run -tags tools ./cmd/licensegen -email user@example.com -expiry 2024-06-01 -customerType pro -supported
+go run -tags tools ./cmd/licensegen -build 2024-06-01 -type trial
 ```
 
-The `-os` flag defaults to the host's platform and is case-insensitive, but may
+The `-type` flag presets expiry and support fields (choices: `trial`,
+`standard`, `supported`). Remaining fields may be supplied via flags, a JSON
+`-config` file, or will be prompted for interactively. When the `-send` flag is
+used the generated license key is emailed to the requester.
+
+The `-os` flag defaults to the host's platform and is case-insensitive but may
 be provided to generate a license for another operating system.
 
 Compiling `license.go` by itself will error because it depends on build-time
@@ -640,7 +645,8 @@ go build ./cmd/licensectl   # list/revoke/regen keys
 ```
 
 Run `./web` and visit `http://localhost:8080` to manage accounts and licenses.
-Use `licensegen` to create payloads and `licensectl` to manage stored keys.
+Use `licensegen` with `-type` presets or a `-config` file to create payloads and
+`licensectl` to manage stored keys.
 
 ### Support tiers (pricing placeholders)
 

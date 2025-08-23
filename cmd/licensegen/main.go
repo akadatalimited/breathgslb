@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -14,8 +15,10 @@ import (
 	"fmt"
 	"log"
 	"net/smtp"
+	"os"
 	"runtime"
 	"strings"
+	"time"
 )
 
 type licensePayload struct {
@@ -49,17 +52,106 @@ func main() {
 	email := flag.String("email", "", "licensee email")
 	build := flag.String("build", "", "build date (YYYY-MM-DD)")
 	osFlag := flag.String("os", "", "target operating system (optional, case-insensitive)")
-	expiry := flag.String("expiry", "never", "license expiry (YYYY-MM-DD or 'never')")
+	expiry := flag.String("expiry", "", "license expiry (YYYY-MM-DD or 'never')")
 	supportExpiry := flag.String("supportExpiry", "", "support expiry (YYYY-MM-DD)")
 	customerType := flag.String("customerType", "", "customer type")
 	supported := flag.Bool("supported", false, "support contract active")
+	ltype := flag.String("type", "", "license preset (trial, standard, supported)")
+	cfgPath := flag.String("config", "", "path to JSON config file")
 	send := flag.Bool("send", false, "email license key to requester")
 	smtpServer := flag.String("smtp", "localhost:25", "SMTP server address")
 	from := flag.String("from", "", "from email address")
 	flag.Parse()
 
+	var cfg licensePayload
+	if strings.TrimSpace(*cfgPath) != "" {
+		b, err := os.ReadFile(*cfgPath)
+		if err != nil {
+			log.Fatalf("read config: %v", err)
+		}
+		if err := json.Unmarshal(b, &cfg); err != nil {
+			log.Fatalf("parse config: %v", err)
+		}
+	}
+
+	if strings.TrimSpace(*email) == "" {
+		*email = cfg.Email
+	}
+	if strings.TrimSpace(*build) == "" {
+		*build = cfg.Build
+	}
+	if strings.TrimSpace(*expiry) == "" {
+		*expiry = cfg.Expiry
+	}
+	if strings.TrimSpace(*supportExpiry) == "" {
+		*supportExpiry = cfg.SupportExpiry
+	}
+	if !*supported {
+		*supported = cfg.Supported
+	}
+	if strings.TrimSpace(*customerType) == "" {
+		*customerType = cfg.CustomerType
+	}
+	if strings.TrimSpace(*osFlag) == "" {
+		*osFlag = cfg.OS
+	}
+
+	switch strings.ToLower(*ltype) {
+	case "trial":
+		if strings.TrimSpace(*expiry) == "" {
+			*expiry = time.Now().AddDate(0, 0, 30).Format("2006-01-02")
+		}
+		*supported = false
+	case "standard":
+		if strings.TrimSpace(*expiry) == "" {
+			*expiry = "never"
+		}
+		*supported = false
+	case "supported":
+		if strings.TrimSpace(*expiry) == "" {
+			*expiry = "never"
+		}
+		*supported = true
+		if strings.TrimSpace(*supportExpiry) == "" {
+			*supportExpiry = time.Now().AddDate(1, 0, 0).Format("2006-01-02")
+		}
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	if strings.TrimSpace(*email) == "" {
+		fmt.Print("Email: ")
+		in, _ := reader.ReadString('\n')
+		*email = strings.TrimSpace(in)
+	}
+	if strings.TrimSpace(*build) == "" {
+		fmt.Print("Build date (YYYY-MM-DD): ")
+		in, _ := reader.ReadString('\n')
+		*build = strings.TrimSpace(in)
+	}
+	if strings.TrimSpace(*expiry) == "" {
+		fmt.Print("Expiry (YYYY-MM-DD or 'never'): ")
+		in, _ := reader.ReadString('\n')
+		*expiry = strings.TrimSpace(in)
+		if *expiry == "" {
+			*expiry = "never"
+		}
+	}
+	if !*supported {
+		fmt.Print("Support contract (y/N): ")
+		in, _ := reader.ReadString('\n')
+		in = strings.ToLower(strings.TrimSpace(in))
+		if in == "y" || in == "yes" {
+			*supported = true
+		}
+	}
+	if *supported && strings.TrimSpace(*supportExpiry) == "" {
+		fmt.Print("Support expiry (YYYY-MM-DD): ")
+		in, _ := reader.ReadString('\n')
+		*supportExpiry = strings.TrimSpace(in)
+	}
+
 	if strings.TrimSpace(*email) == "" || strings.TrimSpace(*build) == "" {
-		log.Fatal("email and build flags are required")
+		log.Fatal("email and build fields are required")
 	}
 	if *supported && strings.TrimSpace(*supportExpiry) == "" {
 		log.Fatal("supportExpiry required when supported is true")
