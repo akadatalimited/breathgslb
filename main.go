@@ -35,9 +35,13 @@ import (
 
 //go:embed version.txt
 var version string
+var buildOS string
 
 func init() {
 	version = strings.TrimSpace(version)
+	if buildOS == "" {
+		buildOS = runtime.GOOS
+	}
 }
 
 // ---- state: per-tier, per-family ----
@@ -454,7 +458,7 @@ var openapiSpec []byte
 var swaggerPage []byte
 
 func aboutText() string {
-	return fmt.Sprintf(`BreathGSLB - V%s Release
+	return fmt.Sprintf(`BreathGSLB - V%s %s Release
 
 A Native IPv6 DNS Global Server Loadbalancer thats RFC and ULA Local Networks
 With Primary, Secondary and Fallback servers fully health checked,
@@ -462,7 +466,7 @@ API Endpoint pprof debug server and memory GC
 Designed from the ground up for IPv6 with full legacy IPv4 Support
 (C) 2025 Breath Technology //breathtechnology.co.uk
 
-`, version)
+`, version, buildOS)
 }
 
 func main() {
