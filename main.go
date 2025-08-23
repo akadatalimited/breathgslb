@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto"
 	"crypto/subtle"
@@ -37,6 +38,7 @@ import (
 var version string
 var buildOS string
 var buildDate string
+var licensePayloadBytes []byte
 
 func init() {
 	version = strings.TrimSpace(version)
@@ -477,6 +479,7 @@ func main() {
 	var apiToken string
 	var apiCert string
 	var apiKey string
+	var activateKey string
 	var debugPprof bool
 	var showHelp bool
 	var showAbout bool
@@ -493,6 +496,8 @@ func main() {
 	flag.StringVar(&apiCert, "ac", "", "TLS certificate for admin API")
 	flag.StringVar(&apiKey, "api-key", "", "TLS key for admin API")
 	flag.StringVar(&apiKey, "ak", "", "TLS key for admin API")
+	flag.StringVar(&activateKey, "activate", "", "activate license with provided key and exit")
+	flag.StringVar(&activateKey, "k", "", "activate license with provided key and exit")
 	flag.BoolVar(&debugPprof, "debug-pprof", false, "enable pprof debug server on localhost:6060")
 	flag.BoolVar(&debugPprof, "d", false, "enable pprof debug server on localhost:6060")
 	flag.BoolVar(&showHelp, "help", false, "returns help for BreathGSLB")
@@ -510,6 +515,7 @@ func main() {
 		fmt.Fprint(flag.CommandLine.Output(), "-c --config string\npath to YAML config (default \"config.yaml\")\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-d --debug-pprof\nenable pprof debug server on localhost:6060\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-s --supervisor string\nsupervisor notification target\n\n")
+		fmt.Fprint(flag.CommandLine.Output(), "-k --activate string\nactivate license with provided key and exit\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-h --help\nreturns help for BreathGSLB\n\n")
 		fmt.Fprint(flag.CommandLine.Output(), "-a --about\nreturns a detailed about page\n")
 	}
@@ -524,6 +530,14 @@ func main() {
 		return
 	}
 
+	if activateKey != "" {
+		if err := validateLicense(strings.TrimSpace(activateKey), licensePayloadBytes); err != nil {
+			log.Fatalf("activate license: %v", err)
+		}
+		fmt.Println("license activated")
+		return
+	}
+
 	if buildDate != "" {
 		if t, err := time.Parse("2006-01-02", buildDate); err == nil {
 			if time.Since(t) >= 30*24*time.Hour {
@@ -531,6 +545,18 @@ func main() {
 			}
 		} else {
 			log.Fatalf("invalid build date: %v", err)
+		}
+	}
+
+	if b, err := os.ReadFile("/etc/breathgslb/license"); err != nil || validateLicense(strings.TrimSpace(string(b)), licensePayloadBytes) != nil {
+		r := bufio.NewReader(os.Stdin)
+		fmt.Print("Enter license key: ")
+		key, err := r.ReadString('\n')
+		if err != nil {
+			log.Fatalf("read license key: %v", err)
+		}
+		if err := validateLicense(strings.TrimSpace(key), licensePayloadBytes); err != nil {
+			log.Fatalf("activate license: %v", err)
 		}
 	}
 
