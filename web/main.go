@@ -33,6 +33,7 @@ type Config struct {
 		Port      int    `yaml:"port"`
 		IP        string `yaml:"ip"`
 	} `yaml:"server"`
+	PublicSignup bool `yaml:"public_signup"`
 }
 
 var (
@@ -48,6 +49,7 @@ func loadConfig(path string) error {
 		return err
 	}
 	defer f.Close()
+	cfg.PublicSignup = true
 	if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
 		return err
 	}
@@ -129,6 +131,10 @@ func sendEmail(to, subject, body string) {
 }
 
 func signupHandler(w http.ResponseWriter, r *http.Request) {
+	if !cfg.PublicSignup {
+		http.Error(w, "public signup disabled", http.StatusForbidden)
+		return
+	}
 	email := r.FormValue("email")
 	token := generateToken()
 	_, err := db.Exec("INSERT INTO users(email, verified, token) VALUES(?,0,?)", email, token)
@@ -211,11 +217,27 @@ func adminLoginPageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func adminDashboardHandler(w http.ResponseWriter, r *http.Request) {
-	templates.ExecuteTemplate(w, "dashboard.html", nil)
+	templates.ExecuteTemplate(w, "dashboard.html", cfg)
 }
 
 func adminLicensePageHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "license_form.html", nil)
+}
+
+func adminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		templates.ExecuteTemplate(w, "user_create.html", nil)
+		return
+	}
+	email := r.FormValue("email")
+	token := generateToken()
+	_, err := db.Exec("INSERT INTO users(email, verified, token) VALUES(?,0,?)", email, token)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sendEmail(email, "Verify your account", fmt.Sprintf("Visit /verify?token=%s", token))
+	fmt.Fprintln(w, "user created")
 }
 
 func listLicensesHandler(w http.ResponseWriter, r *http.Request) {
@@ -409,6 +431,7 @@ func main() {
 
 	http.HandleFunc("/admin", requireAdmin(adminDashboardHandler))
 	http.HandleFunc("/admin/license", requireAdmin(adminLicensePageHandler))
+	http.HandleFunc("/admin/createuser", requireAdmin(adminCreateUserHandler))
 	http.HandleFunc("/admin/accounts", requireAdmin(adminAccountsHandler))
 	http.HandleFunc("/admin/issue", requireAdmin(adminIssueLicenseHandler))
 	http.HandleFunc("/admin/renew", requireAdmin(adminRenewLicenseHandler))

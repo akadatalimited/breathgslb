@@ -8,3 +8,4 @@ server:
   interface: "" # network interface to bind (optional)
   port: 8080
   ip: ""       # explicit IP to bind (optional)
+public_signup: true # allow anyone to sign up; set false to require admin account creation
