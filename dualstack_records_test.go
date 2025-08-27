@@ -10,9 +10,23 @@ import (
 	"github.com/miekg/dns"
 )
 
+// ipv6Available reports whether the local system can listen on an IPv6 socket.
+func ipv6Available() bool {
+	l, err := net.ListenTCP("tcp6", &net.TCPAddr{IP: net.ParseIP("::1"), Port: 0})
+	if err != nil {
+		return false
+	}
+	l.Close()
+	return true
+}
+
 // startDualStackServer starts a test DNS server listening on both IPv4 and IPv6.
 func startDualStackServer(t *testing.T, cfg *Config, gr *geoResolver) (string, string, map[string]*authority) {
 	t.Helper()
+	if !ipv6Available() {
+		t.Skip("IPv6 not available; skipping dual stack test")
+	}
+
 	mux, auths := buildMux(cfg, gr, nil, nil)
 	l4, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
@@ -20,7 +34,8 @@ func startDualStackServer(t *testing.T, cfg *Config, gr *geoResolver) (string, s
 	}
 	l6, err := net.ListenTCP("tcp6", &net.TCPAddr{IP: net.ParseIP("::1"), Port: 0})
 	if err != nil {
-		t.Fatalf("listen tcp6: %v", err)
+		l4.Close()
+		t.Skipf("listen tcp6: %v", err)
 	}
 	srv4 := &dns.Server{Listener: l4, Handler: mux}
 	srv6 := &dns.Server{Listener: l6, Handler: mux}
