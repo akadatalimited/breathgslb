@@ -20,6 +20,9 @@ List of network interface names whose addresses are used for
 binding.
 ## reverse_dir
 Directory where automatically generated reverse zones are written.
+## zones_dir
+Directory containing forward zone files.  Each file named `<zone>.fwd.yaml`
+is parsed and appended to the `zones` list.
 ## timeout_sec
 Per‑probe timeout in seconds.
 ## interval_sec

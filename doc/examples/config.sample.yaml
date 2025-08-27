@@ -1,6 +1,7 @@
 # breathgslb global settings
 listen: ":53"                 # port only; server binds udp4/udp6/tcp4/tcp6 automatically
 reverse_dir: "reverse_zones"   # directory for generated reverse zones
+zones_dir: "zones"              # load <zone>.fwd.yaml files from this directory
 api: true
 api-listen: 9443
 api-interface: ["eth0"]
