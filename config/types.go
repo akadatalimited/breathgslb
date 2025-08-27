@@ -249,6 +249,10 @@ type Zone struct {
 	Admin     string   `yaml:"admin"`
 	TTLSOA    uint32   `yaml:"ttl_soa"`
 	TTLAnswer uint32   `yaml:"ttl_answer"`
+	Refresh   uint32   `yaml:"refresh"`
+	Retry     uint32   `yaml:"retry"`
+	Expire    uint32   `yaml:"expire"`
+	Minttl    uint32   `yaml:"minttl"`
 
 	PersistenceEnabled bool   `yaml:"persistence_enabled,omitempty"`
 	PersistenceMode    string `yaml:"persistence_mode,omitempty"`

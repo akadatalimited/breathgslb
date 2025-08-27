@@ -67,6 +67,10 @@ breathgslb -config /etc/breathgslb/config.yaml
 | `admin` | string | Administrator mailbox in dotted form. |
 | `ttl_soa` | int | SOA record TTL. |
 | `ttl_answer` | int | Default TTL for synthesized apex answers. |
+| `refresh` | int | SOA refresh interval in seconds. |
+| `retry` | int | SOA retry interval in seconds. |
+| `expire` | int | SOA expire time in seconds. |
+| `minttl` | int | SOA minimum/negative cache TTL. |
 | `serve` | string | `"local"` to serve zone from this instance. |
 
 ### Address Pools
