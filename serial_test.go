@@ -15,7 +15,7 @@ func TestSerialPersistenceRestart(t *testing.T) {
 	cfg := &Config{CooldownSec: 1, Zones: []Zone{{Name: "example.com."}}}
 
 	serialNow = func() uint32 { return 100 }
-	_, auths := buildMux(cfg, nil, nil)
+	_, auths := buildMux(cfg, nil, nil, nil)
 	a := auths[ensureDot("example.com")]
 	if a.serial != 100 {
 		t.Fatalf("expected serial 100, got %d", a.serial)
@@ -23,7 +23,7 @@ func TestSerialPersistenceRestart(t *testing.T) {
 	a.cancel()
 
 	serialNow = func() uint32 { return 200 }
-	_, auths = buildMux(cfg, nil, nil)
+	_, auths = buildMux(cfg, nil, nil, nil)
 	a = auths[ensureDot("example.com")]
 	if a.serial != 200 {
 		t.Fatalf("expected serial 200 after restart, got %d", a.serial)
@@ -44,7 +44,7 @@ func TestSerialClockRollback(t *testing.T) {
 	cfg := &Config{CooldownSec: 1, Zones: []Zone{{Name: "example.com."}}}
 
 	serialNow = func() uint32 { return 100 }
-	_, auths := buildMux(cfg, nil, nil)
+	_, auths := buildMux(cfg, nil, nil, nil)
 	a := auths[ensureDot("example.com")]
 	if a.serial != 100 {
 		t.Fatalf("expected serial 100, got %d", a.serial)
@@ -52,7 +52,7 @@ func TestSerialClockRollback(t *testing.T) {
 	a.cancel()
 
 	serialNow = func() uint32 { return 50 }
-	_, auths = buildMux(cfg, nil, nil)
+	_, auths = buildMux(cfg, nil, nil, nil)
 	a = auths[ensureDot("example.com")]
 	if a.serial != 101 {
 		t.Fatalf("expected serial 101 after rollback, got %d", a.serial)

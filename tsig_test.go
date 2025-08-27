@@ -252,7 +252,7 @@ func TestTSIGAllowXFRFromRestriction(t *testing.T) {
 	config.GenerateTSIGKeys(cfg)
 	key := cfg.Zones[0].TSIG.Keys[0]
 
-	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret})
+	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret}, nil)
 	defer srv.Shutdown()
 
 	tr := new(dns.Transfer)

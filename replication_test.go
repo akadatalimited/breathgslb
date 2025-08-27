@@ -8,9 +8,9 @@ import (
 	"github.com/miekg/dns"
 )
 
-func startTestServer(t *testing.T, cfg *Config, secrets map[string]string) (*dns.Server, string, *authority) {
+func startTestServer(t *testing.T, cfg *Config, secrets map[string]string, prev map[string]*authority) (*dns.Server, string, *authority) {
 	t.Helper()
-	mux, auths := buildMux(cfg, nil, nil)
+	mux, auths := buildMux(cfg, nil, nil, prev)
 	auth := auths[ensureDot(cfg.Zones[0].Name)]
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
@@ -34,7 +34,7 @@ func TestAXFRUnsignedAndSigned(t *testing.T) {
 		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
 		TSIG:      &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, AllowXFRFrom: []string{"127.0.0.1"}}}},
 	}}}
-	_, addr, auth := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret})
+	_, addr, auth := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
 	// Unsigned transfer
 	tr := new(dns.Transfer)
@@ -84,7 +84,7 @@ func TestAXFRWrongKey(t *testing.T) {
 		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
 		TSIG:      &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret}}},
 	}}}
-	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret})
+	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
 	tr := new(dns.Transfer)
 	tr.TsigSecret = map[string]string{"wrong-key.": testSecret}
@@ -113,7 +113,7 @@ func TestAXFRDisallowedIP(t *testing.T) {
 		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
 		TSIG:      &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, AllowXFRFrom: []string{"203.0.113.1"}}}},
 	}}}
-	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret})
+	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
 	tr := new(dns.Transfer)
 	tr.TsigSecret = map[string]string{"axfr-key.": testSecret}

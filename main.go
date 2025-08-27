@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -251,6 +252,8 @@ type authority struct {
 
 	serial uint32
 
+	ixfr *ixfrDelta
+
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -275,6 +278,13 @@ type authority struct {
 type persistEntry struct {
 	ip  string
 	exp time.Time
+}
+
+type ixfrDelta struct {
+	old *dns.SOA
+	del []dns.RR
+	new *dns.SOA
+	add []dns.RR
 }
 
 // router is a dynamic handler wrapper we can hot-swap on HUP.
@@ -671,7 +681,7 @@ func main() {
 
 	gr := newGeoResolver(cfg.GeoIP)
 	sup = newSupervisor()
-	mux, auths := buildMux(cfg, gr, sup)
+	mux, auths := buildMux(cfg, gr, sup, nil)
 	rt.inner.Store(mux)
 
 	current.mu.Lock()
@@ -719,7 +729,31 @@ func main() {
 }
 
 // generateTSIGKeys populates missing TSIG secrets and optionally writes them to disk.
-func buildMux(cfg *Config, gr *geoResolver, sup *supervisor) (dns.Handler, map[string]*authority) {
+func rrDiff(old, new []dns.RR) (del, add []dns.RR) {
+	o := map[string]dns.RR{}
+	for _, r := range old {
+		o[r.String()] = r
+	}
+	n := map[string]dns.RR{}
+	for _, r := range new {
+		n[r.String()] = r
+	}
+	for k, r := range o {
+		if _, ok := n[k]; !ok {
+			del = append(del, r)
+		}
+	}
+	for k, r := range n {
+		if _, ok := o[k]; !ok {
+			add = append(add, r)
+		}
+	}
+	sort.Slice(del, func(i, j int) bool { return del[i].String() < del[j].String() })
+	sort.Slice(add, func(i, j int) bool { return add[i].String() < add[j].String() })
+	return
+}
+
+func buildMux(cfg *Config, gr *geoResolver, sup *supervisor, prev map[string]*authority) (dns.Handler, map[string]*authority) {
 	mux := dns.NewServeMux()
 	auths := make(map[string]*authority)
 	for _, z := range cfg.Zones {
@@ -733,6 +767,15 @@ func buildMux(cfg *Config, gr *geoResolver, sup *supervisor) (dns.Handler, map[s
 		auth.zidx = buildIndex(z)
 		// parse local CIDRs once
 		auth.cidrInit()
+
+		if prev != nil {
+			if old := prev[zname]; old != nil {
+				del, add := rrDiff(old.axfrRecords(), auth.axfrRecords())
+				if len(del) > 0 || len(add) > 0 {
+					auth.ixfr = &ixfrDelta{old: old.soa().(*dns.SOA), del: del, new: auth.soa().(*dns.SOA), add: add}
+				}
+			}
+		}
 
 		mux.HandleFunc(zname, auth.handle)
 		auths[zname] = auth
@@ -867,11 +910,15 @@ func reload(cfgPath string) error {
 	config.GenerateTSIGKeys(cfg)
 
 	newGeo := newGeoResolver(cfg.GeoIP)
-	mux, auths := buildMux(cfg, newGeo, sup)
 
 	current.mu.Lock()
-	old := current.auths
+	prev := current.auths
 	oldGeo := current.geo
+	current.mu.Unlock()
+
+	mux, auths := buildMux(cfg, newGeo, sup, prev)
+
+	current.mu.Lock()
 	current.rt.inner.Store(mux)
 	current.rt.edns.Store(uint32(cfg.EDNSBuf))
 	current.cfg = cfg
@@ -879,7 +926,7 @@ func reload(cfgPath string) error {
 	current.geo = newGeo
 	current.mu.Unlock()
 
-	for _, a := range old {
+	for _, a := range prev {
 		a.cancel()
 	}
 	current.mu.Lock()
@@ -1021,6 +1068,15 @@ func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
 						close(ch)
 						return
 					}
+					if a.ixfr != nil && rr.Serial == a.ixfr.old.Serial {
+						rrset := append([]dns.RR{a.ixfr.old}, a.ixfr.del...)
+						rrset = append(rrset, a.ixfr.new)
+						rrset = append(rrset, a.ixfr.add...)
+						ch <- &dns.Envelope{RR: rrset}
+						close(ch)
+						return
+					}
+					log.Printf("ixfr diff unavailable for %s from serial %d; sending AXFR", a.zone.Name, rr.Serial)
 				}
 			}
 		}
