@@ -963,11 +963,12 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 			m.Ns = append(m.Ns, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 		}
 		m.Ns = append(m.Ns, a.soa())
+		if a.zidx != nil && !a.zidx.hasName(name) {
+			m.SetRcode(r, dns.RcodeNameError)
+		}
 		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
-			if a.zidx != nil && a.zidx.hasName(name) {
-				if nsec := a.makeNSEC(name); nsec != nil {
-					m.Ns = append(m.Ns, nsec)
-				}
+			if nsec := a.makeNSEC(name); nsec != nil {
+				m.Ns = append(m.Ns, nsec)
 			}
 		}
 	}
@@ -2001,17 +2002,26 @@ func (a *authority) makeRRSIG(rrset []dns.RR, key *dns.DNSKEY) *dns.RRSIG {
 	return &dns.RRSIG{Hdr: hdr(name, dns.TypeRRSIG, ttl), TypeCovered: rrset[0].Header().Rrtype, Algorithm: key.Algorithm, Labels: labels, OrigTtl: ttl, Expiration: exp, Inception: incep, KeyTag: key.KeyTag(), SignerName: ensureDot(a.zone.Name)}
 }
 
-// NSEC support for existing names only (NXRRSET). We'll extend to full NXDOMAIN later.
-func (a *authority) makeNSEC(owner string) dns.RR {
-	owner = strings.ToLower(ensureDot(owner))
+// makeNSEC builds an NSEC record for the requested name. If the name exists,
+// the record proves an empty RRset (NXRRSET). If the name does not exist, the
+// NSEC covers the interval that proves the name's non-existence (NXDOMAIN).
+func (a *authority) makeNSEC(name string) dns.RR {
+	name = strings.ToLower(ensureDot(name))
 	if a.zidx == nil {
 		return nil
 	}
 	idx := a.zidx
+	owner := name
 	if !idx.hasName(owner) {
-		return nil
+		owner = idx.closestEncloser(owner)
+		if owner == "" {
+			return nil
+		}
 	}
-	next := idx.nextName(owner)
+	next := idx.nextName(name)
+	if next == owner {
+		next = idx.nextName(owner)
+	}
 	bm := idx.typeBitmap(owner)
 	return &dns.NSEC{Hdr: hdr(ensureDot(owner), dns.TypeNSEC, a.zone.TTLAnswer), NextDomain: ensureDot(next), TypeBitMap: bm}
 }

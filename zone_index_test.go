@@ -66,4 +66,24 @@ func TestBuildIndexAndQueries(t *testing.T) {
 	if !hasType(srvTypes, dns.TypeSRV) {
 		t.Fatalf("expected SRV type for _sip._tcp.example.com")
 	}
+
+	// Closest encloser lookups
+	ce := idx.closestEncloser("missing.example.com")
+	if ce != "example.com." {
+		t.Fatalf("unexpected closest encloser: %s", ce)
+	}
+	ce = idx.closestEncloser("foo._sip._tcp.example.com")
+	if ce != "_sip._tcp.example.com." {
+		t.Fatalf("unexpected closest encloser for foo._sip._tcp: %s", ce)
+	}
+
+	// nextName for non-existent names
+	next = idx.nextName("missing.example.com")
+	if next != "_sip._tcp.example.com." {
+		t.Fatalf("unexpected next name for missing: %s", next)
+	}
+	next = idx.nextName("zzz.example.com")
+	if next != "_sip._tcp.example.com." {
+		t.Fatalf("expected wrap to _sip._tcp.example.com., got %s", next)
+	}
 }
