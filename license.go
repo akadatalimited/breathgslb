@@ -7,6 +7,7 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -102,6 +103,9 @@ func validateLicense(key string, payload []byte) error {
 		return err
 	}
 	if err := os.WriteFile("/etc/breathgslb/license", []byte(key), 0600); err != nil {
+		return err
+	}
+	if err := os.WriteFile("/etc/breathgslb/license.payload", []byte(base64.StdEncoding.EncodeToString(payload)), 0600); err != nil {
 		return err
 	}
 	status := "inactive"

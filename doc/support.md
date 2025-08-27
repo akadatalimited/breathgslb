@@ -9,6 +9,10 @@
 | `customer_type` | User type such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 | `supported` | Whether support is currently active |
 
+After a license is activated, the key is stored in `/etc/breathgslb/license` and
+the base64 payload in `/etc/breathgslb/license.payload`. The daemon reads the
+payload from that file automatically if the `-license-payload` flag is omitted.
+
 ## Supported vs. unsupported behaviour
 
 **Supported**
