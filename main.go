@@ -608,16 +608,6 @@ func main() {
 		return
 	}
 
-	if buildDate != "" {
-		if t, err := time.Parse("2006-01-02", buildDate); err == nil {
-			if time.Since(t) >= 30*24*time.Hour {
-				log.Fatalf("build expired on %s", buildDate)
-			}
-		} else {
-			log.Fatalf("invalid build date: %v", err)
-		}
-	}
-
 	if b, err := os.ReadFile("/etc/breathgslb/license"); err != nil || validateLicense(strings.TrimSpace(string(b)), licensePayloadBytes) != nil {
 		r := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter license key: ")

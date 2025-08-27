@@ -139,10 +139,10 @@ go build -tags tools ./cmd/licensegen
 It may also be run without producing a binary:
 
 ```sh
-go run -tags tools ./cmd/licensegen -build 2024-06-01 -type trial
+go run -tags tools ./cmd/licensegen -type trial
 ```
 
-The `-type` flag presets expiry and support fields (choices: `trial`,
+The `-type` flag presets support fields (choices: `trial`,
 `standard`, `supported`). Remaining fields may be supplied via flags, a JSON
 `-config` file, or will be prompted for interactively. When the `-send` flag is
 used the generated license key is emailed to the requester.
@@ -618,7 +618,7 @@ contracts. Each license now includes only the following fields:
 | Field          | Purpose |
 | -------------- | ------- |
 | `email`        | Contact for the licensed user |
-| `expiry`       | License expiry date (defaults to 31 days; `"never"` for perpetual) |
+| `support_expiry` | Support expiry date |
 | `customer_type` | Customer tier such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 | `supported`    | `true` when a support contract is active |
 

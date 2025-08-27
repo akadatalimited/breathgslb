@@ -1,8 +1,8 @@
 package main
 
-// buildOS and buildDate are injected by main.go via ldflags when the full
-// server is compiled. Building this file standalone (e.g. `go build license.go`)
-// will fail due to the missing symbols.
+// buildOS is injected by main.go via ldflags when the full server is compiled.
+// Building this file standalone (e.g. `go build license.go`) will fail due to
+// the missing symbol.
 
 import (
 	"crypto/aes"
@@ -16,11 +16,9 @@ import (
 )
 
 type licensePayload struct {
-	Build         string `json:"build"`
 	OS            string `json:"os"`
 	Email         string `json:"email"`
 	Salt          string `json:"salt"`
-	Expiry        string `json:"expiry"`
 	SupportExpiry string `json:"support_expiry"`
 	Supported     bool   `json:"supported"`
 	CustomerType  string `json:"customer_type"`
@@ -29,7 +27,6 @@ type licensePayload struct {
 var supportActive bool
 var supportExpiry time.Time
 var buildOS string
-var buildDate string
 
 func baseOS(s string) string {
 	s = strings.ToLower(s)
@@ -48,8 +45,8 @@ func baseOS(s string) string {
 }
 
 // validateLicense decrypts an AES-256 encrypted payload using key and validates
-// the license against the compiled build OS and build date. If the license is
-// valid, the key is written to /etc/breathgslb/license.
+// the license against the compiled build OS. If the license is valid, the key
+// is written to /etc/breathgslb/license.
 func validateLicense(key string, payload []byte) error {
 	k := []byte(key)
 	if len(k) != 32 {
@@ -87,22 +84,6 @@ func validateLicense(key string, payload []byte) error {
 	}
 	if !strings.EqualFold(baseOS(lp.OS), baseOS(binOS)) {
 		return fmt.Errorf("os mismatch")
-	}
-	if lp.Build != buildDate {
-		return fmt.Errorf("build mismatch")
-	}
-	buildTime, err := time.Parse("2006-01-02", buildDate)
-	if err != nil {
-		return fmt.Errorf("invalid build date: %w", err)
-	}
-	if lp.Expiry != "never" {
-		expiryTime, err := time.Parse("2006-01-02", lp.Expiry)
-		if err != nil {
-			return fmt.Errorf("invalid expiry: %w", err)
-		}
-		if expiryTime.Before(buildTime) || expiryTime.After(buildTime.Add(30*24*time.Hour)) {
-			return fmt.Errorf("expiry out of range")
-		}
 	}
 
 	supportActive = false
