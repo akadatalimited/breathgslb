@@ -171,14 +171,9 @@ func TestTSIGInvalidAlgorithm(t *testing.T) {
 	m.SetAxfr("example.org.")
 	m.SetTsig(key.Name, key.Algorithm, 300, time.Now().Unix())
 
-	env, err := tr.In(m, l.Addr().String())
+	_, err = tr.In(m, l.Addr().String())
 	if err == nil {
-		for e := range env {
-			if e.Error == nil {
-				t.Fatalf("expected failure with invalid algorithm")
-			}
-			break
-		}
+		t.Fatalf("expected failure with invalid algorithm")
 	}
 }
 
