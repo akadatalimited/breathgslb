@@ -25,7 +25,6 @@ type licensePayload struct {
 	CustomerType  string `json:"customer_type"`
 }
 
-var supportActive bool
 var supportExpiry time.Time
 var buildOS string
 
@@ -87,7 +86,6 @@ func validateLicense(key string, payload []byte) error {
 		return fmt.Errorf("os mismatch")
 	}
 
-	supportActive = false
 	supportExpiry = time.Time{}
 	if lp.Supported {
 		se, err := time.Parse("2006-01-02", lp.SupportExpiry)
@@ -95,9 +93,6 @@ func validateLicense(key string, payload []byte) error {
 			return fmt.Errorf("invalid support expiry: %w", err)
 		}
 		supportExpiry = se
-		if time.Now().Before(se) {
-			supportActive = true
-		}
 	}
 	if err := os.MkdirAll("/etc/breathgslb", 0755); err != nil {
 		return err
@@ -109,7 +104,7 @@ func validateLicense(key string, payload []byte) error {
 		return err
 	}
 	status := "inactive"
-	if supportActive {
+	if isSupportActive() {
 		status = "active"
 	}
 	if err := os.WriteFile("/etc/breathgslb/support", []byte(status), 0600); err != nil {
@@ -119,7 +114,7 @@ func validateLicense(key string, payload []byte) error {
 }
 
 func isSupportActive() bool {
-	return supportActive
+	return !supportExpiry.IsZero() && time.Now().Before(supportExpiry)
 }
 
 func supportStatus() (bool, int) {
@@ -130,5 +125,5 @@ func supportStatus() (bool, int) {
 			days = 0
 		}
 	}
-	return supportActive, days
+	return isSupportActive(), days
 }

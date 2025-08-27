@@ -117,7 +117,6 @@ func initDB() error {
         id INTEGER PRIMARY KEY %s,
         user_id INTEGER,
         key TEXT,
-        license_expiry TEXT,
         support_expiry TEXT,
         support_level TEXT
     );`, auto))
@@ -263,16 +262,16 @@ func adminLicensePageHandler(w http.ResponseWriter, r *http.Request) {
 
 func listLicensesHandler(w http.ResponseWriter, r *http.Request) {
 	c, _ := r.Cookie("email")
-	rows, err := db.Query("SELECT key, license_expiry, support_expiry, support_level FROM licenses l JOIN users u ON l.user_id=u.id WHERE u.email=?", c.Value)
+	rows, err := db.Query("SELECT key, support_expiry, support_level FROM licenses l JOIN users u ON l.user_id=u.id WHERE u.email=?", c.Value)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var key, le, se, sl string
-		rows.Scan(&key, &le, &se, &sl)
-		fmt.Fprintf(w, "%s %s %s %s\n", key, le, se, sl)
+		var key, se, sl string
+		rows.Scan(&key, &se, &sl)
+		fmt.Fprintf(w, "%s %s %s\n", key, se, sl)
 	}
 }
 
@@ -285,9 +284,8 @@ func requestLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := generateToken()
-	licExp := time.Now().AddDate(1, 0, 0).Format(time.RFC3339)
 	supExp := time.Now().AddDate(0, 6, 0).Format(time.RFC3339)
-	_, err = db.Exec("INSERT INTO licenses(user_id,key,license_expiry,support_expiry,support_level) VALUES(?,?,?,?,?)", id, key, licExp, supExp, "email")
+	_, err = db.Exec("INSERT INTO licenses(user_id,key,support_expiry,support_level) VALUES(?,?,?,?)", id, key, supExp, "email")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -348,9 +346,8 @@ func adminIssueLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := generateToken()
-	licExp := time.Now().AddDate(1, 0, 0).Format(time.RFC3339)
 	supExp := time.Now().AddDate(0, 6, 0).Format(time.RFC3339)
-	_, err = db.Exec("INSERT INTO licenses(user_id,key,license_expiry,support_expiry,support_level) VALUES(?,?,?,?,?)", id, key, licExp, supExp, level)
+	_, err = db.Exec("INSERT INTO licenses(user_id,key,support_expiry,support_level) VALUES(?,?,?,?)", id, key, supExp, level)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -375,11 +372,10 @@ func adminRenewLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "license not found", http.StatusNotFound)
 		return
 	}
-	licExp := time.Now().AddDate(1, 0, 0).Format(time.RFC3339)
 	supExp := time.Now().AddDate(0, 6, 0).Format(time.RFC3339)
 	if regen {
 		newKey := generateToken()
-		res, err := db.Exec("UPDATE licenses SET key=?, license_expiry=?, support_expiry=? WHERE key=?", newKey, licExp, supExp, key)
+		res, err := db.Exec("UPDATE licenses SET key=?, support_expiry=? WHERE key=?", newKey, supExp, key)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -391,7 +387,7 @@ func adminRenewLicenseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		key = newKey
 	} else {
-		res, err := db.Exec("UPDATE licenses SET license_expiry=?, support_expiry=? WHERE key=?", licExp, supExp, key)
+		res, err := db.Exec("UPDATE licenses SET support_expiry=? WHERE key=?", supExp, key)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

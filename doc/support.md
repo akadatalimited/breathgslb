@@ -2,12 +2,17 @@
 
 ## License fields
 
+Licenses are permanent; only support contracts expire as indicated by
+`support_expiry`.
+
 | Field | Description |
 |-------|-------------|
+| `os` | Licensed operating system |
 | `email` | Licensed contact address |
+| `salt` | Random salt unique to the license |
 | `support_expiry` | Support expiry date |
-| `customer_type` | User type such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 | `supported` | Whether support is currently active |
+| `customer_type` | User type such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 
 After a license is activated, the key is stored in `/etc/breathgslb/license` and
 the base64 payload in `/etc/breathgslb/license.payload`. The daemon reads the
