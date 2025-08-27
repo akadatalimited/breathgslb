@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,10 +125,11 @@ func TestAXFRDisallowedIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("transfer setup: %v", err)
 	}
-	for e := range env {
-		if e.Error == nil {
-			t.Skip("server does not enforce AllowXFRFrom")
-		}
-		break
+	e, ok := <-env
+	if !ok {
+		t.Fatalf("no response received")
+	}
+	if e.Error == nil || !strings.Contains(e.Error.Error(), "bad xfr rcode") {
+		t.Fatalf("expected transfer refusal, got %v", e.Error)
 	}
 }

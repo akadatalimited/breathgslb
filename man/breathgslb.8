@@ -70,7 +70,9 @@ breathgslb \-config /etc/breathgslb/config.yaml
 .PP
 For split‑horizon deployments run separate instances with differing
 configuration files and distinct listeners.  Share TSIG keys between
-instances when signed zone transfers are required.
+instances when signed zone transfers are required.  Transfers signed with a
+TSIG key are honored only from client addresses listed in that key's
+\fBallow_xfr_from\fP list; other sources receive \fBREFUSED\fP.
 .PP
 TLS certificates and API tokens are read from the paths supplied on the
 command line or in the configuration file.  To rotate them atomically,

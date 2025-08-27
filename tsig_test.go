@@ -262,12 +262,13 @@ func TestTSIGAllowXFRFromRestriction(t *testing.T) {
 	m.SetTsig(key.Name, dns.HmacSHA256, 300, time.Now().Unix())
 	env, err := tr.In(m, addr)
 	if err != nil {
-		return
+		t.Fatalf("transfer setup: %v", err)
 	}
-	for e := range env {
-		if e.Error == nil {
-			t.Skip("server does not enforce AllowXFRFrom")
-		}
-		break
+	e, ok := <-env
+	if !ok {
+		t.Fatalf("no response received")
+	}
+	if e.Error == nil || !strings.Contains(e.Error.Error(), "bad xfr rcode") {
+		t.Fatalf("expected transfer refusal, got %v", e.Error)
 	}
 }
