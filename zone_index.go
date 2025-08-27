@@ -100,18 +100,37 @@ func (z *zoneIndex) hasName(owner string) bool {
 	return ok
 }
 
-// nextName returns the next owner name in canonical order.
+// closestEncloser returns the longest existing ancestor of name.
+func (z *zoneIndex) closestEncloser(name string) string {
+	name = strings.ToLower(ensureDot(name))
+	for {
+		if z.hasName(name) {
+			return name
+		}
+		if i := strings.Index(name, "."); i != -1 {
+			name = name[i+1:]
+			continue
+		}
+		return ""
+	}
+}
+
+// nextName returns the next owner name in canonical order. If owner doesn't
+// exist in the zone, the next existing name after owner is returned, wrapping
+// around to the first name.
 func (z *zoneIndex) nextName(owner string) string {
 	owner = strings.ToLower(ensureDot(owner))
 	if len(z.names) == 0 {
 		return owner
 	}
-	for i, n := range z.names {
-		if n == owner {
-			return z.names[(i+1)%len(z.names)]
-		}
+	i := sort.Search(len(z.names), func(j int) bool { return z.names[j] >= owner })
+	if i == len(z.names) {
+		return z.names[0]
 	}
-	return z.names[0]
+	if z.names[i] == owner {
+		return z.names[(i+1)%len(z.names)]
+	}
+	return z.names[i]
 }
 
 // typeBitmap returns the type bitmap for the given owner.
