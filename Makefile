@@ -131,15 +131,15 @@ release-macos:
 
 release-freebsd:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=freebsd GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-amd64
-	GOOS=freebsd GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-arm64
+	GOOS=freebsd GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-amd64
+	GOOS=freebsd GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-arm64
 
 release-bsd:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=openbsd GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-amd64
-	GOOS=openbsd GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-arm64
-	GOOS=netbsd  GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-amd64
-	GOOS=netbsd  GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-arm64
+	GOOS=openbsd GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-amd64
+	GOOS=openbsd GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-arm64
+	GOOS=netbsd  GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-amd64
+	GOOS=netbsd  GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-arm64
 
 release-windows:
 	$(MKDIR_P) $(DISTDIR)
