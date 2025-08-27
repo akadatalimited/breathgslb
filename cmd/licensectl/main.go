@@ -42,17 +42,17 @@ func main() {
 	defer db.Close()
 	switch cmd {
 	case "list":
-		rows, err := db.Query(`SELECT u.email, l.key, l.license_expiry, l.support_expiry, l.support_level FROM licenses l JOIN users u ON l.user_id=u.id`)
+		rows, err := db.Query(`SELECT u.email, l.key, l.support_expiry, l.support_level FROM licenses l JOIN users u ON l.user_id=u.id`)
 		if err != nil {
 			log.Fatalf("list: %v", err)
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var email, key, licExp, supExp, level string
-			if err := rows.Scan(&email, &key, &licExp, &supExp, &level); err != nil {
+			var email, key, supExp, level string
+			if err := rows.Scan(&email, &key, &supExp, &level); err != nil {
 				log.Fatalf("scan: %v", err)
 			}
-			fmt.Printf("%s\t%s\t%s\t%s\t%s\n", email, key, licExp, supExp, level)
+			fmt.Printf("%s\t%s\t%s\t%s\n", email, key, supExp, level)
 		}
 		if err := rows.Err(); err != nil {
 			log.Fatalf("rows: %v", err)

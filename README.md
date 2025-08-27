@@ -614,17 +614,20 @@ stable.
 ## Licensing & Support
 
 BreathGSLB uses a simple license payload to gate features and track support
-contracts. After activation, the key and payload are stored in
+contracts. Licenses are permanent; only support agreements expire according to
+`support_expiry`. After activation, the key and payload are stored in
 `/etc/breathgslb/license` and `/etc/breathgslb/license.payload`, allowing future
 runs without the `-license-payload` flag. Each license now includes only the
 following fields:
 
 | Field          | Purpose |
 | -------------- | ------- |
+| `os`           | Licensed operating system |
 | `email`        | Contact for the licensed user |
+| `salt`         | Random salt unique to the license |
 | `support_expiry` | Support expiry date |
-| `customer_type` | Customer tier such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 | `supported`    | `true` when a support contract is active |
+| `customer_type` | Customer tier such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 
 ### Supported behaviour
 
