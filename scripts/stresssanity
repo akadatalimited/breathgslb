@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
-"""DNS zone sanity checker.
+"""DNS zone sanity and stress checker.
 
-This script expands upon `scripts/checkbreathgslb` by performing consistency
-checks across multiple zones, authoritative name servers and source
-addresses.
+This script expands upon ``scripts/checkbreathgslb`` by performing
+consistency checks across multiple zones, authoritative name servers and
+source addresses.  Additionally it can spawn temporary source addresses
+from user supplied IPv4 and IPv6 subnets and issue high volume query
+loads to exercise the GSLB infrastructure.
 
 For each zone and nameserver it verifies:
   * SOA serial and TTL equality
   * NS record set consistency and TTL
   * A and AAAA record correctness and TTL
 
-Discrepancies are reported and a final summary is printed per zone and
-nameserver combination.
+When load testing is requested it records basic latency statistics and
+error counts per query source.
 """
 import argparse
 import concurrent.futures
+import ipaddress
+import statistics
 import subprocess
-from typing import Dict, List, Optional, Tuple
+import sys
+import time
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Optional, Tuple
 
 DIG_OPTS = ["+norec", "+time=2", "+tries=1", "+bufsize=1232", "+noall", "+answer"]
 
@@ -47,6 +54,100 @@ def run_dig(name: str, qtype: str, ns: str, src: Optional[str]) -> Dict:
             "rdata": rdata,
         })
     return {"answers": answers}
+
+
+@dataclass
+class TempAddress:
+    """Representation of a temporary address bound to an interface."""
+
+    addr: str
+    prefix: int
+
+
+class TempAddrManager:
+    """Manage lifecycle of temporary IP addresses."""
+
+    def __init__(self, iface: str) -> None:
+        self.iface = iface
+        self.added: List[TempAddress] = []
+
+    def add(self, addr: str, prefix: int) -> None:
+        subprocess.run([
+            "ip",
+            "addr",
+            "add",
+            f"{addr}/{prefix}",
+            "dev",
+            self.iface,
+        ], check=True)
+        self.added.append(TempAddress(addr, prefix))
+
+    def cleanup(self) -> None:
+        for ta in self.added:
+            subprocess.run([
+                "ip",
+                "addr",
+                "del",
+                f"{ta.addr}/{ta.prefix}",
+                "dev",
+                self.iface,
+            ], check=False)
+        self.added.clear()
+
+    def __enter__(self) -> "TempAddrManager":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
+        self.cleanup()
+
+
+def expand_subnets(subnets: Iterable[str], per_subnet: int) -> List[Tuple[str, int]]:
+    """Return a list of host addresses generated from the given subnets."""
+
+    addresses: List[Tuple[str, int]] = []
+    for subnet in subnets:
+        try:
+            net = ipaddress.ip_network(subnet, strict=False)
+        except ValueError as exc:  # invalid subnet
+            print(f"invalid subnet {subnet}: {exc}", file=sys.stderr)
+            continue
+        hosts = net.hosts()
+        for _ in range(per_subnet):
+            try:
+                addr = next(hosts)
+            except StopIteration:
+                break
+            addresses.append((str(addr), net.prefixlen))
+    return addresses
+
+
+def load_test(zone: str, ns: str, src: Optional[str], qtype: str, count: int, concurrency: int) -> Dict[str, Optional[float]]:
+    """Run a high volume query loop and capture basic statistics."""
+
+    latencies: List[float] = []
+    errors = 0
+
+    def _worker(_: int) -> Tuple[float, bool]:
+        start = time.perf_counter()
+        res = run_dig(zone, qtype, ns, src)
+        dur = time.perf_counter() - start
+        return dur, "error" in res
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as ex:
+        futs = [ex.submit(_worker, i) for i in range(count)]
+        for fut in concurrent.futures.as_completed(futs):
+            dur, err = fut.result()
+            if err:
+                errors += 1
+            else:
+                latencies.append(dur)
+
+    avg_latency = statistics.mean(latencies) if latencies else None
+    return {
+        "avg_latency": avg_latency,
+        "errors": errors,
+        "count": count,
+    }
 
 
 def check_zone_ns(zone: str, ns: str, src: Optional[str]) -> Dict:
@@ -135,25 +236,66 @@ def main() -> None:
                    help="authoritative nameserver to query (repeatable)")
     p.add_argument("-s", "--source", dest="sources", action="append", default=[],
                    help="source address to bind for queries (repeatable)")
+    p.add_argument("--subnet4", action="append", default=[],
+                   help="IPv4 subnet to generate temporary source addresses")
+    p.add_argument("--subnet6", action="append", default=[],
+                   help="IPv6 subnet (/64) to generate temporary source addresses")
+    p.add_argument("--addrs-per-subnet", type=int, default=1,
+                   help="number of addresses to draw from each subnet")
+    p.add_argument("--iface", default="lo",
+                   help="interface to which temporary addresses will be bound")
+    p.add_argument("--load-queries", type=int, default=0,
+                   help="number of queries per zone/ns/src for load testing")
+    p.add_argument("--load-concurrency", type=int, default=1,
+                   help="parallel workers for load testing")
+    p.add_argument("--load-qtype", default="A",
+                   help="record type to use for load testing queries")
     args = p.parse_args()
 
     zones: List[str] = args.zones
     nameservers: List[str] = args.nameservers
-    sources: List[Optional[str]] = args.sources or [None]
+    sources: List[str] = list(args.sources)
 
-    combos = [(z, n, s) for z in zones for n in nameservers for s in sources]
+    temp_addrs = expand_subnets(args.subnet4 + args.subnet6, args.addrs_per_subnet)
+    sources.extend([addr for addr, _ in temp_addrs])
+    sources_opt: List[Optional[str]] = sources or [None]
+
+    combos = [(z, n, s) for z in zones for n in nameservers for s in sources_opt]
     results: Dict[Tuple[str, str, Optional[str]], Dict] = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(combos)) as ex:
-        futs = {ex.submit(check_zone_ns, z, n, s): (z, n, s) for z, n, s in combos}
-        for fut in concurrent.futures.as_completed(futs):
-            key = futs[fut]
+    with TempAddrManager(args.iface) as tam:
+        for addr, prefix in temp_addrs:
             try:
-                results[key] = fut.result()
-            except Exception as exc:
-                results[key] = {"error": str(exc)}
+                tam.add(addr, prefix)
+            except subprocess.CalledProcessError as exc:
+                print(f"failed to add {addr}: {exc}", file=sys.stderr)
 
-    summarize(zones, nameservers, sources, results)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(combos)) as ex:
+            futs = {ex.submit(check_zone_ns, z, n, s): (z, n, s) for z, n, s in combos}
+            for fut in concurrent.futures.as_completed(futs):
+                key = futs[fut]
+                try:
+                    results[key] = fut.result()
+                except Exception as exc:
+                    results[key] = {"error": str(exc)}
+
+        summarize(zones, nameservers, sources_opt, results)
+
+        if args.load_queries > 0:
+            print("\nLoad testing:")
+            for z in zones:
+                for n in nameservers:
+                    for s in sources_opt:
+                        stats = load_test(
+                            z, n, s, args.load_qtype, args.load_queries, args.load_concurrency
+                        )
+                        lat = (
+                            f"{stats['avg_latency']:.3f}s" if stats["avg_latency"] is not None else "n/a"
+                        )
+                        print(
+                            f"  {z} @ {n} from {s or 'default'}: {stats['count']} queries,"
+                            f" {stats['errors']} errors, avg latency {lat}"
+                        )
 
 
 if __name__ == "__main__":
