@@ -75,10 +75,18 @@ type GeoAnswers struct {
 
 // ---- DNSSEC config ----
 
+type DNSSECMode string
+
+const (
+	DNSSECModeOff       DNSSECMode = "off"
+	DNSSECModeManual    DNSSECMode = "manual"
+	DNSSECModeGenerated DNSSECMode = "generated"
+)
+
 type DNSSECZoneConfig struct {
-	Enable  bool   `yaml:"enable"`
-	ZSKFile string `yaml:"zsk_keyfile,omitempty"`
-	KSKFile string `yaml:"ksk_keyfile,omitempty"`
+	Mode    DNSSECMode `yaml:"mode,omitempty"`
+	ZSKFile string     `yaml:"zsk_keyfile,omitempty"`
+	KSKFile string     `yaml:"ksk_keyfile,omitempty"`
 }
 
 // TSIGGlobalConfig holds global TSIG parameters.

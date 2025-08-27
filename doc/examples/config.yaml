@@ -127,7 +127,7 @@ zones:
     #   protocol: 47                   # GRE
 
     dnssec:
-      enable: true
+      mode: manual
 
       zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+38151"
       ksk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+12218"

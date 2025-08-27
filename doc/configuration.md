@@ -139,9 +139,9 @@ Per kind options:
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `dnssec.enable` | bool | Enable inline signing. |
-| `dnssec.zsk_keyfile` | string | Path to ZSK key. |
-| `dnssec.ksk_keyfile` | string | Path to KSK key. |
+| `dnssec.mode` | string | DNSSEC mode: `off`, `manual`, or `generated`. |
+| `dnssec.zsk_keyfile` | string | Path to ZSK key or prefix. |
+| `dnssec.ksk_keyfile` | string | Path to KSK key or prefix. |
 
 ### TSIG
 

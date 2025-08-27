@@ -207,10 +207,10 @@ modernised for dual stack.
 The optional
 **dnssec**
 block enables inline signing with:
-## dnssec.enable
-Enable signing.
+## dnssec.mode
+Selects the DNSSEC mode: `off`, `manual`, or `generated`.
 ## dnssec.zsk_keyfile , dnssec.ksk_keyfile
-Paths to the ZSK and KSK PEM files.
+Paths to the ZSK and KSK key files or prefixes.
 # TSIG
 Global TSIG settings reside in the
 **tsig**

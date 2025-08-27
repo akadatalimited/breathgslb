@@ -1996,29 +1996,73 @@ func wantDNSSEC(r *dns.Msg) bool {
 }
 
 func loadDNSSEC(z Zone) *dnssecKeys {
-	if z.DNSSEC == nil || !z.DNSSEC.Enable {
+	if z.DNSSEC == nil || z.DNSSEC.Mode == "" || z.DNSSEC.Mode == DNSSECModeOff {
 		return &dnssecKeys{enabled: false}
 	}
 	baseZ := strings.TrimSuffix(ensureDot(z.Name), ".")
-	zsk := z.DNSSEC.ZSKFile
-	ksk := z.DNSSEC.KSKFile
-	if zsk == "" {
+	switch z.DNSSEC.Mode {
+	case DNSSECModeManual:
+		zsk := z.DNSSEC.ZSKFile
+		ksk := z.DNSSEC.KSKFile
+		if zsk == "" {
+			return &dnssecKeys{enabled: false}
+		}
+		if ksk == "" {
+			ksk = zsk
+		}
+		zk, zpriv, err := parseBindKeyPair(baseZ, zsk)
+		if err != nil {
+			log.Printf("dnssec zsk load failed: %v", err)
+			return &dnssecKeys{enabled: false}
+		}
+		kk, kpriv, err := parseBindKeyPair(baseZ, ksk)
+		if err != nil {
+			log.Printf("dnssec ksk load failed: %v", err)
+			return &dnssecKeys{enabled: false}
+		}
+		return &dnssecKeys{enabled: true, zsk: zk, zskPriv: zpriv, ksk: kk, kskPriv: kpriv}
+	case DNSSECModeGenerated:
+		zskPath := z.DNSSEC.ZSKFile
+		kskPath := z.DNSSEC.KSKFile
+		if zskPath == "" {
+			zskPath = filepath.Join(".", baseZ+".zsk")
+		}
+		if kskPath == "" {
+			kskPath = zskPath
+		}
+		zk := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ensureDot(z.Name), Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: 256, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
+		zp, err := zk.Generate(256)
+		if err != nil {
+			log.Printf("dnssec zsk generate failed: %v", err)
+			return &dnssecKeys{enabled: false}
+		}
+		kk := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ensureDot(z.Name), Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: 257, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
+		kp, err := kk.Generate(256)
+		if err != nil {
+			log.Printf("dnssec ksk generate failed: %v", err)
+			return &dnssecKeys{enabled: false}
+		}
+		if err := writeBindKeyPair(zskPath, zk, zp); err != nil {
+			log.Printf("dnssec zsk persist failed: %v", err)
+		}
+		if err := writeBindKeyPair(kskPath, kk, kp); err != nil {
+			log.Printf("dnssec ksk persist failed: %v", err)
+		}
+		zs, ok := zp.(crypto.Signer)
+		if !ok {
+			log.Printf("dnssec zsk priv not signer")
+			return &dnssecKeys{enabled: false}
+		}
+		ks, ok := kp.(crypto.Signer)
+		if !ok {
+			log.Printf("dnssec ksk priv not signer")
+			return &dnssecKeys{enabled: false}
+		}
+		return &dnssecKeys{enabled: true, zsk: zk, zskPriv: zs, ksk: kk, kskPriv: ks}
+	default:
+		log.Printf("dnssec mode %q not supported", z.DNSSEC.Mode)
 		return &dnssecKeys{enabled: false}
 	}
-	if ksk == "" {
-		ksk = zsk
-	}
-	zk, zpriv, err := parseBindKeyPair(baseZ, zsk)
-	if err != nil {
-		log.Printf("dnssec zsk load failed: %v", err)
-		return &dnssecKeys{enabled: false}
-	}
-	kk, kpriv, err := parseBindKeyPair(baseZ, ksk)
-	if err != nil {
-		log.Printf("dnssec ksk load failed: %v", err)
-		return &dnssecKeys{enabled: false}
-	}
-	return &dnssecKeys{enabled: true, zsk: zk, zskPriv: zpriv, ksk: kk, kskPriv: kpriv}
 }
 
 // Expect pub in <prefix>.key and private in <prefix>.private
@@ -2057,6 +2101,28 @@ func parseBindKeyPair(zone string, prefix string) (*dns.DNSKEY, crypto.Signer, e
 		return nil, nil, fmt.Errorf("private key %s does not implement crypto.Signer", privPath)
 	}
 	return dk, signer, nil
+}
+
+func writeBindKeyPair(prefix string, key *dns.DNSKEY, priv crypto.PrivateKey) error {
+	pubPath := prefix
+	privPath := prefix
+	if !strings.HasSuffix(pubPath, ".key") {
+		pubPath += ".key"
+	}
+	if !strings.HasSuffix(privPath, ".private") {
+		privPath += ".private"
+	}
+	if err := os.MkdirAll(filepath.Dir(pubPath), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(pubPath, []byte(key.String()+"\n"), 0o644); err != nil {
+		return err
+	}
+	privStr := key.PrivateKeyString(priv)
+	if err := os.WriteFile(privPath, []byte(privStr), 0o600); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *authority) dnskeyRRSet() []dns.RR {
