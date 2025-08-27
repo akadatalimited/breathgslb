@@ -73,21 +73,24 @@ func axfr(t *testing.T, addr string, cfg *liveConfig) []dns.RR {
 	return rrs
 }
 
-func ixfr(t *testing.T, addr string, cfg *liveConfig) {
+func ixfr(t *testing.T, addr string, cfg *liveConfig, serial uint32) []dns.RR {
 	tr := new(dns.Transfer)
 	tr.TsigSecret = map[string]string{cfg.TSIGName: cfg.TSIGSecret}
 	m := new(dns.Msg)
-	m.SetIxfr(cfg.Zone, 0, "", "")
+	m.SetIxfr(cfg.Zone, serial, "", "")
 	m.SetTsig(cfg.TSIGName, dns.HmacSHA256, 300, time.Now().Unix())
 	env, err := tr.In(m, addr)
 	if err != nil {
 		t.Fatalf("ixfr %s: %v", addr, err)
 	}
+	var rrs []dns.RR
 	for e := range env {
 		if e.Error != nil {
 			t.Fatalf("ixfr env %s: %v", addr, e.Error)
 		}
+		rrs = append(rrs, e.RR...)
 	}
+	return rrs
 }
 
 func equalRR(a, b []dns.RR) bool {
@@ -120,6 +123,14 @@ func TestIntegrationAXFRChain(t *testing.T) {
 
 func TestIntegrationIXFR(t *testing.T) {
 	cfg := loadLiveConfig(t)
+	prim := axfr(t, cfg.Primary, cfg)
+	if len(prim) == 0 {
+		t.Skip("empty AXFR")
+	}
+	soa, ok := prim[0].(*dns.SOA)
+	if !ok {
+		t.Fatalf("first record not SOA")
+	}
 	addrs := []string{cfg.Primary}
 	if cfg.Secondary != "" {
 		addrs = append(addrs, cfg.Secondary)
@@ -128,6 +139,12 @@ func TestIntegrationIXFR(t *testing.T) {
 		addrs = append(addrs, cfg.Standby)
 	}
 	for _, addr := range addrs {
-		ixfr(t, addr, cfg)
+		rrs := ixfr(t, addr, cfg, soa.Serial)
+		if len(rrs) != 1 {
+			t.Fatalf("expected single SOA from %s", addr)
+		}
+		if rr, ok := rrs[0].(*dns.SOA); !ok || rr.Serial != soa.Serial {
+			t.Fatalf("unexpected SOA from %s", addr)
+		}
 	}
 }

@@ -13,7 +13,7 @@ import (
 // startDualStackServer starts a test DNS server listening on both IPv4 and IPv6.
 func startDualStackServer(t *testing.T, cfg *Config, gr *geoResolver) (string, string, map[string]*authority) {
 	t.Helper()
-	mux, auths := buildMux(cfg, gr, nil)
+	mux, auths := buildMux(cfg, gr, nil, nil)
 	l4, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
 		t.Fatalf("listen tcp4: %v", err)
