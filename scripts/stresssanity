@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""DNS zone sanity checker.
+
+This script expands upon `scripts/checkbreathgslb` by performing consistency
+checks across multiple zones, authoritative name servers and source
+addresses.
+
+For each zone and nameserver it verifies:
+  * SOA serial and TTL equality
+  * NS record set consistency and TTL
+  * A and AAAA record correctness and TTL
+
+Discrepancies are reported and a final summary is printed per zone and
+nameserver combination.
+"""
+import argparse
+import concurrent.futures
+import subprocess
+from typing import Dict, List, Optional, Tuple
+
+DIG_OPTS = ["+norec", "+time=2", "+tries=1", "+bufsize=1232", "+noall", "+answer"]
+
+
+def run_dig(name: str, qtype: str, ns: str, src: Optional[str]) -> Dict:
+    """Run dig for a given query and return parsed answers."""
+    cmd = ["dig", f"@{ns}", name, qtype, *DIG_OPTS]
+    if src:
+        cmd.extend(["-b", src])
+    try:
+        cp = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=True)
+    except subprocess.CalledProcessError as exc:  # dig returned non-zero
+        return {"error": exc.stderr.strip() or "dig failed"}
+    except Exception as exc:  # timeout or other error
+        return {"error": str(exc)}
+
+    answers = []
+    for line in cp.stdout.strip().splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        name, ttl, _class, rtype = parts[:4]
+        rdata = parts[4:]
+        answers.append({
+            "name": name.rstrip('.'),
+            "ttl": int(ttl),
+            "rtype": rtype,
+            "rdata": rdata,
+        })
+    return {"answers": answers}
+
+
+def check_zone_ns(zone: str, ns: str, src: Optional[str]) -> Dict:
+    res: Dict[str, Dict] = {}
+    for qtype in ["SOA", "NS", "A", "AAAA"]:
+        digres = run_dig(zone, qtype, ns, src)
+        if "error" in digres:
+            res[qtype] = digres
+            continue
+        answers = digres["answers"]
+        if qtype == "SOA":
+            if answers:
+                rdata = answers[0]["rdata"]
+                # rdata layout: mname rname serial refresh retry expire minimum
+                res[qtype] = {
+                    "serial": int(rdata[2]),
+                    "ttl": answers[0]["ttl"],
+                    "mname": rdata[0].rstrip('.'),
+                }
+            else:
+                res[qtype] = {"error": "no SOA"}
+        elif qtype == "NS":
+            res[qtype] = {
+                "records": {a["rdata"][0].rstrip('.') for a in answers},
+                "ttl": answers[0]["ttl"] if answers else None,
+            }
+        else:  # A / AAAA
+            res[qtype] = {
+                "records": {a["rdata"][0] for a in answers},
+                "ttl": answers[0]["ttl"] if answers else None,
+            }
+    return res
+
+
+def summarize(zones: List[str], nameservers: List[str], sources: List[Optional[str]], results: Dict[Tuple[str, str, Optional[str]], Dict]) -> None:
+    for zone in zones:
+        print(f"Zone: {zone}")
+        # choose baseline as first ns/src result
+        baseline = None
+        for ns in nameservers:
+            ns_status: List[str] = []
+            for src in sources:
+                r = results[(zone, ns, src)]
+                if baseline is None:
+                    baseline = r
+                    status = "OK"
+                else:
+                    msgs = []
+                    # SOA checks
+                    if "error" in r["SOA"]:
+                        msgs.append(f"SOA {r['SOA']['error']}")
+                    else:
+                        if r["SOA"]["serial"] != baseline["SOA"].get("serial"):
+                            msgs.append(f"SOA serial {r['SOA']['serial']} != {baseline['SOA']['serial']}")
+                        if r["SOA"]["ttl"] != baseline["SOA"].get("ttl"):
+                            msgs.append("SOA TTL mismatch")
+                    # NS checks
+                    if r["NS"].get("records") != baseline["NS"].get("records"):
+                        msgs.append("NS set mismatch")
+                    if r["NS"].get("ttl") != baseline["NS"].get("ttl"):
+                        msgs.append("NS TTL mismatch")
+                    # A/AAAA checks
+                    for t in ["A", "AAAA"]:
+                        if r[t].get("records") != baseline[t].get("records"):
+                            msgs.append(f"{t} mismatch")
+                        if r[t].get("ttl") != baseline[t].get("ttl"):
+                            msgs.append(f"{t} TTL mismatch")
+                    status = "; ".join(msgs) if msgs else "OK"
+                ns_status.append((src or "default", status))
+            # Evaluate aggregated status for ns
+            if all(st == "OK" for _, st in ns_status):
+                print(f"  {ns}: OK")
+            else:
+                print(f"  {ns}: discrepancies")
+                for src, st in ns_status:
+                    if st != "OK":
+                        print(f"    from {src}: {st}")
+        print()
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Stress test GSLB zones for consistency")
+    p.add_argument("-z", "--zone", dest="zones", action="append", required=True,
+                   help="zone to query (repeatable)")
+    p.add_argument("-n", "--ns", dest="nameservers", action="append", required=True,
+                   help="authoritative nameserver to query (repeatable)")
+    p.add_argument("-s", "--source", dest="sources", action="append", default=[],
+                   help="source address to bind for queries (repeatable)")
+    args = p.parse_args()
+
+    zones: List[str] = args.zones
+    nameservers: List[str] = args.nameservers
+    sources: List[Optional[str]] = args.sources or [None]
+
+    combos = [(z, n, s) for z in zones for n in nameservers for s in sources]
+    results: Dict[Tuple[str, str, Optional[str]], Dict] = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(combos)) as ex:
+        futs = {ex.submit(check_zone_ns, z, n, s): (z, n, s) for z, n, s in combos}
+        for fut in concurrent.futures.as_completed(futs):
+            key = futs[fut]
+            try:
+                results[key] = fut.result()
+            except Exception as exc:
+                results[key] = {"error": str(exc)}
+
+    summarize(zones, nameservers, sources, results)
+
+
+if __name__ == "__main__":
+    main()
