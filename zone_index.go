@@ -80,7 +80,7 @@ func buildIndex(z Zone) *zoneIndex {
 	for _, n := range z.NAPTR {
 		add(ownerName(z.Name, n.Name), dns.TypeNAPTR)
 	}
-	if z.DNSSEC != nil && z.DNSSEC.Enable {
+	if z.DNSSEC != nil && z.DNSSEC.Mode != "" && z.DNSSEC.Mode != DNSSECModeOff {
 		add(zname, dns.TypeDNSKEY)
 		add(zname, dns.TypeRRSIG)
 	}

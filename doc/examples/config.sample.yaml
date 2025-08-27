@@ -35,12 +35,12 @@ zones:
     expire: 600
     minttl: 60
     dnssec:
-      enable: false | true | generated   # false=off; true=manual; generated=auto
-      location: memory | disk            # only used if enable=generated
+      mode: off | manual | generated     # off=disabled; manual=load keys; generated=auto
+      location: memory | disk            # only used if mode=generated
       algorithm: ecdsap256sha256         # default 13; allow ecdsap384sha384 too
       path: "/etc/breathgslb/keys"       # required when location=disk
       seed_env: "BREATH_DNSSEC_SEED"     # optional; deterministic memory keys if set
-      # manual compatibility (used only when enable:true):
+      # manual compatibility (used only when mode=manual):
       zsk_keyfile: "/etc/breathgslb/keys/K...+013+ZID"
       ksk_keyfile: "/etc/breathgslb/keys/K...+013+KID"
 

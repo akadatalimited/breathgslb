@@ -28,7 +28,7 @@ func TestBuildIndexAndQueries(t *testing.T) {
 		SSHFP:      []SSHFPRecord{{Algorithm: 1, Type: 1, Fingerprint: "abcd"}},
 		SRV:        []SRVRecord{{Name: "_sip._tcp.example.com", Priority: 10, Weight: 5, Port: 5060, Target: "sip.example.com."}},
 		NAPTR:      []NAPTRRecord{{Order: 1, Preference: 1, Flags: "u", Services: "SIP+D2T", Regexp: "!^.*$!sip:service@example.com!", Replacement: "."}},
-		DNSSEC:     &DNSSECZoneConfig{Enable: true},
+		DNSSEC:     &DNSSECZoneConfig{Mode: DNSSECModeManual},
 	}
 
 	idx := buildIndex(z)

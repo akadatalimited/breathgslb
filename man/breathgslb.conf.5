@@ -253,11 +253,11 @@ The optional
 .B dnssec
 block enables inline signing with:
 .TP
-.B dnssec.enable
-Enable signing.
+.B dnssec.mode
+Selects the DNSSEC mode: \fBoff\fP, \fBmanual\fP, or \fBgenerated\fP.
 .TP
 .B dnssec.zsk_keyfile , dnssec.ksk_keyfile
-Paths to the ZSK and KSK PEM files.
+Paths to the ZSK and KSK key files or prefixes.
 .SH TSIG
 Global TSIG settings reside in the
 .B tsig

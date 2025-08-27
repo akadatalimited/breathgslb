@@ -33,7 +33,7 @@ func TestDNSSECNXDOMAIN(t *testing.T) {
 		TTLAnswer: 300,
 		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
 		TXT:       []TXTRecord{{Name: "sub", Text: []string{"hi"}}},
-		DNSSEC:    &DNSSECZoneConfig{Enable: true},
+		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
 	}}}
 
 	addr, auth := startRecordServer(t, cfg, gr)
