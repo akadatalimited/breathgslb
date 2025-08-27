@@ -19,3 +19,7 @@ The script exposes variables for the log directory, log file, PID file, and
 the user and group the daemon runs as. Edit these variables to fit your
 installation before starting the service.
 
+After the license is activated, the payload is written to
+`/etc/breathgslb/license.payload` and loaded automatically, so no extra flags
+are required in the init script.
+

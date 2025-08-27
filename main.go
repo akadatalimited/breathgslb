@@ -592,7 +592,11 @@ func main() {
 	}
 
 	if licensePayload == "" {
-		log.Fatalf("license payload required")
+		if b, err := os.ReadFile("/etc/breathgslb/license.payload"); err == nil {
+			licensePayload = strings.TrimSpace(string(b))
+		} else {
+			log.Fatalf("license payload required")
+		}
 	}
 	licensePayloadBytes, err := base64.StdEncoding.DecodeString(licensePayload)
 	if err != nil {

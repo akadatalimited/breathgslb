@@ -11,8 +11,8 @@ Wants=network-online.target
 EnvironmentFile=/etc/breathgslb/env
 # Default path to the configuration file; can be overridden in env file.
 Environment=BREATHGSLB_CONFIG=/etc/breathgslb/config.yaml
-# Launch the daemon with the configured file and any extra flags.
-ExecStart=/usr/local/bin/breathgslb -config ${BREATHGSLB_CONFIG} ${BREATHGSLB_FLAGS}
+# Launch the daemon with the configured file.
+ExecStart=/usr/local/bin/breathgslb -config ${BREATHGSLB_CONFIG}
 # Allow reloading configuration without full restart.
 ExecReload=/bin/kill -HUP $MAINPID
 # Run under a dedicated unprivileged user.

@@ -13,6 +13,10 @@ running the BreathGSLB daemon on macOS.
    sudo launchctl load /Library/LaunchDaemons/breathgslb.plist
    ```
 
+   After activation, the license payload is stored at
+   `/etc/breathgslb/license.payload`, so the service can start without specifying
+   `-license-payload`.
+
 ## Uninstallation (launchd)
 
 ```bash

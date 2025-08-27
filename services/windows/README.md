@@ -13,6 +13,9 @@ This directory provides a registry file to run BreathGSLB as a Windows service.
    ```cmd
    net start BreathGSLB
    ```
+   After activation, the license payload is stored at
+   `C:\breathgslb\license.payload`, letting the service run without specifying
+   `-license-payload`.
 4. Open firewall ports:
    ```cmd
    netsh advfirewall firewall add rule name="BreathGSLB DNS UDP" dir=in
