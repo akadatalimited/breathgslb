@@ -54,6 +54,20 @@ func ValidateZone(z *Zone) error {
 		return fmt.Errorf("persistence_mode: %w", err)
 	}
 
+	const maxSOA = 2147483647
+	if z.Refresh == 0 || z.Refresh > maxSOA {
+		return fmt.Errorf("refresh must be 1..%d", maxSOA)
+	}
+	if z.Retry == 0 || z.Retry > maxSOA {
+		return fmt.Errorf("retry must be 1..%d", maxSOA)
+	}
+	if z.Expire == 0 || z.Expire > maxSOA {
+		return fmt.Errorf("expire must be 1..%d", maxSOA)
+	}
+	if z.Minttl == 0 || z.Minttl > maxSOA {
+		return fmt.Errorf("minttl must be 1..%d", maxSOA)
+	}
+
 	// Validate core A/AAAA lists
 	if err := ValidateIPAddrList(z.AMaster, false, "a_master"); err != nil {
 		return err

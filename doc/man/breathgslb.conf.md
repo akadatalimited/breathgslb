@@ -76,6 +76,14 @@ Administrator mailbox in dotted form.
 TTL of the SOA record.
 ## ttl_answer
 Default TTL for synthesized apex answers.
+## refresh
+SOA refresh interval in seconds.
+## retry
+SOA retry interval in seconds.
+## expire
+SOA expire time in seconds.
+## minttl
+SOA minimum/negative cache TTL in seconds.
 ## serve
 Set to
 **local**

@@ -29,10 +29,10 @@ zones:
     admin: "hostmaster.akadata.ltd."
     ttl_soa: 60
     ttl_answer: 20
-
-
-
-    ttl_answer: 60
+    refresh: 60
+    retry: 30
+    expire: 600
+    minttl: 60
     dnssec:
       enable: false | true | generated   # false=off; true=manual; generated=auto
       location: memory | disk            # only used if enable=generated
@@ -179,6 +179,10 @@ zones:
     admin: "hostmaster.akadata.ltd."
     ttl_soa: 60
     ttl_answer: 60
+    refresh: 60
+    retry: 30
+    expire: 600
+    minttl: 60
     dnssec:
       enable: true
       zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+ZSKID"

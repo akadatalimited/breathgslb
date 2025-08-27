@@ -47,6 +47,10 @@ zones:
     admin: "hostmaster.akadata.ltd."
     ttl_soa: 60
     ttl_answer: 20
+    refresh: 60
+    retry: 30
+    expire: 600
+    minttl: 60
 
     serve: "local"
 

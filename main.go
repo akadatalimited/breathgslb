@@ -1664,7 +1664,7 @@ func (a *authority) isLocalGeo(key string, isCountry bool, ip net.IP) bool {
 func (a *authority) soa() dns.RR {
 	z := ensureDot(a.zone.Name)
 	nsPrimary := ensureDot(a.zone.NS[0])
-	return &dns.SOA{Hdr: hdr(z, dns.TypeSOA, a.zone.TTLSOA), Ns: nsPrimary, Mbox: ensureDot(a.zone.Admin), Serial: a.serial, Refresh: 60, Retry: 30, Expire: 600, Minttl: a.zone.TTLSOA}
+	return &dns.SOA{Hdr: hdr(z, dns.TypeSOA, a.zone.TTLSOA), Ns: nsPrimary, Mbox: ensureDot(a.zone.Admin), Serial: a.serial, Refresh: a.zone.Refresh, Retry: a.zone.Retry, Expire: a.zone.Expire, Minttl: a.zone.Minttl}
 }
 
 func hdr(name string, t uint16, ttl uint32) dns.RR_Header {
