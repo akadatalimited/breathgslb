@@ -19,6 +19,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -43,6 +44,33 @@ func init() {
 	if buildOS == "" {
 		buildOS = runtime.GOOS
 	}
+}
+
+var (
+	serialDir = "."
+	serialNow = func() uint32 { return uint32(time.Now().Unix()) }
+)
+
+func serialPath(zone string) string {
+	name := strings.TrimSuffix(ensureDot(zone), ".")
+	name = strings.ReplaceAll(name, "/", "_")
+	return filepath.Join(serialDir, name+".serial")
+}
+
+func nextSerial(zone string) uint32 {
+	now := serialNow()
+	path := serialPath(zone)
+	var prev uint64
+	if b, err := os.ReadFile(path); err == nil {
+		prev, _ = strconv.ParseUint(strings.TrimSpace(string(b)), 10, 32)
+	}
+	serial := now
+	if serial <= uint32(prev) {
+		serial = uint32(prev) + 1
+	}
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	_ = os.WriteFile(path, []byte(strconv.FormatUint(uint64(serial), 10)), 0o644)
+	return serial
 }
 
 // ---- state: per-tier, per-family ----
@@ -699,7 +727,7 @@ func buildMux(cfg *Config, gr *geoResolver, sup *supervisor) (dns.Handler, map[s
 		ctx, cancel := context.WithCancel(context.Background())
 		st := &state{cooldown: time.Duration(cfg.CooldownSec) * time.Second}
 		auth := &authority{cfg: cfg, zone: z, state: st, ctx: ctx, cancel: cancel, geo: gr}
-		auth.serial = uint32(time.Now().Unix())
+		auth.serial = nextSerial(zname)
 		// DNSSEC keys & index
 		auth.keys = loadDNSSEC(z)
 		auth.zidx = buildIndex(z)
