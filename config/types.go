@@ -127,6 +127,7 @@ type Config struct {
 	ListenAddrs []string `yaml:"listen_addrs,omitempty"`
 	Interfaces  []string `yaml:"interfaces,omitempty"`
 	ReverseDir  string   `yaml:"reverse_dir,omitempty"`
+	ZonesDir    string   `yaml:"zones_dir,omitempty"`
 	Zones       []Zone   `yaml:"zones"`
 
 	TimeoutSec  int  `yaml:"timeout_sec"`

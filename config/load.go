@@ -24,6 +24,31 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return nil, err
 	}
+	if cfg.ZonesDir != "" {
+		err := filepath.Walk(cfg.ZonesDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			if strings.HasSuffix(info.Name(), ".fwd.yaml") {
+				zb, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				var zs []Zone
+				if err := yaml.Unmarshal(zb, &zs); err != nil {
+					return fmt.Errorf("%s: %w", path, err)
+				}
+				cfg.Zones = append(cfg.Zones, zs...)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, err
 	}

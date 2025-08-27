@@ -26,6 +26,10 @@ binding.
 .B reverse_dir
 Directory where automatically generated reverse zones are written.
 .TP
+.B zones_dir
+Directory containing forward zone files.  Each file named \fI<zone>.fwd.yaml\fP
+is parsed and appended to the \fBzones\fP list.
+.TP
 .B timeout_sec
 Per‑probe timeout in seconds.
 .TP

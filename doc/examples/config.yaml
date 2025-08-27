@@ -12,6 +12,7 @@ api-cert: "/etc/breathgslb/cert.pem"     # Windows: C:\breathgslb\cert.pem
 api-key: "/etc/breathgslb/key.pem"       # Windows: C:\breathgslb\key.pem
 
 reverse_dir: "reverse_zones"      # where generated reverse zones are written
+zones_dir: "zones"                # load <zone>.fwd.yaml files from this directory
 
 timeout_sec: 3                # per health probe
 interval_sec: 4               # base interval between probe rounds
