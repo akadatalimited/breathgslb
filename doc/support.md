@@ -5,7 +5,7 @@
 | Field | Description |
 |-------|-------------|
 | `email` | Licensed contact address |
-| `expiry` | License expiry date (defaults to 31 days; `"never"` for perpetual) |
+| `support_expiry` | Support expiry date |
 | `customer_type` | User type such as `personal`, `pro`, or `enterprise` (defaults to `personal`) |
 | `supported` | Whether support is currently active |
 
@@ -51,11 +51,11 @@ Visit `http://localhost:8080` to create accounts, request licenses, and file sup
 
 ```sh
 go build ./cmd/licensegen
-./licensegen -build 2025-05-01 -type supported -send -from sales@example.com
+./licensegen -type supported -send -from sales@example.com
 ```
 
-The `-type` flag presets expiry and support values (`trial`, `standard`,
-`supported`). Missing fields like email, expiry, and support status are read from
+The `-type` flag presets support values (`trial`, `standard`,
+`supported`). Missing fields like email and support status are read from
 flags, a JSON `-config` file, or prompted for interactively. When `-send` is
 specified the generated key is emailed to the requester. The optional,
 case-insensitive `-os` flag defaults to the current platform but may be set to

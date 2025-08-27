@@ -22,11 +22,9 @@ import (
 )
 
 type licensePayload struct {
-	Build         string `json:"build"`
 	OS            string `json:"os"`
 	Email         string `json:"email"`
 	Salt          string `json:"salt"`
-	Expiry        string `json:"expiry"`
 	SupportExpiry string `json:"support_expiry"`
 	Supported     bool   `json:"supported"`
 	CustomerType  string `json:"customer_type"`
@@ -50,9 +48,7 @@ func baseOS(s string) string {
 
 func main() {
 	email := flag.String("email", "", "licensee email")
-	build := flag.String("build", "", "build date (YYYY-MM-DD)")
 	osFlag := flag.String("os", "", "target operating system (optional, case-insensitive)")
-	expiry := flag.String("expiry", "", "license expiry (YYYY-MM-DD or 'never')")
 	supportExpiry := flag.String("supportExpiry", "", "support expiry (YYYY-MM-DD)")
 	customerType := flag.String("customerType", "", "customer type")
 	supported := flag.Bool("supported", false, "support contract active")
@@ -77,12 +73,6 @@ func main() {
 	if strings.TrimSpace(*email) == "" {
 		*email = cfg.Email
 	}
-	if strings.TrimSpace(*build) == "" {
-		*build = cfg.Build
-	}
-	if strings.TrimSpace(*expiry) == "" {
-		*expiry = cfg.Expiry
-	}
 	if strings.TrimSpace(*supportExpiry) == "" {
 		*supportExpiry = cfg.SupportExpiry
 	}
@@ -97,20 +87,9 @@ func main() {
 	}
 
 	switch strings.ToLower(*ltype) {
-	case "trial":
-		if strings.TrimSpace(*expiry) == "" {
-			*expiry = time.Now().AddDate(0, 0, 30).Format("2006-01-02")
-		}
-		*supported = false
-	case "standard":
-		if strings.TrimSpace(*expiry) == "" {
-			*expiry = "never"
-		}
+	case "trial", "standard":
 		*supported = false
 	case "supported":
-		if strings.TrimSpace(*expiry) == "" {
-			*expiry = "never"
-		}
 		*supported = true
 		if strings.TrimSpace(*supportExpiry) == "" {
 			*supportExpiry = time.Now().AddDate(1, 0, 0).Format("2006-01-02")
@@ -122,19 +101,6 @@ func main() {
 		fmt.Print("Email: ")
 		in, _ := reader.ReadString('\n')
 		*email = strings.TrimSpace(in)
-	}
-	if strings.TrimSpace(*build) == "" {
-		fmt.Print("Build date (YYYY-MM-DD): ")
-		in, _ := reader.ReadString('\n')
-		*build = strings.TrimSpace(in)
-	}
-	if strings.TrimSpace(*expiry) == "" {
-		fmt.Print("Expiry (YYYY-MM-DD or 'never'): ")
-		in, _ := reader.ReadString('\n')
-		*expiry = strings.TrimSpace(in)
-		if *expiry == "" {
-			*expiry = "never"
-		}
 	}
 	if !*supported {
 		fmt.Print("Support contract (y/N): ")
@@ -150,8 +116,8 @@ func main() {
 		*supportExpiry = strings.TrimSpace(in)
 	}
 
-	if strings.TrimSpace(*email) == "" || strings.TrimSpace(*build) == "" {
-		log.Fatal("email and build fields are required")
+	if strings.TrimSpace(*email) == "" {
+		log.Fatal("email field is required")
 	}
 	if *supported && strings.TrimSpace(*supportExpiry) == "" {
 		log.Fatal("supportExpiry required when supported is true")
@@ -176,11 +142,9 @@ func main() {
 	osVal = baseOS(osVal)
 
 	lp := licensePayload{
-		Build:         *build,
 		OS:            osVal,
 		Email:         *email,
 		Salt:          salt,
-		Expiry:        *expiry,
 		SupportExpiry: *supportExpiry,
 		Supported:     *supported,
 		CustomerType:  *customerType,
