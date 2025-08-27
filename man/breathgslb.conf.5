@@ -278,7 +278,8 @@ List of key objects containing
 .B secret
 (leave empty to derive), and
 .B allow_xfr_from
-list of IPs permitted to perform AXFR.
+list of IPs permitted to perform AXFR or IXFR with that key.  Signed transfer
+requests from other addresses receive REFUSED.
 .PP
 Increase the optional
 .B epoch

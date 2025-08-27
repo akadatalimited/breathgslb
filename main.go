@@ -982,6 +982,14 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 			_ = w.WriteMsg(m)
 			return
 		}
+		if !a.xfrAllowed(w, r) {
+			m.SetRcode(r, dns.RcodeRefused)
+			if ts := r.IsTsig(); ts != nil {
+				m.SetTsig(ts.Hdr.Name, ts.Algorithm, 300, time.Now().Unix())
+			}
+			_ = w.WriteMsg(m)
+			return
+		}
 		a.xfr(w, r, q.Qtype == dns.TypeIXFR)
 		return
 	}
@@ -1055,7 +1063,45 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	_ = w.WriteMsg(m)
 }
 
+func (a *authority) xfrAllowed(w dns.ResponseWriter, r *dns.Msg) bool {
+	ts := r.IsTsig()
+	if ts == nil || w.TsigStatus() != nil || a.zone.TSIG == nil {
+		return true
+	}
+	ip := clientIP(w, r)
+	keyName := ensureDot(ts.Hdr.Name)
+	for _, k := range a.zone.TSIG.Keys {
+		if ensureDot(k.Name) != keyName {
+			continue
+		}
+		if len(k.AllowXFRFrom) == 0 {
+			return true
+		}
+		for _, allow := range k.AllowXFRFrom {
+			if strings.Contains(allow, "/") {
+				if _, n, err := net.ParseCIDR(allow); err == nil && n.Contains(ip) {
+					return true
+				}
+			} else if ip.Equal(net.ParseIP(allow)) {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
 func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
+	if !a.xfrAllowed(w, r) {
+		m := new(dns.Msg)
+		m.SetRcode(r, dns.RcodeRefused)
+		if ts := r.IsTsig(); ts != nil {
+			m.SetTsig(ts.Hdr.Name, ts.Algorithm, 300, time.Now().Unix())
+		}
+		_ = w.WriteMsg(m)
+		_ = w.Close()
+		return
+	}
 	tr := new(dns.Transfer)
 	ch := make(chan *dns.Envelope)
 	go func() {

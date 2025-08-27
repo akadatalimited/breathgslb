@@ -59,6 +59,8 @@ for offline reference.
 * **ALIAS/ANAME‑like apex** synth when no A/AAAA lists are set.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
+* **TSIG ACLs**: zone transfers signed with a key are served only to client IPs
+  listed in that key's `allow_xfr_from`; others receive `REFUSED`.
 * **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS,
   Windows, \*BSD).
 * **DNS64 synthesis** lets IPv6‑only clients reach IPv4‑only zones.
