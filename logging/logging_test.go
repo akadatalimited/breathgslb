@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,6 +12,9 @@ import (
 )
 
 func TestSetupCreatesLogFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test: relies on Unix file permissions")
+	}
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "test.log")
 	cfg := &config.Config{LogFile: path}
@@ -41,6 +45,9 @@ func TestSetupCreatesLogFile(t *testing.T) {
 }
 
 func TestReopenSwitchesLogFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test: relies on Unix file permissions")
+	}
 	tmp := t.TempDir()
 	first := filepath.Join(tmp, "first.log")
 	cfg := &config.Config{LogFile: first}
