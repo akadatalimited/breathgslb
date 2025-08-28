@@ -2,8 +2,8 @@
 
 A compact, authoritative, health‑checked GSLB that answers A/AAAA based on live
 endpoint status, while also serving everyday
-DNS records (TXT, MX, CAA, RP, SSHFP, SRV, NAPTR) and an optional
-ALIAS/ANAME‑like apex.
+DNS records (TXT, MX, CAA, RP, SSHFP, SRV, NAPTR) and optional
+ALIAS/ANAME‑like apex or hostname mapping.
 
 > Goal: keep traffic on the big box with capacity when it’s healthy, fail over
 to the reliable box when it’s not.
@@ -61,7 +61,7 @@ for offline reference.
 * **Flap damping**: rise/fall thresholds, **cooldown** window, and per‑check
   **jitter**.
 * **Shared records**: TXT, MX, CAA, RP, SSHFP, SRV, NAPTR.
-* **ALIAS/ANAME‑like apex** evaluated only at the zone apex and used as a final fallback when all A/AAAA lists are empty.
+* **ALIAS/ANAME‑like mapping** for the apex or specific hostnames; apex used as a final fallback when all A/AAAA lists are empty.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
 * **TSIG ACLs**: zone transfers signed with a key are served only to client IPs

@@ -1236,6 +1236,27 @@ func clientIP(w dns.ResponseWriter, r *dns.Msg) net.IP {
 func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	owner = strings.ToLower(ensureDot(owner))
 	zone := strings.ToLower(ensureDot(a.zone.Name))
+	if strings.HasSuffix(owner, zone) {
+		host := strings.TrimSuffix(owner, zone)
+		host = strings.TrimSuffix(host, ".")
+		if host != "" {
+			if tgt, ok := a.zone.AliasHost[strings.ToLower(host)]; ok {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
+				defer cancel()
+				ips := aliasLookup(ctx, tgt)
+				var addrs []string
+				for _, ip := range ips {
+					if ip.To4() != nil {
+						addrs = append(addrs, ip.String())
+					}
+				}
+				if len(addrs) > 0 {
+					return a.persistRR(a.buildA(addrs), src, false)
+				}
+				return nil
+			}
+		}
+	}
 	if owner != zone {
 		return nil
 	}
@@ -1282,6 +1303,27 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	owner = strings.ToLower(ensureDot(owner))
 	zone := strings.ToLower(ensureDot(a.zone.Name))
+	if strings.HasSuffix(owner, zone) {
+		host := strings.TrimSuffix(owner, zone)
+		host = strings.TrimSuffix(host, ".")
+		if host != "" {
+			if tgt, ok := a.zone.AliasHost[strings.ToLower(host)]; ok {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
+				defer cancel()
+				ips := aliasLookup(ctx, tgt)
+				var addrs []string
+				for _, ip := range ips {
+					if ip.To4() == nil {
+						addrs = append(addrs, ip.String())
+					}
+				}
+				if len(addrs) > 0 {
+					return a.persistRR(a.buildAAAA(addrs), src, true)
+				}
+				return nil
+			}
+		}
+	}
 	if owner != zone {
 		return nil
 	}

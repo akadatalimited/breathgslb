@@ -93,6 +93,7 @@ generate a reverse zone entry.
 |                                           |                 | addresses. |
 | `ula_master` | list[IPv6 prefix] | ULA/private IPv6 space. |
 | `alias` | FQDN string | Apex‑only ALIAS target, used as a final fallback when all A/AAAA lists are empty. |
+| `alias_host` | map[string]FQDN | Hostname→ALIAS target map within the zone (e.g. `www: target.example.`). |
 
 When no `a_master`/`aaaa_master` lists are present the apex can point at an alias target:
 
@@ -104,7 +105,18 @@ zones:
     alias: "status.akadata.ltd."
 ```
 
-The alias is evaluated only for the zone apex. Host records under `alias-only.akadata.ltd.` (e.g. `www`) must be delegated to another DNS server.
+The `alias` field is evaluated only for the zone apex. Additional hostnames can be mapped via `alias_host` entries:
+
+```yaml
+zones:
+  - name: "alias-only.akadata.ltd."
+    ns: ["ns-gslb.akadata.ltd."]
+    admin: "hostmaster.akadata.ltd."
+    alias_host:
+      www: "status.akadata.ltd."
+```
+
+Hostnames without an `alias_host` entry must be delegated to another DNS server.
 
 ### Geographic Routing
 

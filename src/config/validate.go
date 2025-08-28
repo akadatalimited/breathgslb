@@ -62,6 +62,15 @@ func ValidateZone(z *Zone) error {
 			return fmt.Errorf("alias: %w", err)
 		}
 	}
+	for h, tgt := range z.AliasHost {
+		base := strings.TrimSuffix(z.Name, ".")
+		if err := validateDomain(h + "." + base); err != nil {
+			return fmt.Errorf("alias_host[%s]: %w", h, err)
+		}
+		if err := validateDomain(tgt); err != nil {
+			return fmt.Errorf("alias_host[%s]: %w", h, err)
+		}
+	}
 	if err := validatePersistenceMode(z.PersistenceMode); err != nil {
 		return fmt.Errorf("persistence_mode: %w", err)
 	}

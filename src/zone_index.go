@@ -58,6 +58,12 @@ func buildIndex(z Zone) *zoneIndex {
 	if len(z.AAAAMaster)+len(z.AAAAStandby)+len(z.AAAAFallback) > 0 || z.Alias != "" || hasGeoAAAA {
 		add(zname, dns.TypeAAAA)
 	}
+	for h := range z.AliasHost {
+		base := strings.TrimSuffix(z.Name, ".")
+		fq := h + "." + base
+		add(fq, dns.TypeA)
+		add(fq, dns.TypeAAAA)
+	}
 
 	for _, t := range z.TXT {
 		add(ownerName(z.Name, t.Name), dns.TypeTXT)

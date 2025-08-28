@@ -290,7 +290,8 @@ type Zone struct {
 	RFCFallback []string `yaml:"rfc_fallback,omitempty"`
 	ULAFallback []string `yaml:"ula_fallback,omitempty"`
 
-	Alias string `yaml:"alias,omitempty"`
+	Alias     string            `yaml:"alias,omitempty"`
+	AliasHost map[string]string `yaml:"alias_host,omitempty"`
 
 	TXT   []TXTRecord   `yaml:"txt,omitempty"`
 	MX    []MXRecord    `yaml:"mx,omitempty"`
