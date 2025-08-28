@@ -79,8 +79,9 @@ zones:
 
     # Optional ALIAS at apex (only used if no A/AAAA lists are set)
     # alias: "status.akadata.ltd."
-    #
-    #
+    # Map hostnames to ALIAS targets
+    # alias_host:
+    #   www: "status.akadata.ltd."
 
     geoip:
       enabled: true

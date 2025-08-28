@@ -114,6 +114,9 @@ IPv6 ULA prefixes served only to internal clients.
 ## alias
 ALIAS‑style target used when no A or AAAA lists are present.
 
+## alias_host
+Hostname to ALIAS target map for subdomains.
+
 Example with IPv4, IPv6, DNS64 and private ranges:
 
 zones:

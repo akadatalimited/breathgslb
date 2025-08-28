@@ -4,6 +4,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/akadatalimited/breathgslb/src/config"
 	"github.com/miekg/dns"
 )
 
@@ -23,6 +24,7 @@ func TestLocalAnswersRFCULA(t *testing.T) {
 		RFCMaster:         []string{"10.0.0.0/8"},
 		ULAMaster:         []string{"fd00::/8"},
 	}}}
+	config.SetupDefaults(cfg)
 
 	// build authority without starting network listeners
 	_, auths := buildMux(cfg, nil, nil, nil)

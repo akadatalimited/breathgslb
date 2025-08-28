@@ -21,6 +21,7 @@ func TestBuildIndexAndQueries(t *testing.T) {
 		Name:       "example.com",
 		AMaster:    []IPAddr{{IP: "1.1.1.1"}},
 		AAAAMaster: []IPAddr{{IP: "2001:db8::1"}},
+		AliasHost:  map[string]string{"www": "target.example.net."},
 		TXT:        []TXTRecord{{Text: []string{"txt"}}},
 		MX:         []MXRecord{{Preference: 10, Exchange: "mail.example.com."}},
 		CAA:        []CAARecord{{Flag: 0, Tag: "issue", Value: "letsencrypt.org"}},
@@ -39,6 +40,9 @@ func TestBuildIndexAndQueries(t *testing.T) {
 	if !idx.hasName("_sip._tcp.example.com") {
 		t.Fatalf("expected SRV owner present")
 	}
+	if !idx.hasName("www.example.com") {
+		t.Fatalf("expected alias host present")
+	}
 	if idx.hasName("missing.example.com") {
 		t.Fatalf("did not expect unknown name")
 	}
@@ -48,6 +52,10 @@ func TestBuildIndexAndQueries(t *testing.T) {
 		t.Fatalf("expected next name example.com. got %s", next)
 	}
 	wrap := idx.nextName("example.com")
+	if wrap != "www.example.com." {
+		t.Fatalf("expected next name www.example.com., got %s", wrap)
+	}
+	wrap = idx.nextName("www.example.com")
 	if wrap != "_sip._tcp.example.com." {
 		t.Fatalf("expected wrap to first name, got %s", wrap)
 	}
@@ -66,6 +74,10 @@ func TestBuildIndexAndQueries(t *testing.T) {
 	if !hasType(srvTypes, dns.TypeSRV) {
 		t.Fatalf("expected SRV type for _sip._tcp.example.com")
 	}
+	aliasTypes := idx.typeBitmap("www.example.com")
+	if !hasType(aliasTypes, dns.TypeA) || !hasType(aliasTypes, dns.TypeAAAA) {
+		t.Fatalf("expected A and AAAA types for alias host")
+	}
 
 	// Closest encloser lookups
 	ce := idx.closestEncloser("missing.example.com")
@@ -79,7 +91,7 @@ func TestBuildIndexAndQueries(t *testing.T) {
 
 	// nextName for non-existent names
 	next = idx.nextName("missing.example.com")
-	if next != "_sip._tcp.example.com." {
+	if next != "www.example.com." {
 		t.Fatalf("unexpected next name for missing: %s", next)
 	}
 	next = idx.nextName("zzz.example.com")
