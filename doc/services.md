@@ -3,6 +3,19 @@
 BreathGSLB ships sample service definitions under the
 [`services/`](../services) directory for common init systems.
 
+## Binding to privileged ports
+
+BreathGSLB listens on port 53 by default. To permit a non-root binary to
+bind to this port, grant it the `cap_net_bind_service` capability:
+
+```bash
+setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
+```
+
+If the daemon is started as root instead, it can bind to the port and then
+optionally drop privileges after the sockets are open so it does not continue
+running with full root access.
+
 ## systemd (Linux)
 
 **Unit file:**
