@@ -385,9 +385,12 @@ Each prefix must follow BIND's `K<zone>+<alg>+<id>` form without the `.key` or
 
 Generated mode creates ZSK and KSK pairs automatically. Keys live only in
 memory unless `dnssec.location` is `disk` and `dnssec.path` names a directory
-where the `<prefix>.key` and `.private` files are written and reused.
+where the `<prefix>.key` and `.private` files are written and reused. If
+`dnssec.ksk_keyfile` is empty or matches `dnssec.zsk_keyfile`, `.zsk` and
+`.ksk` suffixes are appended to keep the two key files distinct.
 ## dnssec.zsk_keyfile , dnssec.ksk_keyfile
-Paths to the ZSK and KSK key file prefixes.
+Paths to the ZSK and KSK key file prefixes. Use different prefixes when
+persisting both keys.
 # TSIG
 Global TSIG settings reside in the
 **tsig**

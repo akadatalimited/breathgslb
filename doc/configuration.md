@@ -153,7 +153,7 @@ Per kind options:
 | --- | --- | --- |
 | `dnssec.mode` | string | DNSSEC mode: `off`, `manual`, or `generated`. |
 | `dnssec.zsk_keyfile` | string | ZSK key file (manual) or output prefix (generated). |
-| `dnssec.ksk_keyfile` | string | KSK key file (manual) or output prefix (generated). |
+| `dnssec.ksk_keyfile` | string | KSK key file (manual) or output prefix (generated). When this matches `dnssec.zsk_keyfile` or is empty, `.zsk` and `.ksk` suffixes are appended to keep files distinct; provide unique prefixes to persist both keys. |
 
 ### TSIG
 

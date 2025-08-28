@@ -43,10 +43,16 @@ func TestLoadDNSSECGenerated(t *testing.T) {
 	if !k.enabled || k.zsk == nil || k.ksk == nil {
 		t.Fatalf("expected keys generated")
 	}
-	if _, err := os.Stat(prefix + ".key"); err != nil {
-		t.Fatalf("expected pub key written: %v", err)
+	if _, err := os.Stat(prefix + ".zsk.key"); err != nil {
+		t.Fatalf("expected zsk pub key written: %v", err)
 	}
-	if _, err := os.Stat(prefix + ".private"); err != nil {
-		t.Fatalf("expected priv key written: %v", err)
+	if _, err := os.Stat(prefix + ".zsk.private"); err != nil {
+		t.Fatalf("expected zsk priv key written: %v", err)
+	}
+	if _, err := os.Stat(prefix + ".ksk.key"); err != nil {
+		t.Fatalf("expected ksk pub key written: %v", err)
+	}
+	if _, err := os.Stat(prefix + ".ksk.private"); err != nil {
+		t.Fatalf("expected ksk priv key written: %v", err)
 	}
 }

@@ -2010,6 +2010,14 @@ func loadDNSSEC(z Zone) *dnssecKeys {
 		if ksk == "" {
 			ksk = zsk
 		}
+		if zsk == ksk {
+			zk, zpriv, err := parseBindKeyPair(baseZ, zsk)
+			if err != nil {
+				log.Printf("dnssec key load failed: %v", err)
+				return &dnssecKeys{enabled: false}
+			}
+			return &dnssecKeys{enabled: true, zsk: zk, zskPriv: zpriv, ksk: zk, kskPriv: zpriv}
+		}
 		zk, zpriv, err := parseBindKeyPair(baseZ, zsk)
 		if err != nil {
 			log.Printf("dnssec zsk load failed: %v", err)
@@ -2025,10 +2033,14 @@ func loadDNSSEC(z Zone) *dnssecKeys {
 		zskPath := z.DNSSEC.ZSKFile
 		kskPath := z.DNSSEC.KSKFile
 		if zskPath == "" {
-			zskPath = filepath.Join(".", baseZ+".zsk")
+			zskPath = filepath.Join(".", baseZ)
 		}
 		if kskPath == "" {
 			kskPath = zskPath
+		}
+		if zskPath == kskPath {
+			zskPath += ".zsk"
+			kskPath += ".ksk"
 		}
 		zk := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ensureDot(z.Name), Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: 256, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
 		zp, err := zk.Generate(256)
