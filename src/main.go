@@ -998,11 +998,18 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
+	if name == z && q.Qtype == dns.TypeSOA {
+		m.Answer = append(m.Answer, a.soa())
+		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
+			m.Answer = a.signAll(m.Answer)
+		}
+		_ = w.WriteMsg(m)
+		return
+	}
+
 	// Basic apex handling for SOA/NS/DNSKEY
 	if name == z {
 		switch q.Qtype {
-		case dns.TypeSOA:
-			m.Answer = append(m.Answer, a.soa())
 		case dns.TypeNS:
 			for _, ns := range a.zone.NS {
 				m.Answer = append(m.Answer, &dns.NS{Hdr: hdr(zone, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
