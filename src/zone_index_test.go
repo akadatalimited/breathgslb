@@ -61,7 +61,7 @@ func TestBuildIndexAndQueries(t *testing.T) {
 	}
 
 	apexTypes := idx.typeBitmap("example.com")
-	for _, tt := range []uint16{dns.TypeSOA, dns.TypeNS, dns.TypeA, dns.TypeAAAA, dns.TypeTXT, dns.TypeMX, dns.TypeCAA, dns.TypeRP, dns.TypeSSHFP, dns.TypeNAPTR, dns.TypeDNSKEY, dns.TypeRRSIG} {
+	for _, tt := range []uint16{dns.TypeSOA, dns.TypeNS, dns.TypeA, dns.TypeAAAA, dns.TypeTXT, dns.TypeMX, dns.TypeCAA, dns.TypeRP, dns.TypeSSHFP, dns.TypeNAPTR, dns.TypeDNSKEY, dns.TypeRRSIG, dns.TypeNSEC} {
 		if !hasType(apexTypes, tt) {
 			t.Fatalf("expected type %d in apex bitmap", tt)
 		}
@@ -74,9 +74,19 @@ func TestBuildIndexAndQueries(t *testing.T) {
 	if !hasType(srvTypes, dns.TypeSRV) {
 		t.Fatalf("expected SRV type for _sip._tcp.example.com")
 	}
+	for _, tt := range []uint16{dns.TypeRRSIG, dns.TypeNSEC} {
+		if !hasType(srvTypes, tt) {
+			t.Fatalf("expected type %d for _sip._tcp.example.com", tt)
+		}
+	}
 	aliasTypes := idx.typeBitmap("www.example.com")
 	if !hasType(aliasTypes, dns.TypeA) || !hasType(aliasTypes, dns.TypeAAAA) {
 		t.Fatalf("expected A and AAAA types for alias host")
+	}
+	for _, tt := range []uint16{dns.TypeRRSIG, dns.TypeNSEC} {
+		if !hasType(aliasTypes, tt) {
+			t.Fatalf("expected type %d for alias host", tt)
+		}
 	}
 
 	// Closest encloser lookups

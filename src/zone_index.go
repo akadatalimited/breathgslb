@@ -86,14 +86,20 @@ func buildIndex(z Zone) *zoneIndex {
 	for _, n := range z.NAPTR {
 		add(ownerName(z.Name, n.Name), dns.TypeNAPTR)
 	}
-	if z.DNSSEC != nil && z.DNSSEC.Mode != "" && z.DNSSEC.Mode != DNSSECModeOff {
+	dnssecActive := z.DNSSEC != nil && z.DNSSEC.Mode != "" && z.DNSSEC.Mode != DNSSECModeOff
+	if dnssecActive {
 		add(zname, dns.TypeDNSKEY)
-		add(zname, dns.TypeRRSIG)
 	}
 
 	ns := make([]string, 0, len(m))
 	for k := range m {
 		ns = append(ns, ensureDot(strings.ToLower(k)))
+	}
+	if dnssecActive {
+		for _, k := range ns {
+			add(k, dns.TypeNSEC)
+			add(k, dns.TypeRRSIG)
+		}
 	}
 	sort.Strings(ns)
 	return &zoneIndex{names: ns, types: m}
