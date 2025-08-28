@@ -57,19 +57,19 @@ malformed records.
   ```sh
   apk add go
   cd breathgslb
-  go build -trimpath -ldflags "-s -w" -o breathgslb
+  go build -trimpath -ldflags "-s -w" -o breathgslb ./src
   ```
 * **Arch Linux:**
 
   ```sh
   pacman -S go
   cd breathgslb
-  go build -trimpath -ldflags "-s -w" -o breathgslb
+  go build -trimpath -ldflags "-s -w" -o breathgslb ./src
   ```
 * **Windows (cross-compile from Linux):**
 
   ```sh
-  GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o breathgslb.exe
+  GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o breathgslb.exe ./src
   ```
 
 ### Minimal run

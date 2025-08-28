@@ -98,7 +98,7 @@ Alpine:
 apk add go git
 cd /opt && git clone https://github.com/akadatalimited/breathgslb.git
 cd breathgslb
-go build -trimpath -ldflags "-s -w" -o breathgslb
+go build -trimpath -ldflags "-s -w" -o breathgslb ./src
 install -m 0755 breathgslb /usr/local/bin/breathgslb
 setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
 ```
@@ -109,7 +109,7 @@ Arch:
 pacman -S go git
 cd /opt && git clone https://github.com/akadatalimited/breathgslb.git
 cd breathgslb
-go build -trimpath -ldflags "-s -w" -o breathgslb
+go build -trimpath -ldflags "-s -w" -o breathgslb ./src
 install -m 0755 breathgslb /usr/local/bin/breathgslb
 setcap 'cap_net_bind_service=+ep' /usr/local/bin/breathgslb
 ```
@@ -122,7 +122,7 @@ On Windows, paths use the native `C:` style. Build the executable and point to a
 configuration file with Windows separators:
 
 ```powershell
-go build -trimpath -ldflags "-s -w" -o breathgslb.exe
+go build -trimpath -ldflags "-s -w" -o breathgslb.exe ./src
 ./breathgslb.exe -config C:\breathgslb\config.yaml
 ```
 
@@ -535,7 +535,7 @@ native `C:` paths. Run an elevated PowerShell to install the service and open
 firewall ports:
 
 ```powershell
-go build -trimpath -ldflags "-s -w" -o C:\breathgslb\breathgslb.exe
+go build -trimpath -ldflags "-s -w" -o C:\breathgslb\breathgslb.exe ./src
 $bin = 'C:\breathgslb\breathgslb.exe -config C:\breathgslb\config.yaml'
 New-Service -Name BreathGSLB `
   -BinaryPathName $bin `
