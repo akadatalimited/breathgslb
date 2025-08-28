@@ -54,3 +54,20 @@ func TestTargetsFromConfigDefault(t *testing.T) {
 		t.Errorf("targetsFromConfig() = %#v, want %#v", got, want)
 	}
 }
+
+func TestTargetsFromConfigNormalize(t *testing.T) {
+	cfg := &config.Config{
+		Listen:      "127.0.0.1:53",
+		ListenAddrs: []string{"[2001:0db8::1]:53", "1.2.3.4:53", "1.2.3.4"},
+	}
+	got := targetsFromConfig(cfg)
+	want := []bindTarget{
+		{netw: "udp6", addr: "[2001:db8::1]:53"},
+		{netw: "tcp6", addr: "[2001:db8::1]:53"},
+		{netw: "udp4", addr: "1.2.3.4:53"},
+		{netw: "tcp4", addr: "1.2.3.4:53"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("targetsFromConfig() = %#v, want %#v", got, want)
+	}
+}
