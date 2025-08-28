@@ -88,6 +88,48 @@ sudo launchctl load /Library/LaunchDaemons/breathgslb.plist
 **Reload:** `sudo launchctl kill HUP net.breathgslb` (or unload/load the
 plist).
 
+## Packaging and Distribution
+
+BreathGSLB can be packaged for multiple init systems.  The `install` targets
+in the [`Makefile`](../Makefile) stage binaries, configuration trees, and
+service files into a temporary root that packaging tools can consume.  For
+example:
+
+```bash
+make DESTDIR=/tmp/pkgroot install-systemd   # or install-openrc
+# then build your .deb, .rpm, .apk, etc. from /tmp/pkgroot
+```
+
+### Directory layout
+
+Packages should create these directories with appropriate ownership:
+
+- `/etc/breathgslb` for configuration
+- `/var/log/breathgslb` for logs
+- `/etc/breathgslb/keys`, `/etc/breathgslb/zones`, and
+  `/etc/breathgslb/reverse` if those features are enabled
+
+### systemd quirks
+
+Install the unit file under the systemd directory used by the target
+distribution (commonly `/lib/systemd/system`).  The unit expects an optional
+environment file at `/etc/breathgslb/env` and logs to journald by default.  A
+`tmpfiles.d` entry may be required to persist the log directory.
+
+### OpenRC quirks
+
+Place the init script at `/etc/init.d/breathgslb` and make it executable.
+Post-install scripts usually run `rc-update add breathgslb default`.  Older
+OpenRC releases run services as root when `command_user` is unset; verify the
+script sets it and that the log directory is writable.
+
+### Other targets
+
+Windows packages typically copy the binary and configuration to
+`C:\\breathgslb` and import `services/windows/breathgslb.reg` to create the
+service.  macOS packages install the plist in `/Library/LaunchDaemons` and may
+need to `chown` it to `root:wheel` so launchd will load it.
+
 ---
 
 These service files are samples; adjust paths to match your environment.
