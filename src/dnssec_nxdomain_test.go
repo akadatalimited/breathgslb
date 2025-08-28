@@ -68,11 +68,55 @@ func TestDNSSECNXDOMAIN(t *testing.T) {
 			}
 		}
 	}
-	if len(nsecs) != 2 {
-		t.Fatalf("expected 2 NSECs, got %d", len(nsecs))
+	if len(nsecs) != 1 {
+		t.Fatalf("expected 1 NSEC, got %d", len(nsecs))
 	}
 	if len(rrsigs) == 0 {
 		t.Fatalf("expected at least 1 NSEC RRSIG, got 0")
+	}
+}
+
+func TestDNSSECNXDOMAINDistinctProofs(t *testing.T) {
+	gr := &geoResolver{db: &maxminddb.Reader{}, cache: map[string]geoCacheEntry{}}
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TXT:       []TXTRecord{{Name: "sub.example.org.", Text: []string{"hi"}}, {Name: "a.example.org.", Text: []string{"hi"}}},
+		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
+	}}}
+
+	addr, auth := startRecordServer(t, cfg, gr)
+	auth.setMasterUp(true, true)
+	auth.keys = generateTestKeys(t, cfg.Zones[0].Name)
+	auth.zidx = buildIndex(cfg.Zones[0])
+
+	m := new(dns.Msg)
+	m.SetQuestion("foo.example.org.", dns.TypeA)
+	o := new(dns.OPT)
+	o.Hdr.Name = "."
+	o.Hdr.Rrtype = dns.TypeOPT
+	o.SetDo()
+	m.Extra = append(m.Extra, o)
+	c := &dns.Client{Net: "tcp"}
+	r, _, err := c.Exchange(m, addr)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if r.Rcode != dns.RcodeNameError {
+		t.Fatalf("expected NXDOMAIN, got %d", r.Rcode)
+	}
+	var nsecs []*dns.NSEC
+	for _, rr := range r.Ns {
+		if n, ok := rr.(*dns.NSEC); ok {
+			nsecs = append(nsecs, n)
+		}
+	}
+	if len(nsecs) != 2 {
+		t.Fatalf("expected 2 NSECs, got %d", len(nsecs))
 	}
 }
 
