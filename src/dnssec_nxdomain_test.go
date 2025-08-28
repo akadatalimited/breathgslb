@@ -56,20 +56,23 @@ func TestDNSSECNXDOMAIN(t *testing.T) {
 	if r.Rcode != dns.RcodeNameError {
 		t.Fatalf("expected NXDOMAIN, got %d", r.Rcode)
 	}
-	var nsec *dns.NSEC
+	var nsecs []*dns.NSEC
+	var rrsigs []*dns.RRSIG
 	for _, rr := range r.Ns {
-		if n, ok := rr.(*dns.NSEC); ok {
-			nsec = n
-			break
+		switch v := rr.(type) {
+		case *dns.NSEC:
+			nsecs = append(nsecs, v)
+		case *dns.RRSIG:
+			if v.TypeCovered == dns.TypeNSEC {
+				rrsigs = append(rrsigs, v)
+			}
 		}
 	}
-	if nsec == nil {
-		t.Fatalf("expected NSEC in authority section")
+	if len(nsecs) != 2 {
+		t.Fatalf("expected 2 NSECs, got %d", len(nsecs))
 	}
-	for _, typ := range nsec.TypeBitMap {
-		if typ == dns.TypeSOA || typ == dns.TypeDNSKEY {
-			t.Fatalf("bitmap contains apex-only type %v", typ)
-		}
+	if len(rrsigs) != 2 {
+		t.Fatalf("expected 2 NSEC RRSIGs, got %d", len(rrsigs))
 	}
 }
 
