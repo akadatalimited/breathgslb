@@ -12,6 +12,7 @@ import (
 // startRecordServer starts a test DNS server with the provided config and geo resolver.
 func startRecordServer(t *testing.T, cfg *Config, gr *geoResolver) (string, *authority) {
 	t.Helper()
+	ensureIPv4(t)
 	mux, auths := buildMux(cfg, gr, nil, nil)
 	auth := auths[ensureDot(cfg.Zones[0].Name)]
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
@@ -25,6 +26,7 @@ func startRecordServer(t *testing.T, cfg *Config, gr *geoResolver) (string, *aut
 }
 
 func TestRecordTypes(t *testing.T) {
+	ensureIPv4(t)
 	// Geo resolver placeholder with a cached country/continent for a test IP.
 	gr := &geoResolver{
 		db:    &maxminddb.Reader{},
