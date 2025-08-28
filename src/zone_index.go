@@ -202,3 +202,25 @@ func (z *zoneIndex) typeBitmap(owner string) []uint16 {
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
+
+// buildIndexFromRRs constructs a zoneIndex from a raw RR set for secondary zones.
+func buildIndexFromRRs(apex string, rrs []dns.RR) *zoneIndex {
+	m := map[string]map[uint16]bool{}
+	add := func(name string, t uint16) {
+		name = strings.ToLower(ensureDot(name))
+		if m[name] == nil {
+			m[name] = map[uint16]bool{}
+		}
+		m[name][t] = true
+	}
+	add(ensureDot(apex), dns.TypeSOA)
+	for _, rr := range rrs {
+		add(rr.Header().Name, rr.Header().Rrtype)
+	}
+	ns := make([]string, 0, len(m))
+	for k := range m {
+		ns = append(ns, ensureDot(strings.ToLower(k)))
+	}
+	sort.Slice(ns, func(i, j int) bool { return canonicalLess(ns[i], ns[j]) })
+	return &zoneIndex{names: ns, types: m}
+}
