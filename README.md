@@ -198,10 +198,12 @@ enabled either by supplying `-api-*` flags or by setting `api` options in
 
 Secondary servers may pull the zone over AXFR or IXFR. Allow the slave's IP in
 `allow_xfr_from` and use the emitted key under `tsig.path` when signing
-requests:
+requests. The `allow_xfr_from` list is consulted only when a valid TSIG
+accompanies the request; unsigned transfers bypass the list unless the code is
+updated to require TSIG, in which case they are rejected:
 
 ```sh
-dig @203.0.113.10 example.net AXFR
+dig @203.0.113.10 example.net AXFR              # fails when TSIG is required
 dig @203.0.113.10 example.net AXFR -k /etc/breathgslb/keys/xfr-example.key
 ```
 
