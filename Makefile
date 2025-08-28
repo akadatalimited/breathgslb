@@ -76,31 +76,31 @@ help:
 
 build:
 	@echo "==> building ($(BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(BINARY) ./src
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(BINARY) .
 
 web:
 	@echo "==> building ($(WEB_BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" -mod=mod $(GOFLAGS) -o $(WEB_BINARY) ./src/web
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" -mod=mod $(GOFLAGS) -o $(WEB_BINARY:src/%=%) ./web
 
 vendor:
-	$(GO) mod tidy
-	$(GO) mod vendor
+	$(GO) -C src mod tidy
+	$(GO) -C src mod vendor
 
 clean:
 	rm -f $(BINARY)
 	rm -rf $(DISTDIR) $(DOC_PDF) doc/breathgslb.md
 
 fmt:
-	$(GO) fmt ./...
+	$(GO) -C src fmt ./...
 
 vet:
-	$(GO) vet ./...
+	$(GO) -C src vet ./...
 
 test:
-	$(GO) test -race ./...
+	$(GO) -C src test -race ./...
 
 licensegen:
-	$(GO) build -tags tools ./src/cmd/licensegen
+	$(GO) -C src build -tags tools -o ../licensegen ./cmd/licensegen
 
 # -------------------- documentation --------------------
 doc/man/%.md: man/% scripts/man2md.py
@@ -117,36 +117,36 @@ release: clean release-linux release-musl release-macos release-freebsd release-
 
 release-linux:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=linux  GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-amd64 ./src
-	GOOS=linux  GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-arm64 ./src
+	GOOS=linux  GOARCH=amd64 CGO_ENABLED=1 $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-linux-amd64 .
+	GOOS=linux  GOARCH=arm64 CGO_ENABLED=1 $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-linux-arm64 .
 
 # Static-ish MUSL builds for Alpine (no cgo)
 release-musl:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -tags netgo -trimpath -ldflags "$(BUILD_LDFLAGS) -extldflags '-static'" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-amd64-musl ./src
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 $(GO) build -tags netgo -trimpath -ldflags "$(BUILD_LDFLAGS) -extldflags '-static'" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-linux-arm64-musl ./src
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) -C src build -tags netgo -trimpath -ldflags "$(BUILD_LDFLAGS) -extldflags '-static'" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-linux-amd64-musl .
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 $(GO) -C src build -tags netgo -trimpath -ldflags "$(BUILD_LDFLAGS) -extldflags '-static'" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-linux-arm64-musl .
 
 release-macos:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-darwin-amd64 ./src
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-darwin-arm64 ./src
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-darwin-amd64 .
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-darwin-arm64 .
 
 release-freebsd:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=freebsd GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-amd64 ./src
-	GOOS=freebsd GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-freebsd-arm64 ./src
+	GOOS=freebsd GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-freebsd-amd64 .
+	GOOS=freebsd GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-freebsd-arm64 .
 
 release-bsd:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=openbsd GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-amd64 ./src
-	GOOS=openbsd GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-openbsd-arm64 ./src
-	GOOS=netbsd  GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-amd64 ./src
-	GOOS=netbsd  GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-netbsd-arm64 ./src
+	GOOS=openbsd GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-openbsd-amd64 .
+	GOOS=openbsd GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-openbsd-arm64 .
+	GOOS=netbsd  GOARCH=amd64 CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-netbsd-amd64 .
+	GOOS=netbsd  GOARCH=arm64 CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-netbsd-arm64 .
 
 release-windows:
 	$(MKDIR_P) $(DISTDIR)
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-windows-amd64.exe ./src
-	GOOS=windows GOARCH=arm64 CGO_ENABLED=1 $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o $(DISTDIR)/$(BINARY)-windows-arm64.exe ./src
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-windows-amd64.exe .
+	GOOS=windows GOARCH=arm64 CGO_ENABLED=1 $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(DISTDIR)/$(BINARY)-windows-arm64.exe .
 
 # -------------------- packaging --------------------
 package: release $(DOC_PDF)
