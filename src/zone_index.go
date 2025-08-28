@@ -11,6 +11,26 @@ import (
 	"github.com/miekg/dns"
 )
 
+// canonicalLess compares two domain names using the DNSSEC canonical
+// ordering as defined in RFC4034 §6.1. Labels are compared
+// case-insensitively from right to left. The shorter name sorts first
+// when all compared labels are equal.
+func canonicalLess(a, b string) bool {
+	a = strings.ToLower(ensureDot(a))
+	b = strings.ToLower(ensureDot(b))
+	a = strings.TrimSuffix(a, ".")
+	b = strings.TrimSuffix(b, ".")
+	as := strings.Split(a, ".")
+	bs := strings.Split(b, ".")
+	for i, j := len(as)-1, len(bs)-1; i >= 0 && j >= 0; i, j = i-1, j-1 {
+		if as[i] == bs[j] {
+			continue
+		}
+		return as[i] < bs[j]
+	}
+	return len(as) < len(bs)
+}
+
 // zoneIndex tracks owner names and type bitmaps for NSEC.
 type zoneIndex struct {
 	names []string
@@ -101,7 +121,7 @@ func buildIndex(z Zone) *zoneIndex {
 			add(k, dns.TypeRRSIG)
 		}
 	}
-	sort.Strings(ns)
+	sort.Slice(ns, func(i, j int) bool { return canonicalLess(ns[i], ns[j]) })
 	return &zoneIndex{names: ns, types: m}
 }
 
@@ -127,6 +147,25 @@ func (z *zoneIndex) closestEncloser(name string) string {
 	}
 }
 
+// successor returns the index of the smallest element in names that is
+// canonically greater than q. The result wraps to 0 if q is greater than all
+// names.
+func successor(names []string, q string) int {
+	i := sort.Search(len(names), func(i int) bool { return canonicalLess(q, names[i]) })
+	return i % len(names)
+}
+
+// predecessor returns the index of the largest element in names that is
+// canonically less than q. The result wraps to the last index if q is less than
+// or equal to the first name.
+func predecessor(names []string, q string) int {
+	i := sort.Search(len(names), func(i int) bool { return !canonicalLess(names[i], q) })
+	if i == 0 {
+		return len(names) - 1
+	}
+	return i - 1
+}
+
 // nextName returns the next owner name in canonical order. If owner doesn't
 // exist in the zone, the next existing name after owner is returned, wrapping
 // around to the first name.
@@ -135,14 +174,7 @@ func (z *zoneIndex) nextName(owner string) string {
 	if len(z.names) == 0 {
 		return owner
 	}
-	i := sort.Search(len(z.names), func(j int) bool { return z.names[j] >= owner })
-	if i == len(z.names) {
-		return z.names[0]
-	}
-	if z.names[i] == owner {
-		return z.names[(i+1)%len(z.names)]
-	}
-	return z.names[i]
+	return z.names[successor(z.names, owner)]
 }
 
 // prevName returns the previous owner name in canonical order. If owner doesn't
@@ -153,20 +185,7 @@ func (z *zoneIndex) prevName(owner string) string {
 	if len(z.names) == 0 {
 		return owner
 	}
-	i := sort.Search(len(z.names), func(j int) bool { return z.names[j] >= owner })
-	if i == len(z.names) {
-		return z.names[len(z.names)-1]
-	}
-	if z.names[i] == owner {
-		if i == 0 {
-			return z.names[len(z.names)-1]
-		}
-		return z.names[i-1]
-	}
-	if i == 0 {
-		return z.names[len(z.names)-1]
-	}
-	return z.names[i-1]
+	return z.names[predecessor(z.names, owner)]
 }
 
 // typeBitmap returns the type bitmap for the given owner.
