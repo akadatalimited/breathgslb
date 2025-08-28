@@ -36,9 +36,12 @@ instead of chattering during short blips. At the same time,
 the zone can publish normal records (TXT/MX/CAA/RP/SSHFP/SRV/NAPTR) so the
 sub‑zone is fully useful, not just a raw IP switch.
 
-DNSSEC is supported in both manual and generated modes.  You can load
-existing BIND‑style `zsk_keyfile`/`ksk_keyfile` prefixes or let BreathGSLB
-create and persist the keys automatically.
+DNSSEC is supported in both manual and generated modes. You can load existing
+BIND‑style `zsk_keyfile`/`ksk_keyfile` prefixes or let BreathGSLB create and
+persist the keys automatically. When both prefixes are the same (or
+`ksk_keyfile` is omitted) generated keys are written with `.zsk` and `.ksk`
+suffixes to keep files distinct—use unique prefixes if you intend to store
+both pairs.
 
 ---
 
