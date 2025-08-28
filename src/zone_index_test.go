@@ -48,15 +48,15 @@ func TestBuildIndexAndQueries(t *testing.T) {
 	}
 
 	next := idx.nextName("_sip._tcp.example.com")
-	if next != "example.com." {
-		t.Fatalf("expected next name example.com. got %s", next)
+	if next != "www.example.com." {
+		t.Fatalf("expected next name www.example.com. got %s", next)
 	}
 	wrap := idx.nextName("example.com")
-	if wrap != "www.example.com." {
-		t.Fatalf("expected next name www.example.com., got %s", wrap)
+	if wrap != "_sip._tcp.example.com." {
+		t.Fatalf("expected next name _sip._tcp.example.com., got %s", wrap)
 	}
 	wrap = idx.nextName("www.example.com")
-	if wrap != "_sip._tcp.example.com." {
+	if wrap != "example.com." {
 		t.Fatalf("expected wrap to first name, got %s", wrap)
 	}
 
@@ -105,7 +105,21 @@ func TestBuildIndexAndQueries(t *testing.T) {
 		t.Fatalf("unexpected next name for missing: %s", next)
 	}
 	next = idx.nextName("zzz.example.com")
-	if next != "_sip._tcp.example.com." {
-		t.Fatalf("expected wrap to _sip._tcp.example.com., got %s", next)
+	if next != "example.com." {
+		t.Fatalf("expected wrap to example.com., got %s", next)
+	}
+
+	// prevName checks
+	prev := idx.prevName("_sip._tcp.example.com")
+	if prev != "example.com." {
+		t.Fatalf("expected previous name example.com., got %s", prev)
+	}
+	prev = idx.prevName("example.com")
+	if prev != "www.example.com." {
+		t.Fatalf("expected previous name www.example.com., got %s", prev)
+	}
+	prev = idx.prevName("missing.example.com")
+	if prev != "_sip._tcp.example.com." {
+		t.Fatalf("unexpected previous name for missing: %s", prev)
 	}
 }
