@@ -13,12 +13,9 @@ breathgslb -config /etc/breathgslb/config.yaml
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `listen` | string | Address or `:port` to bind; binds UDP/TCP on IPv4 and |
-|          |        | IPv6. |
-| `listen_addrs` | list[string] | Explicit `host:port` targets; overrides |
-|                |              | `interfaces`. |
-| `interfaces` | list[string] | Network interface names to derive bind |
-|              |              | addresses. |
+| `listen_addrs` | list[string] | Explicit `host:port` targets (highest precedence). |
+| `interfaces` | list[string] | Network interface names to derive bind addresses; ignored when `listen_addrs` is set. |
+| `listen` | string | Fallback `host:port`; default `:53`; ignored when `listen_addrs` or `interfaces` is set. |
 | `reverse_dir` | string | Directory where generated reverse zones are |
 |               |        | written. |
 | `timeout_sec` | int | Per‑probe timeout in seconds. |
@@ -46,6 +43,10 @@ breathgslb -config /etc/breathgslb/config.yaml
 |             |        | token. |
 | `api-cert` | string | TLS certificate for admin API. |
 | `api-key` | string | TLS key for admin API. |
+
+Only one primary binding directive should be set. Precedence is
+`listen_addrs` → `interfaces` → `listen` → default `:53`; lower-priority
+entries are ignored when a higher one is present.
 
 ### GeoIP Block
 
