@@ -123,3 +123,34 @@ func TestBuildIndexAndQueries(t *testing.T) {
 		t.Fatalf("unexpected previous name for missing: %s", prev)
 	}
 }
+
+func TestPrevNextNameDMARCAndWildcard(t *testing.T) {
+	z := Zone{
+		Name:    "example.com",
+		AMaster: []IPAddr{{IP: "1.1.1.1"}},
+		TXT:     []TXTRecord{{Name: "_dmarc.example.com.", Text: []string{"p=none"}}, {Name: "*.example.com.", Text: []string{"wild"}}},
+		DNSSEC:  &DNSSECZoneConfig{Mode: DNSSECModeManual},
+	}
+
+	idx := buildIndex(z)
+
+	if next := idx.nextName("example.com"); next != "*.example.com." {
+		t.Fatalf("expected next name *.example.com., got %s", next)
+	}
+	if next := idx.nextName("*.example.com"); next != "_dmarc.example.com." {
+		t.Fatalf("expected next name _dmarc.example.com., got %s", next)
+	}
+	if next := idx.nextName("_dmarc.example.com"); next != "example.com." {
+		t.Fatalf("expected wrap to example.com., got %s", next)
+	}
+
+	if prev := idx.prevName("example.com"); prev != "_dmarc.example.com." {
+		t.Fatalf("expected previous name _dmarc.example.com., got %s", prev)
+	}
+	if prev := idx.prevName("*.example.com"); prev != "example.com." {
+		t.Fatalf("expected previous name example.com., got %s", prev)
+	}
+	if prev := idx.prevName("_dmarc.example.com"); prev != "*.example.com." {
+		t.Fatalf("expected previous name *.example.com., got %s", prev)
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto"
+	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -117,6 +118,67 @@ func TestDNSSECNXDOMAINDistinctProofs(t *testing.T) {
 	}
 	if len(nsecs) != 2 {
 		t.Fatalf("expected 2 NSECs, got %d", len(nsecs))
+	}
+}
+
+func TestDNSSECNXDOMAINOnlyDMARC(t *testing.T) {
+	gr := &geoResolver{db: &maxminddb.Reader{}, cache: map[string]geoCacheEntry{}}
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TXT:       []TXTRecord{{Name: "_dmarc.example.org.", Text: []string{"v=DMARC1"}}},
+		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
+	}}}
+
+	addr, auth := startRecordServer(t, cfg, gr)
+	auth.setMasterUp(true, true)
+	auth.keys = generateTestKeys(t, cfg.Zones[0].Name)
+	auth.zidx = buildIndex(cfg.Zones[0])
+
+	m := new(dns.Msg)
+	m.SetQuestion("www.example.org.", dns.TypeA)
+	o := new(dns.OPT)
+	o.Hdr.Name = "."
+	o.Hdr.Rrtype = dns.TypeOPT
+	o.SetDo()
+	m.Extra = append(m.Extra, o)
+	c := &dns.Client{Net: "tcp"}
+	r, _, err := c.Exchange(m, addr)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if r.Rcode != dns.RcodeNameError {
+		t.Fatalf("expected NXDOMAIN, got %d", r.Rcode)
+	}
+	nsecMap := map[string]bool{}
+	rrsigMap := map[string]bool{}
+	for _, rr := range r.Ns {
+		switch v := rr.(type) {
+		case *dns.NSEC:
+			key := strings.ToLower(v.Hdr.Name) + "|" + strings.ToLower(v.NextDomain)
+			if nsecMap[key] {
+				t.Fatalf("duplicate NSEC %s", key)
+			}
+			nsecMap[key] = true
+		case *dns.RRSIG:
+			if v.TypeCovered == dns.TypeNSEC {
+				key := strings.ToLower(v.Hdr.Name)
+				if rrsigMap[key] {
+					t.Fatalf("duplicate RRSIG %s", key)
+				}
+				rrsigMap[key] = true
+			}
+		}
+	}
+	if len(nsecMap) != 2 {
+		t.Fatalf("expected 2 distinct NSECs, got %d", len(nsecMap))
+	}
+	if len(rrsigMap) != 2 {
+		t.Fatalf("expected 2 NSEC RRSIGs, got %d", len(rrsigMap))
 	}
 }
 
