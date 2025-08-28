@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/akadatalimited/breathgslb/config"
+	"github.com/akadatalimited/breathgslb/src/config"
 )
 
 // Setup configures logging according to cfg and returns the log writer, if any.

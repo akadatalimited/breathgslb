@@ -65,12 +65,12 @@ From the repository root run:
 make web
 ```
 
-This produces a `web` binary at `web/web`.
+This produces a `web` binary at `src/web/web`.
 
 ## Running
 
 ```bash
-./web
+./src/web/web
 ```
 
 The server listens on the configured `server` address (default `:8080`) and exposes endpoints for user signup,

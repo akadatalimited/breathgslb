@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/akadatalimited/breathgslb/config"
+	"github.com/akadatalimited/breathgslb/src/config"
 )
 
 func TestEffectiveDefaults(t *testing.T) {

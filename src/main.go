@@ -27,11 +27,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/akadatalimited/breathgslb/config"
-	"github.com/akadatalimited/breathgslb/dnsserver"
 	"github.com/akadatalimited/breathgslb/doc"
-	"github.com/akadatalimited/breathgslb/healthcheck"
-	"github.com/akadatalimited/breathgslb/logging"
+	"github.com/akadatalimited/breathgslb/src/config"
+	"github.com/akadatalimited/breathgslb/src/dnsserver"
+	"github.com/akadatalimited/breathgslb/src/healthcheck"
+	"github.com/akadatalimited/breathgslb/src/logging"
 	"github.com/miekg/dns"
 
 	maxminddb "github.com/oschwald/maxminddb-golang"

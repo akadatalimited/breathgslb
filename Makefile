@@ -1,7 +1,7 @@
 # --- Project
 BINARY      ?= breathgslb
 PKG         ?= github.com/akadatalimited/breathgslb
-WEB_BINARY  ?= web/web
+WEB_BINARY  ?= src/web/web
 
 # --- Tooling / flags
 GO          ?= go
@@ -80,7 +80,7 @@ build:
 
 web:
 	@echo "==> building ($(WEB_BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" -mod=mod $(GOFLAGS) -o $(WEB_BINARY) ./web
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build -trimpath -ldflags "$(BUILD_LDFLAGS)" -mod=mod $(GOFLAGS) -o $(WEB_BINARY) ./src/web
 
 vendor:
 	$(GO) mod tidy
@@ -100,7 +100,7 @@ test:
 	$(GO) test -race ./...
 
 licensegen:
-	$(GO) build -tags tools ./cmd/licensegen
+	$(GO) build -tags tools ./src/cmd/licensegen
 
 # -------------------- documentation --------------------
 doc/man/%.md: man/% scripts/man2md.py

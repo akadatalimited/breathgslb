@@ -1,6 +1,6 @@
 package main
 
-import configpkg "github.com/akadatalimited/breathgslb/config"
+import configpkg "github.com/akadatalimited/breathgslb/src/config"
 
 type (
 	Config           = configpkg.Config
