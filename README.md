@@ -56,7 +56,7 @@ for offline reference.
 * **Flap damping**: rise/fall thresholds, **cooldown** window, and per‑check
   **jitter**.
 * **Shared records**: TXT, MX, CAA, RP, SSHFP, SRV, NAPTR.
-* **ALIAS/ANAME‑like apex** synth when no A/AAAA lists are set.
+* **ALIAS/ANAME‑like apex** evaluated only at the zone apex and used as a final fallback when all A/AAAA lists are empty.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
 * **TSIG ACLs**: zone transfers signed with a key are served only to client IPs
@@ -351,10 +351,22 @@ go test ./...
 
 ### ALIAS (apex synth)
 
-If `alias:` is set and no A/AAAA lists are defined, the server resolves the
-target using the host resolver and returns its A/AAAA at the apex.
-This is useful when another hostname should drive the addressing but a CNAME at
-the apex would be illegal.
+`alias` is evaluated only for the zone apex and comes into play only when all
+`a_*`/`aaaa_*` lists are empty. In that case the server resolves the target and
+returns its A/AAAA at the apex, acting as a final fallback.
+
+Example:
+
+```yaml
+zones:
+  - name: "alias-only.akadata.ltd."
+    ns: ["ns-gslb.akadata.ltd."]
+    admin: "hostmaster.akadata.ltd."
+    alias: "status.akadata.ltd."
+```
+
+Sub‑domain host records (e.g., `www.alias-only.akadata.ltd.`) require
+delegation to another DNS server.
 
 ### MX/CAA/RP/TXT
 
