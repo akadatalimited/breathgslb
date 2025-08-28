@@ -1064,13 +1064,28 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled && a.zidx != nil {
 			if missing {
 				closest := a.zidx.closestEncloser(name)
-				if nsec := a.makeNSEC(a.zidx.prevName(name)); nsec != nil {
-					m.Ns = append(m.Ns, nsec)
+				nsecMap := map[string]*dns.NSEC{}
+				var order []string
+				if n := a.makeNSEC(a.zidx.prevName(name)); n != nil {
+					ns := n.(*dns.NSEC)
+					key := strings.ToLower(ns.Hdr.Name) + "|" + strings.ToLower(ns.NextDomain)
+					if _, ok := nsecMap[key]; !ok {
+						nsecMap[key] = ns
+						order = append(order, key)
+					}
 				}
 				if closest != "" {
-					if wnsec := a.makeNSEC(a.zidx.prevName("*." + closest)); wnsec != nil {
-						m.Ns = append(m.Ns, wnsec)
+					if n := a.makeNSEC(a.zidx.prevName("*." + closest)); n != nil {
+						ns := n.(*dns.NSEC)
+						key := strings.ToLower(ns.Hdr.Name) + "|" + strings.ToLower(ns.NextDomain)
+						if _, ok := nsecMap[key]; !ok {
+							nsecMap[key] = ns
+							order = append(order, key)
+						}
 					}
+				}
+				for _, k := range order {
+					m.Ns = append(m.Ns, nsecMap[k])
 				}
 			} else {
 				if nsec := a.makeNSEC(name); nsec != nil {
