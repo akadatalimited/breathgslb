@@ -2223,6 +2223,16 @@ func (a *authority) makeNSEC(name string) dns.RR {
 		next = idx.nextName(owner)
 	}
 	bm := idx.typeBitmap(owner)
+	if owner != name {
+		filtered := make([]uint16, 0, len(bm))
+		for _, t := range bm {
+			if t == dns.TypeSOA || t == dns.TypeDNSKEY {
+				continue
+			}
+			filtered = append(filtered, t)
+		}
+		bm = filtered
+	}
 	return &dns.NSEC{Hdr: hdr(ensureDot(owner), dns.TypeNSEC, a.zone.TTLAnswer), NextDomain: ensureDot(next), TypeBitMap: bm}
 }
 
