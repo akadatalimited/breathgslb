@@ -378,8 +378,16 @@ The optional
 block enables inline signing with:
 ## dnssec.mode
 Selects the DNSSEC mode: `off`, `manual`, or `generated`.
+
+Manual mode requires `dnssec.zsk_keyfile` and `dnssec.ksk_keyfile` prefixes.
+Each prefix must follow BIND's `K<zone>+<alg>+<id>` form without the `.key` or
+`.private` suffix; both files must exist.
+
+Generated mode creates ZSK and KSK pairs automatically. Keys live only in
+memory unless `dnssec.location` is `disk` and `dnssec.path` names a directory
+where the `<prefix>.key` and `.private` files are written and reused.
 ## dnssec.zsk_keyfile , dnssec.ksk_keyfile
-Paths to the ZSK and KSK key files or prefixes.
+Paths to the ZSK and KSK key file prefixes.
 # TSIG
 Global TSIG settings reside in the
 **tsig**

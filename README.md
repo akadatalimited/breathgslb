@@ -36,7 +36,9 @@ instead of chattering during short blips. At the same time,
 the zone can publish normal records (TXT/MX/CAA/RP/SSHFP/SRV/NAPTR) so the
 sub‑zone is fully useful, not just a raw IP switch.
 
-DNSSEC is planned next; the codebase keeps the path clear for inline signing.
+DNSSEC is supported in both manual and generated modes.  You can load
+existing BIND‑style `zsk_keyfile`/`ksk_keyfile` prefixes or let BreathGSLB
+create and persist the keys automatically.
 
 ---
 

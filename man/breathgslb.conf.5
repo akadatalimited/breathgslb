@@ -1,4 +1,4 @@
-.TH BREATHGSLB.CONF 5 "September 2023" "BreathGSLB" "File Formats"
+.TH BREATHGSLB.CONF 5 "August 2025" "BreathGSLB" "File Formats"
 .SH NAME
 breathgslb.conf \- configuration file for breathgslb
 .SH DESCRIPTION
@@ -255,9 +255,18 @@ block enables inline signing with:
 .TP
 .B dnssec.mode
 Selects the DNSSEC mode: \fBoff\fP, \fBmanual\fP, or \fBgenerated\fP.
+.PP
+Manual mode requires \fBdnssec.zsk_keyfile\fP and \fBdnssec.ksk_keyfile\fP prefixes.
+Each prefix must follow BIND's \fBK<zone>+<alg>+<id>\fP form without the
+\fB.key\fP or \fB.private\fP suffix; both files must exist.
+.PP
+Generated mode creates ZSK and KSK pairs automatically. Keys live only in
+memory unless \fBdnssec.location\fP is set to \fBdisk\fP and \fBdnssec.path\fP
+names a directory where the \fB<prefix>.key\fP and \fB.private\fP files are
+written and reused.
 .TP
 .B dnssec.zsk_keyfile , dnssec.ksk_keyfile
-Paths to the ZSK and KSK key files or prefixes.
+Paths to the ZSK and KSK key file prefixes.
 .SH TSIG
 Global TSIG settings reside in the
 .B tsig
