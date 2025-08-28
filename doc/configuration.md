@@ -152,8 +152,8 @@ Per kind options:
 | Key | Type | Description |
 | --- | --- | --- |
 | `dnssec.mode` | string | DNSSEC mode: `off`, `manual`, or `generated`. |
-| `dnssec.zsk_keyfile` | string | Path to ZSK key or prefix. |
-| `dnssec.ksk_keyfile` | string | Path to KSK key or prefix. |
+| `dnssec.zsk_keyfile` | string | ZSK key file (manual) or output prefix (generated). |
+| `dnssec.ksk_keyfile` | string | KSK key file (manual) or output prefix (generated). |
 
 ### TSIG
 
