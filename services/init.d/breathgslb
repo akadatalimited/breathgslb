@@ -17,8 +17,16 @@ PID_FILE="/run/breathgslb.pid"
 
 # Path to the BreathGSLB executable
 command="/usr/local/bin/breathgslb"
+# Path to the configuration file
+CONFIG_FILE="/etc/breathgslb/config.yaml"
+# Base64‑encoded license payload (optional)
+LICENSE_PAYLOAD=""
+# Additional custom flags (optional)
+EXTRA_ARGS=""
 # Command line arguments
-command_args="-config /etc/breathgslb/config.yaml"
+command_args="-config ${CONFIG_FILE}"
+[ -n "${LICENSE_PAYLOAD}" ] && command_args="${command_args} -license-payload ${LICENSE_PAYLOAD}"
+[ -n "${EXTRA_ARGS}" ] && command_args="${command_args} ${EXTRA_ARGS}"
 # Run the command as the configured user and group
 command_user="${SERVICE_USER}:${SERVICE_GROUP}"
 
