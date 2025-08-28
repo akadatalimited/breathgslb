@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -15,6 +16,9 @@ func TestLoadDNSSECOff(t *testing.T) {
 }
 
 func TestLoadDNSSECManual(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test: relies on Unix file permissions")
+	}
 	dir := t.TempDir()
 	prefix := filepath.Join(dir, "key")
 	keys := generateTestKeys(t, "example.org.")
@@ -29,6 +33,9 @@ func TestLoadDNSSECManual(t *testing.T) {
 }
 
 func TestLoadDNSSECGenerated(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test: relies on Unix file permissions")
+	}
 	dir := t.TempDir()
 	prefix := filepath.Join(dir, "gen")
 	z := Zone{Name: "example.org.", DNSSEC: &DNSSECZoneConfig{Mode: DNSSECModeGenerated, ZSKFile: prefix, KSKFile: prefix}}
