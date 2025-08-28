@@ -309,7 +309,10 @@ is used, replace the key file atomically and update any dependent
 symlinks before reloading the daemon.
 .SH SLAVE/ZONE TRANSFERS
 BreathGSLB may act as a master for downstream slaves.  Restrict transfer
-clients and sign requests with TSIG keys.
+clients and sign requests with TSIG keys.  The \fBallow_xfr_from\fP list is
+checked only when a valid TSIG accompanies the request; unsigned transfers
+bypass the restriction unless the code is updated to require TSIG, in which
+case they are rejected.
 .PP
 .nf
 tsig:
@@ -325,8 +328,8 @@ the slave and reference it in its configuration.
 Test full and incremental transfers with \fBdig\fP:
 .PP
 .nf
-dig @203.0.113.10 example.net AXFR
-dig @203.0.113.10 example.net IXFR=0
+dig @203.0.113.10 example.net AXFR             # fails when TSIG is required
+dig @203.0.113.10 example.net IXFR=0           # fails when TSIG is required
 dig @203.0.113.10 example.net AXFR -k /etc/breathgslb/keys/xfr-example.key
 dig @203.0.113.10 example.net IXFR=0 -k /etc/breathgslb/keys/xfr-example.key
 .fi
