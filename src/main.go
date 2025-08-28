@@ -27,9 +27,9 @@ import (
 	"sync/atomic"
 	"time"
 
-        "github.com/akadatalimited/breathgslb/src/doc"
 	"github.com/akadatalimited/breathgslb/src/config"
 	"github.com/akadatalimited/breathgslb/src/dnsserver"
+	"github.com/akadatalimited/breathgslb/src/doc"
 	"github.com/akadatalimited/breathgslb/src/healthcheck"
 	"github.com/akadatalimited/breathgslb/src/logging"
 	"github.com/miekg/dns"
@@ -956,8 +956,9 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 	q := r.Question[0]
-	name := ensureDot(q.Name)
-	z := ensureDot(a.zone.Name)
+	name := strings.ToLower(ensureDot(q.Name))
+	zone := ensureDot(a.zone.Name)
+	z := strings.ToLower(zone)
 
 	if a.cfg.LogQueries {
 		log.Printf("query %s %s", name, dns.TypeToString[q.Qtype])
@@ -988,7 +989,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 			m.Answer = append(m.Answer, a.soa())
 		case dns.TypeNS:
 			for _, ns := range a.zone.NS {
-				m.Answer = append(m.Answer, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
+				m.Answer = append(m.Answer, &dns.NS{Hdr: hdr(zone, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 			}
 		case dns.TypeDNSKEY:
 			if a.keys != nil && a.keys.enabled {
@@ -1030,7 +1031,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 
 	if len(m.Answer) == 0 {
 		for _, ns := range a.zone.NS {
-			m.Ns = append(m.Ns, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
+			m.Ns = append(m.Ns, &dns.NS{Hdr: hdr(zone, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 		}
 		m.Ns = append(m.Ns, a.soa())
 		if a.zidx != nil && !a.zidx.hasName(name) {
@@ -1233,7 +1234,9 @@ func clientIP(w dns.ResponseWriter, r *dns.Msg) net.IP {
 
 // Address selection for a given owner name
 func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
-	if ensureDot(owner) != ensureDot(a.zone.Name) {
+	owner = strings.ToLower(ensureDot(owner))
+	zone := strings.ToLower(ensureDot(a.zone.Name))
+	if owner != zone {
 		return nil
 	}
 	// local view first if enabled
@@ -1277,7 +1280,9 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 }
 
 func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
-	if ensureDot(owner) != ensureDot(a.zone.Name) {
+	owner = strings.ToLower(ensureDot(owner))
+	zone := strings.ToLower(ensureDot(a.zone.Name))
+	if owner != zone {
 		return nil
 	}
 	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
