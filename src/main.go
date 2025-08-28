@@ -267,6 +267,12 @@ type authority struct {
 	rrA         atomic.Uint64
 	rrAAAA      atomic.Uint64
 
+	// secondary zone data
+	mu      sync.RWMutex
+	records map[string][]dns.RR
+	axfrRRs []dns.RR
+	soaRR   *dns.SOA
+
 	// parsed CIDRs for geo_answers
 	geoCIDR struct {
 		country   map[string]parsedCIDRs
@@ -748,10 +754,15 @@ func buildMux(cfg *Config, gr *geoResolver, sup *supervisor, prev map[string]*au
 		ctx, cancel := context.WithCancel(context.Background())
 		st := &state{cooldown: time.Duration(cfg.CooldownSec) * time.Second}
 		auth := &authority{cfg: cfg, zone: z, state: st, ctx: ctx, cancel: cancel, geo: gr}
-		auth.serial = nextSerial(zname)
+		if strings.ToLower(z.Serve) == "secondary" {
+			auth.serial = 0
+			auth.zidx = nil
+		} else {
+			auth.serial = nextSerial(zname)
+			auth.zidx = buildIndex(z)
+		}
 		// DNSSEC keys & index
 		auth.keys = loadDNSSEC(z)
-		auth.zidx = buildIndex(z)
 		// parse local CIDRs once
 		auth.cidrInit()
 
@@ -766,14 +777,23 @@ func buildMux(cfg *Config, gr *geoResolver, sup *supervisor, prev map[string]*au
 
 		mux.HandleFunc(zname, auth.handle)
 		auths[zname] = auth
-		if sup != nil {
-			sup.watch(ctx, zname+" healthLoop", auth.healthLoop)
-			sup.watch(ctx, zname+" purgeLoop", auth.purgeLoop)
+		if strings.ToLower(z.Serve) == "secondary" && len(z.Masters) > 0 {
+			if sup != nil {
+				sup.watch(ctx, zname+" fetchLoop", auth.fetchLoop)
+			} else {
+				go auth.fetchLoop()
+			}
+			log.Printf("serving secondary zone %s", zname)
 		} else {
-			go auth.healthLoop()
-			go auth.purgeLoop()
+			if sup != nil {
+				sup.watch(ctx, zname+" healthLoop", auth.healthLoop)
+				sup.watch(ctx, zname+" purgeLoop", auth.purgeLoop)
+			} else {
+				go auth.healthLoop()
+				go auth.purgeLoop()
+			}
+			log.Printf("serving zone %s", zname)
 		}
-		log.Printf("serving zone %s", zname)
 	}
 	return mux, auths
 }
@@ -998,6 +1018,36 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
+	if strings.ToLower(a.zone.Serve) == "secondary" {
+		a.mu.RLock()
+		if q.Qtype == dns.TypeSOA && name == z {
+			if a.soaRR != nil {
+				rr := *a.soaRR
+				m.Answer = append(m.Answer, &rr)
+			}
+		} else {
+			for _, rr := range a.records[name] {
+				if q.Qtype == dns.TypeANY || rr.Header().Rrtype == q.Qtype {
+					m.Answer = append(m.Answer, rr)
+				}
+			}
+		}
+		if len(m.Answer) == 0 {
+			for _, rr := range a.records[z] {
+				if rr.Header().Rrtype == dns.TypeNS {
+					m.Ns = append(m.Ns, rr)
+				}
+			}
+			if a.soaRR != nil {
+				rr := *a.soaRR
+				m.Ns = append(m.Ns, &rr)
+			}
+		}
+		a.mu.RUnlock()
+		_ = w.WriteMsg(m)
+		return
+	}
+
 	if name == z && q.Qtype == dns.TypeSOA {
 		m.Answer = append(m.Answer, a.soa())
 		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
@@ -1180,6 +1230,13 @@ func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
 }
 
 func (a *authority) axfrRecords() []dns.RR {
+	if strings.ToLower(a.zone.Serve) == "secondary" {
+		a.mu.RLock()
+		defer a.mu.RUnlock()
+		out := make([]dns.RR, len(a.axfrRRs))
+		copy(out, a.axfrRRs)
+		return out
+	}
 	var rrs []dns.RR
 	z := ensureDot(a.zone.Name)
 	for _, ns := range a.zone.NS {
@@ -1553,6 +1610,127 @@ func (a *authority) buildAAAA(addrs []string) []dns.RR {
 	return rrs
 }
 
+func (a *authority) fetchLoop() {
+	var expire time.Time
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		default:
+		}
+		if err := a.transferFromMasters(); err != nil {
+			log.Printf("xfr fetch for %s failed: %v", a.zone.Name, err)
+			retry := time.Duration(a.zone.Retry) * time.Second
+			if retry <= 0 {
+				retry = time.Minute
+			}
+			if !expire.IsZero() && time.Now().After(expire) {
+				a.mu.Lock()
+				a.records = nil
+				a.axfrRRs = nil
+				a.soaRR = nil
+				a.mu.Unlock()
+			}
+			select {
+			case <-time.After(retry):
+			case <-a.ctx.Done():
+				return
+			}
+		} else {
+			expire = time.Now().Add(time.Duration(a.zone.Expire) * time.Second)
+			refresh := time.Duration(a.zone.Refresh) * time.Second
+			if refresh <= 0 {
+				refresh = 5 * time.Minute
+			}
+			select {
+			case <-time.After(refresh):
+			case <-a.ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+func (a *authority) transferFromMasters() error {
+	var lastErr error
+	for _, master := range a.zone.Masters {
+		addr := master
+		if !strings.Contains(addr, ":") || strings.HasSuffix(addr, "]") {
+			addr = net.JoinHostPort(addr, "53")
+		}
+		tr := new(dns.Transfer)
+		m := new(dns.Msg)
+		m.SetAxfr(a.zone.Name)
+		if a.zone.TSIG != nil && len(a.zone.TSIG.Keys) > 0 {
+			k := a.zone.TSIG.Keys[0]
+			name := ensureDot(k.Name)
+			alg := k.Algorithm
+			if alg == "" {
+				alg = dns.HmacSHA256
+			}
+			tr.TsigSecret = map[string]string{name: k.Secret}
+			m.SetTsig(name, alg, 300, time.Now().Unix())
+		}
+		env, err := tr.In(m, addr)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		var all []dns.RR
+		for e := range env {
+			if e.Error != nil {
+				err = e.Error
+				break
+			}
+			all = append(all, e.RR...)
+		}
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(all) < 2 {
+			lastErr = fmt.Errorf("empty xfr")
+			continue
+		}
+		startSOA, ok := all[0].(*dns.SOA)
+		if !ok {
+			lastErr = fmt.Errorf("first record not SOA")
+			continue
+		}
+		endSOA, ok := all[len(all)-1].(*dns.SOA)
+		if !ok {
+			lastErr = fmt.Errorf("last record not SOA")
+			continue
+		}
+		records := all[1 : len(all)-1]
+		recMap := make(map[string][]dns.RR)
+		nsList := []string{}
+		for _, rr := range records {
+			name := strings.ToLower(ensureDot(rr.Header().Name))
+			recMap[name] = append(recMap[name], rr)
+			if ns, ok := rr.(*dns.NS); ok && strings.EqualFold(ensureDot(ns.Hdr.Name), ensureDot(a.zone.Name)) {
+				nsList = append(nsList, ensureDot(ns.Ns))
+			}
+		}
+		a.mu.Lock()
+		a.records = recMap
+		a.axfrRRs = records
+		a.soaRR = endSOA
+		a.serial = endSOA.Serial
+		a.zone.NS = nsList
+		a.zone.Refresh = startSOA.Refresh
+		a.zone.Retry = startSOA.Retry
+		a.zone.Expire = startSOA.Expire
+		a.zone.Admin = startSOA.Mbox
+		a.zone.TTLSOA = startSOA.Hdr.Ttl
+		a.zone.Minttl = startSOA.Minttl
+		a.zidx = buildIndexFromRRs(a.zone.Name, records)
+		a.mu.Unlock()
+		return nil
+	}
+	return lastErr
+}
+
 func (a *authority) purgeLoop() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -1877,6 +2055,14 @@ func (a *authority) isLocalGeo(key string, isCountry bool, ip net.IP) bool {
 }
 
 func (a *authority) soa() dns.RR {
+	if strings.ToLower(a.zone.Serve) == "secondary" {
+		a.mu.RLock()
+		defer a.mu.RUnlock()
+		if a.soaRR != nil {
+			rr := *a.soaRR
+			return &rr
+		}
+	}
 	z := ensureDot(a.zone.Name)
 	nsPrimary := ensureDot(a.zone.NS[0])
 	return &dns.SOA{Hdr: hdr(z, dns.TypeSOA, a.zone.TTLSOA), Ns: nsPrimary, Mbox: ensureDot(a.zone.Admin), Serial: a.serial, Refresh: a.zone.Refresh, Retry: a.zone.Retry, Expire: a.zone.Expire, Minttl: a.zone.Minttl}

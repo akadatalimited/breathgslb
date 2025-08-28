@@ -266,8 +266,9 @@ type Zone struct {
 	PersistenceEnabled bool   `yaml:"persistence_enabled,omitempty"`
 	PersistenceMode    string `yaml:"persistence_mode,omitempty"`
 
-	Serve                    string `yaml:"serve,omitempty"`
-	PrivateAllowWhenIsolated bool   `yaml:"private_allow_when_isolated,omitempty"`
+	Serve                    string   `yaml:"serve,omitempty"`
+	Masters                  []string `yaml:"masters,omitempty"`
+	PrivateAllowWhenIsolated bool     `yaml:"private_allow_when_isolated,omitempty"`
 
 	AMaster      []IPAddr `yaml:"a_master,omitempty"`
 	AAAAMaster   []IPAddr `yaml:"aaaa_master,omitempty"`
