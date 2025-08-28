@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateIPList(t *testing.T) {
 	tests := []struct {
@@ -70,6 +73,31 @@ func TestValidateGeoAnswerSet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := ValidateGeoAnswerSet(tt.set, "geo"); err == nil {
 				t.Fatalf("expected error for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestValidateConfigListenFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+		wantMsg string
+	}{
+		{"OnlyListen", Config{Listen: "1.2.3.4:53"}, false, ""},
+		{"ListenAndListenAddrs", Config{Listen: "1.2.3.4:53", ListenAddrs: []string{"0.0.0.0"}}, true, "listen_addrs"},
+		{"ListenAndInterfaces", Config{Listen: "1.2.3.4:53", Interfaces: []string{"eth0"}}, true, "interfaces"},
+		{"ListenAddrsAndInterfaces", Config{ListenAddrs: []string{"0.0.0.0"}, Interfaces: []string{"eth0"}}, true, "listen_addrs"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateConfig(&tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ValidateConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Fatalf("expected error mentioning %q, got %v", tt.wantMsg, err)
 			}
 		})
 	}

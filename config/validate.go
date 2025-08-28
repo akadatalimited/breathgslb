@@ -24,6 +24,18 @@ func ValidateConfig(cfg *Config) error {
 			return fmt.Errorf("api enabled but api-listen, api-token, api-cert, and api-key must be set")
 		}
 	}
+	l := cfg.Listen != ""
+	la := len(cfg.ListenAddrs) > 0
+	ifc := len(cfg.Interfaces) > 0
+	if (l && la) || (l && ifc) || (la && ifc) {
+		precedence := "listen"
+		if la {
+			precedence = "listen_addrs"
+		} else if ifc {
+			precedence = "interfaces"
+		}
+		return fmt.Errorf("only one of listen, listen_addrs, or interfaces may be set; %s takes precedence", precedence)
+	}
 	for i := range cfg.Zones {
 		if err := ValidateZone(&cfg.Zones[i]); err != nil {
 			return fmt.Errorf("zone %q: %w", cfg.Zones[i].Name, err)
