@@ -304,6 +304,29 @@ least every 90 days.  When
 .B tsig.path
 is used, replace the key file atomically and update any dependent
 symlinks before reloading the daemon.
+.SH SLAVE/ZONE TRANSFERS
+BreathGSLB may act as a master for downstream slaves.  Restrict transfer
+clients and sign requests with TSIG keys.
+.PP
+.nf
+tsig:
+  path: "/etc/breathgslb/keys"
+  keys:
+    - name: "xfr-example."
+      allow_xfr_from: ["198.51.100.53"]
+.fi
+.PP
+The key is written as \fI/etc/breathgslb/keys/xfr-example.key\fP; copy it to
+the slave and reference it in its configuration.
+.PP
+Test full and incremental transfers with \fBdig\fP:
+.PP
+.nf
+dig @203.0.113.10 example.net AXFR
+dig @203.0.113.10 example.net IXFR=0
+dig @203.0.113.10 example.net AXFR -k /etc/breathgslb/keys/xfr-example.key
+dig @203.0.113.10 example.net IXFR=0 -k /etc/breathgslb/keys/xfr-example.key
+.fi
 .SH STATIC RECORDS
 Zone blocks may include lists named
 .B txt
