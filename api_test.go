@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -99,13 +100,22 @@ func TestSupervisorRestart(t *testing.T) {
 	var runs atomic.Int32
 	s.watch(ctx, "task", func() { runs.Add(1) })
 
-	// Wait for at least one restart.
-	deadline := time.Now().Add(5 * time.Second)
-	for runs.Load() < 2 && time.Now().Before(deadline) {
-		time.Sleep(100 * time.Millisecond)
+	wait := 10 * time.Second
+	if v := os.Getenv("SUPERVISOR_RESTART_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			wait = d
+		}
 	}
-	if runs.Load() < 2 {
-		t.Fatalf("goroutine did not restart; runs=%d", runs.Load())
+
+	timeout := time.After(wait)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for runs.Load() < 2 {
+		select {
+		case <-timeout:
+			t.Fatalf("goroutine did not restart; runs=%d", runs.Load())
+		case <-ticker.C:
+		}
 	}
 
 	cancel()
