@@ -6,7 +6,6 @@ import (
 	"crypto"
 	"crypto/subtle"
 	"crypto/tls"
-	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"expvar"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/akadatalimited/breathgslb/config"
 	"github.com/akadatalimited/breathgslb/dnsserver"
+	"github.com/akadatalimited/breathgslb/doc"
 	"github.com/akadatalimited/breathgslb/healthcheck"
 	"github.com/akadatalimited/breathgslb/logging"
 	"github.com/miekg/dns"
@@ -37,8 +37,7 @@ import (
 	maxminddb "github.com/oschwald/maxminddb-golang"
 )
 
-//go:embed version.txt
-var version string
+var version = "dev"
 
 func init() {
 	version = strings.TrimSpace(version)
@@ -490,12 +489,6 @@ func apiAddrs(ifaces []string, port int) []string {
 	return addrs
 }
 
-//go:embed doc/openapi.yaml
-var openapiSpec []byte
-
-//go:embed doc/swagger.html
-var swaggerPage []byte
-
 func aboutText() string {
 	return fmt.Sprintf(`BreathGSLB - V%s %s Release
 
@@ -860,7 +853,7 @@ func openapiHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/yaml")
-	w.Write(openapiSpec)
+	w.Write(doc.OpenAPIYAML)
 }
 
 func swaggerHandler(w http.ResponseWriter, r *http.Request) {
@@ -868,7 +861,7 @@ func swaggerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(swaggerPage)
+	w.Write(doc.SwaggerHTML)
 }
 
 type udpResponseWriter struct {
