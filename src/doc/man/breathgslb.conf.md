@@ -236,6 +236,8 @@ files.
 Environment variable name used to deterministically derive secrets.
 ## default_algorithm
 Default HMAC algorithm when not specified per key.
+## allow_unsigned
+Permit unsigned zone transfers. Default false (require TSIG).
 ## keys
 List of key objects containing
 **name**

@@ -26,7 +26,7 @@ func startTestServer(t *testing.T, cfg *Config, secrets map[string]string, prev 
 
 const testSecret = "c2VjcmV0c2VjcmV0c2VjcmV0" // base64("secretsecretsecret")
 
-func TestAXFRUnsignedAndSigned(t *testing.T) {
+func TestAXFRUnsignedAllowedAndSigned(t *testing.T) {
 	ensureIPv4(t)
 	cfg := &Config{Zones: []Zone{{
 		Name:      "example.org.",
@@ -35,7 +35,7 @@ func TestAXFRUnsignedAndSigned(t *testing.T) {
 		TTLSOA:    3600,
 		TTLAnswer: 300,
 		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
-		TSIG:      &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, AllowXFRFrom: []string{"127.0.0.1"}}}},
+		TSIG:      &TSIGZoneConfig{AllowUnsigned: true, Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, AllowXFRFrom: []string{"127.0.0.1"}}}},
 	}}}
 	_, addr, auth := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
@@ -74,6 +74,38 @@ func TestAXFRUnsignedAndSigned(t *testing.T) {
 		if e.Error != nil {
 			t.Fatalf("axfr signed env: %v", e.Error)
 		}
+	}
+}
+
+func TestAXFRUnsignedRejected(t *testing.T) {
+	ensureIPv4(t)
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TSIG:      &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, AllowXFRFrom: []string{"127.0.0.1"}}}},
+	}}}
+	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
+
+	tr := new(dns.Transfer)
+	m := new(dns.Msg)
+	m.SetAxfr("example.org.")
+	env, err := tr.In(m, addr)
+	if err != nil {
+		t.Fatalf("transfer setup: %v", err)
+	}
+	e, ok := <-env
+	if !ok {
+		t.Fatalf("no response received")
+	}
+	if e.Error == nil || !strings.Contains(e.Error.Error(), "bad xfr rcode") {
+		t.Fatalf("expected transfer refusal, got %v", e.Error)
+	}
+	if _, ok := <-env; ok {
+		t.Fatalf("expected channel to close after error")
 	}
 }
 

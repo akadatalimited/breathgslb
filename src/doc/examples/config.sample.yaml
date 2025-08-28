@@ -41,15 +41,16 @@ zones:
 
 
 
-    tsig:
-      default_algorithm: hmac-sha256
-      seed_env: "BREATH_TSIG_SEED"      # optional; enables deterministic derivation
-      epoch: 1                          # bump to rotate deterministically
-      keys:
-        - name: "gslb-xfr."
-          algorithm: hmac-sha256
-          secret: ""                    # if empty -> derive from seed or random per start
-          allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
+  tsig:
+    default_algorithm: hmac-sha256
+    seed_env: "BREATH_TSIG_SEED"      # optional; enables deterministic derivation
+    epoch: 1                          # bump to rotate deterministically
+    allow_unsigned: true              # permit unsigned transfers
+    keys:
+      - name: "gslb-xfr."
+        algorithm: hmac-sha256
+        secret: ""                    # if empty -> derive from seed or random per start
+        allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
 
 
     # Health-driven apex addresses
@@ -188,14 +189,15 @@ zones:
       ksk_keyfile: "/etc/breathgslb/keys/articles.akadata.ltd.ksk"
 
 
-    tsig:
-      seed_env: "BREATH_TSIG_SEED"      # optional; derive deterministically from this env var
-      default_algorithm: "hmac-sha256"
-      keys:
-        - name: "gslb-xfr."             # TSIG key name (owner form, trailing dot)
-          algorithm: "hmac-sha256"      # optional; defaults to above
-          secret: ""                    # if empty → derive from seed; if no seed → random per start
-          allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
+  tsig:
+    seed_env: "BREATH_TSIG_SEED"      # optional; derive deterministically from this env var
+    default_algorithm: "hmac-sha256"
+    allow_unsigned: true              # permit unsigned transfers
+    keys:
+      - name: "gslb-xfr."             # TSIG key name (owner form, trailing dot)
+        algorithm: "hmac-sha256"      # optional; defaults to above
+        secret: ""                    # if empty → derive from seed; if no seed → random per start
+        allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
 
 
     # No explicit A/AAAA lists here; ALIAS will synthesize A/AAAA from target

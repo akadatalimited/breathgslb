@@ -1153,9 +1153,15 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 func (a *authority) xfrAllowed(w dns.ResponseWriter, r *dns.Msg) bool {
-	ts := r.IsTsig()
-	if ts == nil || w.TsigStatus() != nil || a.zone.TSIG == nil {
+	if a.zone.TSIG == nil {
 		return true
+	}
+	ts := r.IsTsig()
+	if ts == nil || w.TsigStatus() != nil {
+		if a.zone.TSIG.AllowUnsigned {
+			return true
+		}
+		return false
 	}
 	ip := clientIP(w, r)
 	keyName := ensureDot(ts.Hdr.Name)
@@ -1177,7 +1183,7 @@ func (a *authority) xfrAllowed(w dns.ResponseWriter, r *dns.Msg) bool {
 		}
 		return false
 	}
-	return true
+	return false
 }
 
 func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
