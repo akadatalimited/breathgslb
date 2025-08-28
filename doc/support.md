@@ -36,7 +36,7 @@ payload from that file automatically if the `-license-payload` flag is omitted.
 
 1. Verify coverage:
    ```sh
-   go build ./cmd/licensectl
+   go build ./src/cmd/licensectl
    ./licensectl -db web.db list
    ```
 2. Gather logs and configuration.
@@ -48,8 +48,8 @@ payload from that file automatically if the `-license-payload` flag is omitted.
 Build and run the service:
 
 ```sh
-go build ./web
-./web
+go build ./src/web
+./src/web/web
 ```
 
 Visit `http://localhost:8080` to create accounts, request licenses, and file support tickets.
@@ -59,7 +59,7 @@ Visit `http://localhost:8080` to create accounts, request licenses, and file sup
 ### licensegen
 
 ```sh
-go build ./cmd/licensegen
+go build ./src/cmd/licensegen
 ./licensegen -type supported -send -from sales@example.com
 ```
 
@@ -73,7 +73,7 @@ issue a license for another operating system.
 ### licensectl
 
 ```sh
-go build ./cmd/licensectl
+go build ./src/cmd/licensectl
 ./licensectl -db web.db list
 ./licensectl -db web.db revoke <key>
 ./licensectl -db web.db regen <key>

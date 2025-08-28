@@ -4,7 +4,7 @@
 /*.log
 .DS_Store
 
-/cmd/licensegen/licensegen
-/cmd/licensegen/licensegen.exe
+/src/cmd/licensegen/licensegen
+/src/cmd/licensegen/licensegen.exe
 /licensegen
 /licensegen.exe

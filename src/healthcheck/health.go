@@ -19,7 +19,7 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/akadatalimited/breathgslb/config"
+	"github.com/akadatalimited/breathgslb/src/config"
 )
 
 // Effective returns the final HealthConfig for a zone name and optional override.

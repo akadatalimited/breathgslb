@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/akadatalimited/breathgslb/config"
+	"github.com/akadatalimited/breathgslb/src/config"
 )
 
 func TestDerivePort(t *testing.T) {

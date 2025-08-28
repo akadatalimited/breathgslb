@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akadatalimited/breathgslb/config"
+	"github.com/akadatalimited/breathgslb/src/config"
 	"github.com/miekg/dns"
 )
 

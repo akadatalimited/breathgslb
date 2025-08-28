@@ -138,13 +138,13 @@ An optional CLI can generate encrypted license payloads. Build it separately
 with the `tools` tag:
 
 ```sh
-go build -tags tools ./cmd/licensegen
+go build -tags tools ./src/cmd/licensegen
 ```
 
 It may also be run without producing a binary:
 
 ```sh
-go run -tags tools ./cmd/licensegen -type trial
+go run -tags tools ./src/cmd/licensegen -type trial
 ```
 
 The `-type` flag presets support fields (choices: `trial`,
@@ -665,12 +665,12 @@ support scope.
 Build the management tools and web interface from the repository root:
 
 ```sh
-go build ./web              # license web service on :8080
-go build ./cmd/licensegen   # issue new license payloads
-go build ./cmd/licensectl   # list/revoke/regen keys
+go build ./src/web              # license web service on :8080
+go build ./src/cmd/licensegen   # issue new license payloads
+go build ./src/cmd/licensectl   # list/revoke/regen keys
 ```
 
-Run `./web` and visit `http://localhost:8080` to manage accounts and licenses.
+Run `./src/web/web` and visit `http://localhost:8080` to manage accounts and licenses.
 Use `licensegen` with `-type` presets or a `-config` file to create payloads and
 `licensectl` to manage stored keys.
 

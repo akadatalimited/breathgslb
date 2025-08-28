@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akadatalimited/breathgslb/config"
+	"github.com/akadatalimited/breathgslb/src/config"
 )
 
 func TestSetupCreatesLogFile(t *testing.T) {
