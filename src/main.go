@@ -1034,12 +1034,25 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 			m.Ns = append(m.Ns, &dns.NS{Hdr: hdr(zone, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 		}
 		m.Ns = append(m.Ns, a.soa())
-		if a.zidx != nil && !a.zidx.hasName(name) {
+		missing := a.zidx != nil && !a.zidx.hasName(name)
+		if missing {
 			m.SetRcode(r, dns.RcodeNameError)
 		}
-		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
-			if nsec := a.makeNSEC(name); nsec != nil {
-				m.Ns = append(m.Ns, nsec)
+		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled && a.zidx != nil {
+			if missing {
+				closest := a.zidx.closestEncloser(name)
+				if nsec := a.makeNSEC(a.zidx.prevName(name)); nsec != nil {
+					m.Ns = append(m.Ns, nsec)
+				}
+				if closest != "" {
+					if wnsec := a.makeNSEC(a.zidx.prevName("*." + closest)); wnsec != nil {
+						m.Ns = append(m.Ns, wnsec)
+					}
+				}
+			} else {
+				if nsec := a.makeNSEC(name); nsec != nil {
+					m.Ns = append(m.Ns, nsec)
+				}
 			}
 		}
 	}
@@ -2244,37 +2257,16 @@ func (a *authority) makeRRSIG(rrset []dns.RR, key *dns.DNSKEY) *dns.RRSIG {
 	return &dns.RRSIG{Hdr: hdr(name, dns.TypeRRSIG, ttl), TypeCovered: rrset[0].Header().Rrtype, Algorithm: key.Algorithm, Labels: labels, OrigTtl: ttl, Expiration: exp, Inception: incep, KeyTag: key.KeyTag(), SignerName: ensureDot(a.zone.Name)}
 }
 
-// makeNSEC builds an NSEC record for the requested name. If the name exists,
-// the record proves an empty RRset (NXRRSET). If the name does not exist, the
-// NSEC covers the interval that proves the name's non-existence (NXDOMAIN).
-func (a *authority) makeNSEC(name string) dns.RR {
-	name = strings.ToLower(ensureDot(name))
-	if a.zidx == nil {
+// makeNSEC builds an NSEC record for the provided owner. The owner must exist
+// in the zone index.
+func (a *authority) makeNSEC(owner string) dns.RR {
+	owner = strings.ToLower(ensureDot(owner))
+	if a.zidx == nil || !a.zidx.hasName(owner) {
 		return nil
 	}
 	idx := a.zidx
-	owner := name
-	if !idx.hasName(owner) {
-		owner = idx.closestEncloser(owner)
-		if owner == "" {
-			return nil
-		}
-	}
-	next := idx.nextName(name)
-	if next == owner {
-		next = idx.nextName(owner)
-	}
+	next := idx.nextName(owner)
 	bm := idx.typeBitmap(owner)
-	if owner != name {
-		filtered := make([]uint16, 0, len(bm))
-		for _, t := range bm {
-			if t == dns.TypeSOA || t == dns.TypeDNSKEY {
-				continue
-			}
-			filtered = append(filtered, t)
-		}
-		bm = filtered
-	}
 	return &dns.NSEC{Hdr: hdr(ensureDot(owner), dns.TypeNSEC, a.zone.TTLAnswer), NextDomain: ensureDot(next), TypeBitMap: bm}
 }
 

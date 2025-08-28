@@ -145,6 +145,30 @@ func (z *zoneIndex) nextName(owner string) string {
 	return z.names[i]
 }
 
+// prevName returns the previous owner name in canonical order. If owner doesn't
+// exist in the zone, the previous existing name before owner is returned,
+// wrapping around to the last name.
+func (z *zoneIndex) prevName(owner string) string {
+	owner = strings.ToLower(ensureDot(owner))
+	if len(z.names) == 0 {
+		return owner
+	}
+	i := sort.Search(len(z.names), func(j int) bool { return z.names[j] >= owner })
+	if i == len(z.names) {
+		return z.names[len(z.names)-1]
+	}
+	if z.names[i] == owner {
+		if i == 0 {
+			return z.names[len(z.names)-1]
+		}
+		return z.names[i-1]
+	}
+	if i == 0 {
+		return z.names[len(z.names)-1]
+	}
+	return z.names[i-1]
+}
+
 // typeBitmap returns the type bitmap for the given owner.
 func (z *zoneIndex) typeBitmap(owner string) []uint16 {
 	owner = strings.ToLower(ensureDot(owner))
