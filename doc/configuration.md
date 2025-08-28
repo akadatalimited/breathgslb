@@ -91,7 +91,19 @@ generate a reverse zone entry.
 | `a_master_private`, `aaaa_master_private` | list[IPv4/IPv6] | Internal‑only |
 |                                           |                 | addresses. |
 | `ula_master` | list[IPv6 prefix] | ULA/private IPv6 space. |
-| `alias` | FQDN string | ALIAS‑like target when no A/AAAA lists exist. |
+| `alias` | FQDN string | Apex‑only ALIAS target, used as a final fallback when all A/AAAA lists are empty. |
+
+When no `a_master`/`aaaa_master` lists are present the apex can point at an alias target:
+
+```yaml
+zones:
+  - name: "alias-only.akadata.ltd."
+    ns: ["ns-gslb.akadata.ltd."]
+    admin: "hostmaster.akadata.ltd."
+    alias: "status.akadata.ltd."
+```
+
+The alias is evaluated only for the zone apex. Host records under `alias-only.akadata.ltd.` (e.g. `www`) must be delegated to another DNS server.
 
 ### Geographic Routing
 
