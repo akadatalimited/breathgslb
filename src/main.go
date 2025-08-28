@@ -949,6 +949,22 @@ func shutdown() {
 func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
+	if o := r.IsEdns0(); o != nil {
+		opt := new(dns.OPT)
+		opt.Hdr.Name = "."
+		opt.Hdr.Rrtype = dns.TypeOPT
+		opt.SetUDPSize(o.UDPSize())
+		if o.Do() {
+			opt.SetDo()
+		}
+		for _, e := range o.Option {
+			if c, ok := e.(*dns.EDNS0_COOKIE); ok {
+				cc := *c
+				opt.Option = append(opt.Option, &cc)
+			}
+		}
+		m.Extra = append(m.Extra, opt)
+	}
 	m.Authoritative = true
 
 	if len(r.Question) == 0 {
