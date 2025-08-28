@@ -2,9 +2,11 @@ package main
 
 import (
 	"net"
+	"sort"
 	"testing"
 	"time"
 
+	"github.com/akadatalimited/breathgslb/config"
 	"github.com/miekg/dns"
 	maxminddb "github.com/oschwald/maxminddb-golang"
 )
@@ -39,8 +41,8 @@ func TestRecordTypes(t *testing.T) {
 		Admin:      "hostmaster.example.org.",
 		TTLSOA:     3600,
 		TTLAnswer:  300,
-		AMaster:    []IPAddr{{IP: "192.0.2.1"}},
-		AAAAMaster: []IPAddr{{IP: "2001:db8::1"}},
+		AMaster:    []IPAddr{{IP: "192.0.2.1"}, {IP: "198.51.100.1"}},
+		AAAAMaster: []IPAddr{{IP: "2001:db8::1"}, {IP: "2001:db8::2"}},
 		TXT: []TXTRecord{
 			{Text: []string{"apex txt"}},
 			{Name: "sub.example.org.", Text: []string{"sub txt"}},
@@ -66,10 +68,8 @@ func TestRecordTypes(t *testing.T) {
 			{Name: "@", Order: 100, Preference: 50, Flags: "s", Services: "SIP+D2U", Regexp: "", Replacement: "_sip._udp.example.org."},
 			{Name: "sub.example.org.", Order: 100, Preference: 60, Flags: "s", Services: "SIP+D2T", Regexp: "", Replacement: "_sip._tcp.example.org."},
 		},
-		GeoAnswers: &GeoAnswers{Country: map[string]GeoAnswerSet{
-			"US": {A: []string{"198.51.100.5"}, AAAA: []string{"2001:db8::5"}},
-		}},
 	}}}
+	config.SetupDefaults(cfg)
 
 	addr, auth := startRecordServer(t, cfg, gr)
 	// Mark master up so that default A/AAAA answers exist if geo lookup fails.
@@ -79,11 +79,46 @@ func TestRecordTypes(t *testing.T) {
 	}
 
 	c := &dns.Client{Net: "tcp"}
+	m := new(dns.Msg)
+
+	// A apex, sort results for deterministic order
+	m.SetQuestion("example.org.", dns.TypeA)
+	r, _, err := c.Exchange(m, addr)
+	if err != nil {
+		t.Fatalf("A apex query: %v", err)
+	}
+	if len(r.Answer) != 2 {
+		t.Fatalf("expected 2 A answers, got %v", r.Answer)
+	}
+	gotA := []string{r.Answer[0].(*dns.A).A.String(), r.Answer[1].(*dns.A).A.String()}
+	sort.Strings(gotA)
+	wantA := []string{"192.0.2.1", "198.51.100.1"}
+	sort.Strings(wantA)
+	if gotA[0] != wantA[0] || gotA[1] != wantA[1] {
+		t.Fatalf("unexpected A apex answers got %v want %v", gotA, wantA)
+	}
+
+	// AAAA apex, sort results for deterministic order
+	m.SetQuestion("example.org.", dns.TypeAAAA)
+	r, _, err = c.Exchange(m, addr)
+	if err != nil {
+		t.Fatalf("AAAA apex query: %v", err)
+	}
+	if len(r.Answer) != 2 {
+		t.Fatalf("expected 2 AAAA answers, got %v", r.Answer)
+	}
+	gotAAAA := []string{r.Answer[0].(*dns.AAAA).AAAA.String(), r.Answer[1].(*dns.AAAA).AAAA.String()}
+	sort.Strings(gotAAAA)
+	wantAAAA := []string{"2001:db8::1", "2001:db8::2"}
+	sort.Strings(wantAAAA)
+	if gotAAAA[0] != wantAAAA[0] || gotAAAA[1] != wantAAAA[1] {
+		t.Fatalf("unexpected AAAA apex answers got %v want %v", gotAAAA, wantAAAA)
+	}
 
 	// TXT apex
-	m := new(dns.Msg)
 	m.SetQuestion("example.org.", dns.TypeTXT)
-	r, _, err := c.Exchange(m, addr)
+	m.Extra = nil
+	r, _, err = c.Exchange(m, addr)
 	if err != nil {
 		t.Fatalf("TXT apex query: %v", err)
 	}
