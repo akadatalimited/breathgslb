@@ -285,6 +285,9 @@ Environment variable name used to deterministically derive secrets.
 .B default_algorithm
 Default HMAC algorithm when not specified per key.
 .TP
+.B allow_unsigned
+Permit unsigned zone transfers.  Default is false (require TSIG).
+.TP
 .B keys
 List of key objects containing
 .B name

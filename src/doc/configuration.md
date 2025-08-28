@@ -175,6 +175,7 @@ Per kind options:
 | `tsig.seed_env` | string | Environment variable name used to derive secrets. |
 | `tsig.default_algorithm` | string or list[string] | Default HMAC algorithm |
 |                          |                        | (`hmac-sha256`, etc.). |
+| `tsig.allow_unsigned` | bool | Permit unsigned zone transfers. Default \= false. |
 | `tsig.keys` | list[map] | TSIG key definitions: `name` (FQDN), optional |
 |             |           | `algorithm`, `secret` (string; empty ⇒ |
 |             |           | derived), and `allow_xfr_from` (list[IP]). |

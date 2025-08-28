@@ -107,6 +107,7 @@ type TSIGZoneConfig struct {
 	DefaultAlgorithm string    `yaml:"default_algorithm,omitempty"`
 	SeedEnv          string    `yaml:"seed_env,omitempty"`
 	Epoch            int       `yaml:"epoch,omitempty"`
+	AllowUnsigned    bool      `yaml:"allow_unsigned,omitempty"`
 	Keys             []TSIGKey `yaml:"keys,omitempty"`
 }
 

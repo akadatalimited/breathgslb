@@ -138,6 +138,7 @@ zones:
       seed_env: "BREATH_TSIG_SEED"      # optional; derive
       # deterministically from this env var
       default_algorithm: "hmac-sha256"
+      allow_unsigned: true              # allow AXFR without TSIG
       keys:
         - name: "gslb-xfr."             # TSIG key name (owner form,
         # trailing dot)

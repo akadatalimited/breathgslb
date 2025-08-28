@@ -64,8 +64,9 @@ for offline reference.
 * **ALIAS/ANAME‑like mapping** for the apex or specific hostnames; apex used as a final fallback when all A/AAAA lists are empty.
 * **EDNS0 buffer** respected (e.g., 1232 bytes for IPv6 safety).
 * **Dual‑stack listeners** (udp4/udp6/tcp4/tcp6) on the chosen port.
-* **TSIG ACLs**: zone transfers signed with a key are served only to client IPs
-  listed in that key's `allow_xfr_from`; others receive `REFUSED`.
+* **TSIG ACLs**: zone transfers require TSIG by default. Signed requests are
+  served only to client IPs listed in that key's `allow_xfr_from`; others receive
+  `REFUSED`. Unsigned transfers may be enabled via configuration.
 * **Syslog logging** with stderr fallback; cross‑platform binary (Linux, macOS,
   Windows, \*BSD).
 * **DNS64 synthesis** lets IPv6‑only clients reach IPv4‑only zones.
