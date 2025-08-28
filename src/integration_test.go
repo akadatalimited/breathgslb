@@ -3,6 +3,7 @@ package main
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ type liveConfig struct {
 }
 
 func loadLiveConfig(t *testing.T) *liveConfig {
-	data, err := os.ReadFile("tests.config")
+	data, err := os.ReadFile(filepath.Join("..", "tests.config"))
 	if err != nil {
 		t.Skip("tests.config missing")
 	}
