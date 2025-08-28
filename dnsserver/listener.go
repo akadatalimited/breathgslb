@@ -19,21 +19,29 @@ func StartListeners(h dns.Handler, cfg *config.Config, workers int) {
 	if workers <= 0 {
 		workers = runtime.NumCPU()
 	}
+	logged := map[string]bool{}
 	for _, a := range addrs {
+		key := a.netw + "|" + a.addr
 		if strings.HasPrefix(a.netw, "udp") {
 			pc, err := listenUDP(a.netw, a.addr)
 			if err != nil {
 				log.Fatalf("listen %s %s: %v", a.netw, a.addr, err)
 			}
 			uc := pc.(*net.UDPConn)
-			log.Printf("listening on %s %s", a.netw, a.addr)
+			if !logged[key] {
+				log.Printf("listening on %s %s", a.netw, a.addr)
+				logged[key] = true
+			}
 			for i := 0; i < workers; i++ {
 				go serveUDPWorker(h, uc)
 			}
 			continue
 		}
 		srv := &dns.Server{Net: a.netw, Addr: a.addr, Handler: h, ReusePort: true}
-		log.Printf("listening on %s %s", a.netw, a.addr)
+		if !logged[key] {
+			log.Printf("listening on %s %s", a.netw, a.addr)
+			logged[key] = true
+		}
 		go func(s *dns.Server) {
 			if err := s.ListenAndServe(); err != nil {
 				log.Fatalf("listen %s %s: %v", s.Net, s.Addr, err)
@@ -45,12 +53,33 @@ func StartListeners(h dns.Handler, cfg *config.Config, workers int) {
 func targetsFromConfig(cfg *config.Config) []bindTarget {
 	var t []bindTarget
 	port := derivePort(cfg.Listen)
-	seen := map[string]bool{}
+
+	normalize := func(addr string) string {
+		host, p, err := net.SplitHostPort(addr)
+		if err != nil {
+			return addr
+		}
+		h := strings.Trim(host, "[]")
+		if ip := net.ParseIP(h); ip != nil {
+			host = ip.String()
+		} else {
+			host = h
+		}
+		if strings.Contains(host, ":") {
+			return "[" + host + "]:" + p
+		}
+		return host + ":" + p
+	}
+
+	seen := map[string]map[string]bool{}
 	add := func(netw, addr string) {
-		key := netw + "|" + addr
-		if !seen[key] {
+		addr = normalize(addr)
+		if seen[netw] == nil {
+			seen[netw] = map[string]bool{}
+		}
+		if !seen[netw][addr] {
 			t = append(t, bindTarget{netw, addr})
-			seen[key] = true
+			seen[netw][addr] = true
 		}
 	}
 	if len(cfg.ListenAddrs) > 0 {
