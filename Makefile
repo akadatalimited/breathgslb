@@ -35,6 +35,8 @@ ORC_PREFIX  ?= /etc/init.d
 LOGDIR      ?= /var/log/breathgslb
 CFGDIR      ?= /etc/breathgslb
 KEYDIR      ?= $(CFGDIR)/keys
+ZONEDIR     ?= $(CFGDIR)/zones
+REVERSEDIR  ?= $(CFGDIR)/reverse
 DISTDIR     ?= dist
 MANDIR      ?= $(PREFIX)/share/man
 MAN5DIR     ?= $(MANDIR)/man5
@@ -182,6 +184,8 @@ install: build install-man
 	install -d -m 0750 $(DESTDIR)$(CFGDIR)
 	install -d -m 0755 $(DESTDIR)$(KEYDIR)
 	install -d -m 0755 $(DESTDIR)$(LOGDIR)
+	[ -z "$(ZONEDIR)" ] || install -d -m 0755 $(DESTDIR)$(ZONEDIR)
+	[ -z "$(REVERSEDIR)" ] || install -d -m 0755 $(DESTDIR)$(REVERSEDIR)
 
 install-man:
 	install -d $(DESTDIR)$(MAN8DIR) $(DESTDIR)$(MAN5DIR)
