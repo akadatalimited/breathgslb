@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/akadatalimited/breathgslb/doc"
+        "github.com/akadatalimited/breathgslb/src/doc"
 	"github.com/akadatalimited/breathgslb/src/config"
 	"github.com/akadatalimited/breathgslb/src/dnsserver"
 	"github.com/akadatalimited/breathgslb/src/healthcheck"
