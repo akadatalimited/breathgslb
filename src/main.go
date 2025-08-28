@@ -2266,7 +2266,38 @@ func (a *authority) makeNSEC(owner string) dns.RR {
 	}
 	idx := a.zidx
 	next := idx.nextName(owner)
-	bm := idx.typeBitmap(owner)
+
+	typesHere := idx.typeBitmap(owner)
+	zname := strings.ToLower(ensureDot(a.zone.Name))
+	bm := make([]uint16, 0, len(typesHere)+2)
+	if owner == zname {
+		bm = append(bm, typesHere...)
+	} else {
+		for _, t := range typesHere {
+			if t == dns.TypeSOA || t == dns.TypeDNSKEY {
+				continue
+			}
+			bm = append(bm, t)
+		}
+	}
+
+	hasNSEC, hasRRSIG := false, false
+	for _, t := range bm {
+		if t == dns.TypeNSEC {
+			hasNSEC = true
+		}
+		if t == dns.TypeRRSIG {
+			hasRRSIG = true
+		}
+	}
+	if !hasNSEC {
+		bm = append(bm, dns.TypeNSEC)
+	}
+	if !hasRRSIG {
+		bm = append(bm, dns.TypeRRSIG)
+	}
+	sort.Slice(bm, func(i, j int) bool { return bm[i] < bm[j] })
+
 	return &dns.NSEC{Hdr: hdr(ensureDot(owner), dns.TypeNSEC, a.zone.TTLAnswer), NextDomain: ensureDot(next), TypeBitMap: bm}
 }
 
