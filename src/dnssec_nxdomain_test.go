@@ -32,7 +32,7 @@ func TestDNSSECNXDOMAIN(t *testing.T) {
 		TTLSOA:    3600,
 		TTLAnswer: 300,
 		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
-		TXT:       []TXTRecord{{Name: "sub", Text: []string{"hi"}}},
+		TXT:       []TXTRecord{{Name: "sub.example.org.", Text: []string{"hi"}}},
 		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
 	}}}
 
@@ -56,14 +56,69 @@ func TestDNSSECNXDOMAIN(t *testing.T) {
 	if r.Rcode != dns.RcodeNameError {
 		t.Fatalf("expected NXDOMAIN, got %d", r.Rcode)
 	}
-	hasNSEC := false
+	var nsec *dns.NSEC
 	for _, rr := range r.Ns {
-		if _, ok := rr.(*dns.NSEC); ok {
-			hasNSEC = true
+		if n, ok := rr.(*dns.NSEC); ok {
+			nsec = n
 			break
 		}
 	}
-	if !hasNSEC {
+	if nsec == nil {
 		t.Fatalf("expected NSEC in authority section")
+	}
+	for _, typ := range nsec.TypeBitMap {
+		if typ == dns.TypeSOA || typ == dns.TypeDNSKEY {
+			t.Fatalf("bitmap contains apex-only type %v", typ)
+		}
+	}
+}
+
+func TestDNSSECNXRRSETNonApex(t *testing.T) {
+	gr := &geoResolver{db: &maxminddb.Reader{}, cache: map[string]geoCacheEntry{}}
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TXT:       []TXTRecord{{Name: "sub.example.org.", Text: []string{"hi"}}},
+		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
+	}}}
+
+	addr, auth := startRecordServer(t, cfg, gr)
+	auth.setMasterUp(true, true)
+	auth.keys = generateTestKeys(t, cfg.Zones[0].Name)
+	auth.zidx = buildIndex(cfg.Zones[0])
+
+	m := new(dns.Msg)
+	m.SetQuestion("sub.example.org.", dns.TypeA)
+	o := new(dns.OPT)
+	o.Hdr.Name = "."
+	o.Hdr.Rrtype = dns.TypeOPT
+	o.SetDo()
+	m.Extra = append(m.Extra, o)
+	c := &dns.Client{Net: "tcp"}
+	r, _, err := c.Exchange(m, addr)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if r.Rcode != dns.RcodeSuccess {
+		t.Fatalf("expected NOERROR, got %d", r.Rcode)
+	}
+	var nsec *dns.NSEC
+	for _, rr := range r.Ns {
+		if n, ok := rr.(*dns.NSEC); ok {
+			nsec = n
+			break
+		}
+	}
+	if nsec == nil {
+		t.Fatalf("expected NSEC in authority section")
+	}
+	for _, typ := range nsec.TypeBitMap {
+		if typ == dns.TypeSOA || typ == dns.TypeDNSKEY {
+			t.Fatalf("bitmap contains apex-only type %v", typ)
+		}
 	}
 }
