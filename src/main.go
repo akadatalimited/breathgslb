@@ -1198,15 +1198,6 @@ func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
 		return
 	}
 	tr := new(dns.Transfer)
-	if ts := r.IsTsig(); ts != nil && a.zone.TSIG != nil {
-		keyName := ensureDot(ts.Hdr.Name)
-		for _, k := range a.zone.TSIG.Keys {
-			if ensureDot(k.Name) == keyName {
-				tr.TsigSecret = map[string]string{keyName: k.Secret}
-				break
-			}
-		}
-	}
 	ch := make(chan *dns.Envelope)
 	go func() {
 		soa := a.soa()
