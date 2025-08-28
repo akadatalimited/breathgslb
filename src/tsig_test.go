@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/binary"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -269,5 +271,102 @@ func TestTSIGAllowXFRFromRestriction(t *testing.T) {
 	}
 	if e.Error == nil || !strings.Contains(e.Error.Error(), "bad xfr rcode") {
 		t.Fatalf("expected transfer refusal, got %v", e.Error)
+	}
+}
+
+func TestTSIGUnsignedTransferRefused(t *testing.T) {
+	ensureIPv4(t)
+	seedEnv := "TSIG_SEED_UNSIGNED"
+	seedVal := "deterministic-seed"
+	t.Setenv(seedEnv, seedVal)
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TSIG:      &TSIGZoneConfig{SeedEnv: seedEnv, Keys: []TSIGKey{{Name: "axfr-key."}}},
+	}}}
+
+	config.GenerateTSIGKeys(cfg)
+	key := cfg.Zones[0].TSIG.Keys[0]
+
+	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret}, nil)
+	defer srv.Shutdown()
+
+	tr := new(dns.Transfer)
+	m := new(dns.Msg)
+	m.SetAxfr("example.org.")
+	env, err := tr.In(m, addr)
+	if err != nil {
+		t.Fatalf("transfer setup: %v", err)
+	}
+	// Disable TSIG verification for responses to observe the server's rcode.
+	tr.TsigSecret = nil
+	e, ok := <-env
+	if !ok {
+		t.Fatalf("no response received")
+	}
+	if e.Error == nil || !strings.Contains(e.Error.Error(), "bad xfr rcode") {
+		t.Fatalf("expected transfer refusal, got %v", e.Error)
+	}
+}
+
+func TestTSIGMismatchedSignatureRefused(t *testing.T) {
+	ensureIPv4(t)
+	seedEnv := "TSIG_SEED_MISMATCH"
+	seedVal := "deterministic-seed"
+	t.Setenv(seedEnv, seedVal)
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TSIG:      &TSIGZoneConfig{SeedEnv: seedEnv, Keys: []TSIGKey{{Name: "axfr-key."}}},
+	}}}
+
+	config.GenerateTSIGKeys(cfg)
+	key := cfg.Zones[0].TSIG.Keys[0]
+
+	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret}, nil)
+	defer srv.Shutdown()
+
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close()
+	m := new(dns.Msg)
+	m.SetAxfr("example.org.")
+	m.SetTsig(key.Name, dns.HmacSHA256, 300, time.Now().Unix())
+	out, _, err := dns.TsigGenerate(m, base64.StdEncoding.EncodeToString([]byte("wrongsecret")), "", false)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	msg := make([]byte, 2+len(out))
+	binary.BigEndian.PutUint16(msg, uint16(len(out)))
+	copy(msg[2:], out)
+	if _, err := c.Write(msg); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var lenBuf [2]byte
+	if _, err := io.ReadFull(c, lenBuf[:]); err != nil {
+		t.Fatalf("read len: %v", err)
+	}
+	n := int(binary.BigEndian.Uint16(lenBuf[:]))
+	msgBuf := make([]byte, n)
+	if _, err := io.ReadFull(c, msgBuf); err != nil {
+		t.Fatalf("read msg: %v", err)
+	}
+	resp := new(dns.Msg)
+	if err := resp.Unpack(msgBuf); err != nil {
+		t.Fatalf("unpack: %v", err)
+	}
+	if resp.Rcode != dns.RcodeRefused {
+		t.Fatalf("expected REFUSED, got %s", dns.RcodeToString[resp.Rcode])
 	}
 }
