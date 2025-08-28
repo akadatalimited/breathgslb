@@ -22,6 +22,7 @@ func axfrTestRecords() []dns.RR {
 }
 
 func TestTSIGKeyGenerationAndAXFR(t *testing.T) {
+	ensureIPv4(t)
 	tmpDir := t.TempDir()
 	seedEnv := "TSIG_TEST_SEED"
 	seedVal := "deterministic-seed"
@@ -127,6 +128,7 @@ func TestTSIGMissingSeedEnv(t *testing.T) {
 }
 
 func TestTSIGInvalidAlgorithm(t *testing.T) {
+	ensureIPv4(t)
 	tmpDir := t.TempDir()
 	seedEnv := "TSIG_TEST_SEED_BADALG"
 	seedVal := "deterministic-seed"
@@ -178,6 +180,7 @@ func TestTSIGInvalidAlgorithm(t *testing.T) {
 }
 
 func TestTSIGDuplicateKeyNames(t *testing.T) {
+	ensureIPv4(t)
 	tmpDir := t.TempDir()
 	cfg := &Config{
 		TSIG: &TSIGGlobalConfig{Path: tmpDir},
@@ -231,6 +234,7 @@ func TestTSIGDuplicateKeyNames(t *testing.T) {
 }
 
 func TestTSIGAllowXFRFromRestriction(t *testing.T) {
+	ensureIPv4(t)
 	seedEnv := "TSIG_SEED_ALLOW"
 	seedVal := "deterministic-seed"
 	t.Setenv(seedEnv, seedVal)

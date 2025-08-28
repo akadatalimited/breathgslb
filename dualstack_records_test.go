@@ -23,6 +23,7 @@ func ipv6Available() bool {
 // startDualStackServer starts a test DNS server listening on both IPv4 and IPv6.
 func startDualStackServer(t *testing.T, cfg *Config, gr *geoResolver) (string, string, map[string]*authority) {
 	t.Helper()
+	ensureIPv4(t)
 	if !ipv6Available() {
 		t.Skip("IPv6 not available; skipping dual stack test")
 	}
@@ -46,6 +47,7 @@ func startDualStackServer(t *testing.T, cfg *Config, gr *geoResolver) (string, s
 }
 
 func TestDualStackRecords(t *testing.T) {
+	ensureIPv4(t)
 	cfg := &Config{Zones: []Zone{
 		{
 			Name:       "dual.example.",

@@ -11,6 +11,7 @@ import (
 
 func startTestServer(t *testing.T, cfg *Config, secrets map[string]string, prev map[string]*authority) (*dns.Server, string, *authority) {
 	t.Helper()
+	ensureIPv4(t)
 	mux, auths := buildMux(cfg, nil, nil, prev)
 	auth := auths[ensureDot(cfg.Zones[0].Name)]
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
@@ -26,6 +27,7 @@ func startTestServer(t *testing.T, cfg *Config, secrets map[string]string, prev 
 const testSecret = "c2VjcmV0c2VjcmV0c2VjcmV0" // base64("secretsecretsecret")
 
 func TestAXFRUnsignedAndSigned(t *testing.T) {
+	ensureIPv4(t)
 	cfg := &Config{Zones: []Zone{{
 		Name:      "example.org.",
 		NS:        []string{"ns.example.org."},
@@ -76,6 +78,7 @@ func TestAXFRUnsignedAndSigned(t *testing.T) {
 }
 
 func TestAXFRWrongKey(t *testing.T) {
+	ensureIPv4(t)
 	cfg := &Config{Zones: []Zone{{
 		Name:      "example.org.",
 		NS:        []string{"ns.example.org."},
@@ -105,6 +108,7 @@ func TestAXFRWrongKey(t *testing.T) {
 }
 
 func TestAXFRDisallowedIP(t *testing.T) {
+	ensureIPv4(t)
 	cfg := &Config{Zones: []Zone{{
 		Name:      "example.org.",
 		NS:        []string{"ns.example.org."},
