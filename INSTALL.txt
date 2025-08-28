@@ -40,8 +40,8 @@ malformed records.
   NXRRSET at apex.
 * **Hot reload**: `SIGHUP` (systemd `ExecReload=` or OpenRC `reload`).
 * **Logging**: to file (default `/var/log/breathgslb/breathgslb.log`) + stderr.
-* **Binding control**: `listen`, `listen_addrs`, or named `interfaces`
-  (multi‑bind TCP+UDP, v4+v6).
+* **Binding control**: one of `listen_addrs`, `interfaces`, or `listen`
+  (multi‑bind TCP+UDP, v4+v6; precedence as listed, default `:53`).
 
 > Not a recursive resolver; not a full authoritative platform. It answers for
 > the zones you delegate to it.
@@ -90,9 +90,10 @@ Service installation examples for systemd, OpenRC, Windows, and macOS are in
 ### Top-level keys
 
 ```yaml
-listen: ":53"                     # optional; default port 53 if omitted
-listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets (overrides interfaces)
-interfaces: ["eth0", "ppp0"]            # derive IPs from interface(s) and bind there
+# Binding options (choose one; precedence: listen_addrs → interfaces → listen → :53)
+# listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets
+# interfaces: ["eth0", "ppp0"]            # derive IPs from interface(s)
+listen: ":53"                     # fallback bind; default if others unset
 
 timeout_sec: 5
 interval_sec: 8
@@ -176,8 +177,10 @@ zones:
 
 ### Notes
 
-* If `listen_addrs` is set, it **overrides** `interfaces`.
-* If neither is set, BreathGSLB binds all addresses on UDP/TCP 53 for v4+v6.
+* Only one of `listen_addrs`, `interfaces`, or `listen` should be set.
+  Precedence is `listen_addrs` → `interfaces` → `listen` → default `:53`;
+  lower-priority entries are ignored.
+* If none are set, BreathGSLB binds all addresses on UDP/TCP 53 for v4+v6.
 * Apex‑only answers are supported today (owner name equals the zone). Per‑name
   records for shared types are supported via the `name:` field.
 
