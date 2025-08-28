@@ -133,7 +133,14 @@ func TestAXFRDisallowedIP(t *testing.T) {
 	if !ok {
 		t.Fatalf("no response received")
 	}
+	// "bad xfr rcode" indicates the AXFR request was refused because the
+	// client's IP is not in the allow list.
 	if e.Error == nil || !strings.Contains(e.Error.Error(), "bad xfr rcode") {
 		t.Fatalf("expected transfer refusal, got %v", e.Error)
+	}
+	// After an error, the transfer channel should close without sending any
+	// further records.
+	if _, ok := <-env; ok {
+		t.Fatalf("expected channel to close after error")
 	}
 }
