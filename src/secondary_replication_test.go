@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/akadatalimited/breathgslb/src/config"
 	"github.com/miekg/dns"
@@ -21,7 +22,9 @@ func TestSecondaryAXFR(t *testing.T) {
 		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
 	}}}
 	config.SetupDefaults(mcfg)
+	mcfg.TimeoutSec = 0
 	_, maddr, mAuth := startTestServer(t, mcfg, nil, nil)
+	mAuth.cancel()
 
 	scfg := &Config{Zones: []Zone{{
 		Name:    "example.org.",
@@ -29,7 +32,10 @@ func TestSecondaryAXFR(t *testing.T) {
 		Masters: []string{maddr},
 	}}}
 	config.SetupDefaults(scfg)
+	scfg.TimeoutSec = 0
 	saddr, sauth := startRecordServer(t, scfg, nil)
+	sauth.cancel()
+	time.Sleep(time.Second)
 	if err := sauth.transferFromMasters(); err != nil {
 		t.Fatalf("initial transfer: %v", err)
 	}
@@ -45,8 +51,10 @@ func TestSecondaryAXFR(t *testing.T) {
 		t.Fatalf("unexpected answer from secondary: %v", r.Answer)
 	}
 
+	mAuth.mu.Lock()
 	mAuth.zone.AMaster = []IPAddr{{IP: "192.0.2.2"}}
 	mAuth.serial++
+	mAuth.mu.Unlock()
 
 	if err := sauth.transferFromMasters(); err != nil {
 		t.Fatalf("refresh transfer: %v", err)
