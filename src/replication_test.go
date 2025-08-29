@@ -77,7 +77,7 @@ func TestAXFRUnsignedAllowedAndSigned(t *testing.T) {
 	_, addr, auth := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
 	// Unsigned transfer
-	tr := new(dns.Transfer)
+	tr := &dns.Transfer{}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	env, err := tr.In(m, addr)
@@ -98,8 +98,7 @@ func TestAXFRUnsignedAllowedAndSigned(t *testing.T) {
 	}
 
 	// Signed transfer
-	tr = new(dns.Transfer)
-	tr.TsigSecret = map[string]string{"axfr-key.": testSecret}
+	tr = &dns.Transfer{TsigSecret: map[string]string{"axfr-key.": testSecret}}
 	m = new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig("axfr-key.", dns.HmacSHA256, 300, time.Now().Unix())
@@ -127,7 +126,7 @@ func TestAXFRUnsignedRejected(t *testing.T) {
 	}}}
 	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
-	tr := new(dns.Transfer)
+	tr := &dns.Transfer{}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	env, err := tr.In(m, addr)
@@ -159,8 +158,7 @@ func TestAXFRWrongKey(t *testing.T) {
 	}}}
 	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{"wrong-key.": testSecret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{"wrong-key.": testSecret}}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig("wrong-key.", dns.HmacSHA256, 300, time.Now().Unix())
@@ -189,8 +187,7 @@ func TestAXFRDisallowedIP(t *testing.T) {
 	}}}
 	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{"axfr-key.": testSecret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{"axfr-key.": testSecret}}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig("axfr-key.", dns.HmacSHA256, 300, time.Now().Unix())
@@ -228,8 +225,7 @@ func TestAXFRTSIGMACNonZero(t *testing.T) {
 	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
 	prov := &recordingProvider{secret: testSecret}
-	tr := new(dns.Transfer)
-	tr.TsigProvider = prov
+	tr := &dns.Transfer{TsigProvider: prov}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig("axfr-key.", dns.HmacSHA256, 300, time.Now().Unix())
@@ -261,8 +257,7 @@ func TestAXFRMACChaining(t *testing.T) {
 	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
 
 	prov := &recordingProvider{secret: testSecret}
-	tr := new(dns.Transfer)
-	tr.TsigProvider = prov
+	tr := &dns.Transfer{TsigProvider: prov}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig("axfr-key.", dns.HmacSHA256, 300, time.Now().Unix())

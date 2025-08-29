@@ -55,8 +55,7 @@ func ensurePort(addr string) string {
 }
 
 func axfr(t *testing.T, addr string, cfg *liveConfig) []dns.RR {
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{cfg.TSIGName: cfg.TSIGSecret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{cfg.TSIGName: cfg.TSIGSecret}}
 	m := new(dns.Msg)
 	m.SetAxfr(cfg.Zone)
 	m.SetTsig(cfg.TSIGName, dns.HmacSHA256, 300, time.Now().Unix())
@@ -75,8 +74,7 @@ func axfr(t *testing.T, addr string, cfg *liveConfig) []dns.RR {
 }
 
 func ixfr(t *testing.T, addr string, cfg *liveConfig, serial uint32) []dns.RR {
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{cfg.TSIGName: cfg.TSIGSecret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{cfg.TSIGName: cfg.TSIGSecret}}
 	m := new(dns.Msg)
 	m.SetIxfr(cfg.Zone, serial, "", "")
 	m.SetTsig(cfg.TSIGName, dns.HmacSHA256, 300, time.Now().Unix())

@@ -70,7 +70,7 @@ func TestTSIGKeyGenerationAndAXFR(t *testing.T) {
 			records := axfrTestRecords()
 			dns.HandleFunc("example.org.", func(w dns.ResponseWriter, r *dns.Msg) {
 				ch := make(chan *dns.Envelope)
-				tr := new(dns.Transfer)
+				tr := &dns.Transfer{}
 				go tr.Out(w, r, ch)
 				ch <- &dns.Envelope{RR: records}
 				close(ch)
@@ -89,8 +89,7 @@ func TestTSIGKeyGenerationAndAXFR(t *testing.T) {
 			t.Cleanup(func() { srv.Shutdown() })
 			<-started
 
-			tr := new(dns.Transfer)
-			tr.TsigSecret = map[string]string{k.Name: k.Secret}
+			tr := &dns.Transfer{TsigSecret: map[string]string{k.Name: k.Secret}}
 			m := new(dns.Msg)
 			m.SetAxfr("example.org.")
 			m.SetTsig(k.Name, algConst[k.Algorithm], 300, time.Now().Unix())
@@ -153,7 +152,7 @@ func TestTSIGInvalidAlgorithm(t *testing.T) {
 	records := axfrTestRecords()
 	dns.HandleFunc("example.org.", func(w dns.ResponseWriter, r *dns.Msg) {
 		ch := make(chan *dns.Envelope)
-		tr := new(dns.Transfer)
+		tr := &dns.Transfer{}
 		go tr.Out(w, r, ch)
 		ch <- &dns.Envelope{RR: records}
 		close(ch)
@@ -169,8 +168,7 @@ func TestTSIGInvalidAlgorithm(t *testing.T) {
 	go func() { _ = srv.ActivateAndServe() }()
 	t.Cleanup(func() { srv.Shutdown() })
 
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{key.Name: key.Secret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{key.Name: key.Secret}}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig(key.Name, key.Algorithm, 300, time.Now().Unix())
@@ -201,7 +199,7 @@ func TestTSIGDuplicateKeyNames(t *testing.T) {
 	records := axfrTestRecords()
 	dns.HandleFunc("example.org.", func(w dns.ResponseWriter, r *dns.Msg) {
 		ch := make(chan *dns.Envelope)
-		tr := new(dns.Transfer)
+		tr := &dns.Transfer{}
 		go tr.Out(w, r, ch)
 		ch <- &dns.Envelope{RR: records}
 		close(ch)
@@ -218,8 +216,7 @@ func TestTSIGDuplicateKeyNames(t *testing.T) {
 	go func() { _ = srv.ActivateAndServe() }()
 	t.Cleanup(func() { srv.Shutdown() })
 
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{keys[0].Name: keys[0].Secret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{keys[0].Name: keys[0].Secret}}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig(keys[0].Name, dns.HmacSHA256, 300, time.Now().Unix())
@@ -256,8 +253,7 @@ func TestTSIGAllowXFRFromRestriction(t *testing.T) {
 	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret}, nil)
 	defer srv.Shutdown()
 
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{key.Name: key.Secret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{key.Name: key.Secret}}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig(key.Name, dns.HmacSHA256, 300, time.Now().Unix())
@@ -295,7 +291,7 @@ func TestTSIGUnsignedTransferRefused(t *testing.T) {
 	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret}, nil)
 	defer srv.Shutdown()
 
-	tr := new(dns.Transfer)
+	tr := &dns.Transfer{}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	env, err := tr.In(m, addr)
@@ -332,8 +328,7 @@ func TestTSIGIncorrectKeyRefused(t *testing.T) {
 	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret}, nil)
 	defer srv.Shutdown()
 
-	tr := new(dns.Transfer)
-	tr.TsigSecret = map[string]string{"wrong-key.": key.Secret}
+	tr := &dns.Transfer{TsigSecret: map[string]string{"wrong-key.": key.Secret}}
 	m := new(dns.Msg)
 	m.SetAxfr("example.org.")
 	m.SetTsig("wrong-key.", dns.HmacSHA256, 300, time.Now().Unix())
