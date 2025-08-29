@@ -1198,7 +1198,7 @@ func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
 		_ = w.Close()
 		return
 	}
-	tr := new(dns.Transfer)
+	tr := &dns.Transfer{}
 	ch := make(chan *dns.Envelope)
 	go func() {
 		soa := a.soa()
@@ -1670,9 +1670,9 @@ func (a *authority) transferFromMasters() error {
 		if !strings.Contains(addr, ":") || strings.HasSuffix(addr, "]") {
 			addr = net.JoinHostPort(addr, "53")
 		}
-		tr := new(dns.Transfer)
 		m := new(dns.Msg)
 		m.SetAxfr(a.zone.Name)
+		var tr *dns.Transfer
 		if a.zone.TSIG != nil && len(a.zone.TSIG.Keys) > 0 {
 			k := a.zone.TSIG.Keys[0]
 			name := ensureDot(k.Name)
@@ -1680,8 +1680,10 @@ func (a *authority) transferFromMasters() error {
 			if alg == "" {
 				alg = dns.HmacSHA256
 			}
-			tr.TsigSecret = map[string]string{name: k.Secret}
+			tr = &dns.Transfer{TsigSecret: map[string]string{name: k.Secret}}
 			m.SetTsig(name, alg, 300, time.Now().Unix())
+		} else {
+			tr = &dns.Transfer{}
 		}
 		env, err := tr.In(m, addr)
 		if err != nil {
