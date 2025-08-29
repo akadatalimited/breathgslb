@@ -19,6 +19,16 @@ func StartListeners(h dns.Handler, cfg *config.Config, workers int) {
 	if workers <= 0 {
 		workers = runtime.NumCPU()
 	}
+	secrets := map[string]string{}
+	for _, z := range cfg.Zones {
+		if z.TSIG == nil {
+			continue
+		}
+		for _, k := range z.TSIG.Keys {
+			name := dns.Fqdn(strings.ToLower(k.Name))
+			secrets[name] = k.Secret
+		}
+	}
 	logged := map[string]bool{}
 	for _, a := range addrs {
 		key := a.netw + "|" + a.addr
@@ -37,7 +47,7 @@ func StartListeners(h dns.Handler, cfg *config.Config, workers int) {
 			}
 			continue
 		}
-		srv := &dns.Server{Net: a.netw, Addr: a.addr, Handler: h, ReusePort: true}
+		srv := &dns.Server{Net: a.netw, Addr: a.addr, Handler: h, ReusePort: true, TsigSecret: secrets}
 		if !logged[key] {
 			log.Printf("listening on %s %s", a.netw, a.addr)
 			logged[key] = true
