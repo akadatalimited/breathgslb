@@ -1,6 +1,6 @@
 module github.com/akadatalimited/breathgslb/src
 
-go 1.24.5
+go 1.22
 
 require (
 	github.com/go-sql-driver/mysql v1.8.0
