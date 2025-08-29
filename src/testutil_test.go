@@ -15,3 +15,14 @@ func ensureIPv4(t *testing.T) {
 	}
 	l.Close()
 }
+
+// ensureIPv6 verifies that the current environment supports binding to an IPv6
+// address. If IPv6 is unavailable, the test is skipped.
+func ensureIPv6(t *testing.T) {
+	t.Helper()
+	l, err := net.ListenTCP("tcp6", &net.TCPAddr{IP: net.ParseIP("::1"), Port: 0})
+	if err != nil {
+		t.Skipf("IPv6 not available: %v", err)
+	}
+	l.Close()
+}
