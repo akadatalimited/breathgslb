@@ -1222,11 +1222,16 @@ func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
 			}
 		}
 		records := a.axfrRecords()
-		rrset := append([]dns.RR{soa}, records...)
-		records = nil
-		rrset = append(rrset, soa)
-		ch <- &dns.Envelope{RR: rrset}
-		rrset = nil
+		ch <- &dns.Envelope{RR: []dns.RR{soa}}
+		for len(records) > 0 {
+			end := 500
+			if end > len(records) {
+				end = len(records)
+			}
+			ch <- &dns.Envelope{RR: records[:end]}
+			records = records[end:]
+		}
+		ch <- &dns.Envelope{RR: []dns.RR{soa}}
 		close(ch)
 	}()
 	if err := tr.Out(w, r, ch); err != nil {

@@ -31,8 +31,8 @@ func startTestServer(t *testing.T, cfg *Config, secrets map[string]string, prev 
 const testSecret = "c2VjcmV0c2VjcmV0c2VjcmV0" // base64("secretsecretsecret")
 
 type recordingProvider struct {
-	secret  string
-	lastMAC string
+	secret string
+	macs   []string
 }
 
 func (p *recordingProvider) Generate(msg []byte, t *dns.TSIG) ([]byte, error) {
@@ -46,7 +46,7 @@ func (p *recordingProvider) Generate(msg []byte, t *dns.TSIG) ([]byte, error) {
 }
 
 func (p *recordingProvider) Verify(msg []byte, t *dns.TSIG) error {
-	p.lastMAC = t.MAC
+	p.macs = append(p.macs, t.MAC)
 	exp, err := p.Generate(msg, t)
 	if err != nil {
 		return err
@@ -240,7 +240,48 @@ func TestAXFRTSIGMACNonZero(t *testing.T) {
 			t.Fatalf("transfer error: %v", e.Error)
 		}
 	}
-	if prov.lastMAC == "" {
+	if len(prov.macs) == 0 || prov.macs[len(prov.macs)-1] == "" {
 		t.Fatalf("expected TSIG MAC")
+	}
+}
+
+func TestAXFRMACChaining(t *testing.T) {
+	ensureIPv4(t)
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TSIG:      &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, AllowXFRFrom: []string{"127.0.0.1"}}}},
+	}}}
+	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
+
+	prov := &recordingProvider{secret: testSecret}
+	tr := new(dns.Transfer)
+	tr.TsigProvider = prov
+	m := new(dns.Msg)
+	m.SetAxfr("example.org.")
+	m.SetTsig("axfr-key.", dns.HmacSHA256, 300, time.Now().Unix())
+	env, err := tr.In(m, addr)
+	if err != nil {
+		t.Fatalf("transfer: %v", err)
+	}
+	for e := range env {
+		if e.Error != nil {
+			t.Fatalf("transfer error: %v", e.Error)
+		}
+	}
+	if len(prov.macs) < 3 {
+		t.Fatalf("expected multiple TSIG MACs, got %d", len(prov.macs))
+	}
+	if prov.macs[0] == prov.macs[1] {
+		t.Fatalf("expected distinct MACs across messages")
+	}
+	for i, mac := range prov.macs[:3] {
+		if mac == "" {
+			t.Fatalf("mac %d empty", i)
+		}
 	}
 }
