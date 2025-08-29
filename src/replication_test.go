@@ -35,14 +35,15 @@ type recordingProvider struct {
 	macs   []string
 }
 
-func (p *recordingProvider) Generate(msg []byte, t *dns.TSIG) ([]byte, error) {
+func (p *recordingProvider) Generate(msg []byte, t *dns.TSIG) (mac []byte, err error) {
 	raw, err := base64.StdEncoding.DecodeString(p.secret)
 	if err != nil {
 		return nil, err
 	}
 	h := hmac.New(sha256.New, raw)
 	h.Write(msg)
-	return h.Sum(nil), nil
+	mac = h.Sum(nil)
+	return mac, nil
 }
 
 func (p *recordingProvider) Verify(msg []byte, t *dns.TSIG) error {
