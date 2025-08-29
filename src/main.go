@@ -646,6 +646,7 @@ func main() {
 	}
 	config.SetupDefaults(cfg)
 	config.GenerateTSIGKeys(cfg)
+	tsigSecrets := config.TSIGSecretMap(cfg)
 
 	if adminAPIToken == "" && cfg.APIToken != "" {
 		if b, err := os.ReadFile(cfg.APIToken); err == nil {
@@ -686,7 +687,7 @@ func main() {
 	current.mu.Unlock()
 
 	go sampleMemStats()
-	dnsserver.StartListeners(rt, cfg, cfg.MaxWorkers)
+	dnsserver.StartListeners(rt, cfg, cfg.MaxWorkers, tsigSecrets)
 
 	if debugPprof {
 		go func() {

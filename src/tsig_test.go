@@ -313,6 +313,45 @@ func TestTSIGUnsignedTransferRefused(t *testing.T) {
 	}
 }
 
+func TestTSIGIncorrectKeyRefused(t *testing.T) {
+	ensureIPv4(t)
+	seedEnv := "TSIG_SEED_WRONGKEY"
+	seedVal := "deterministic-seed"
+	t.Setenv(seedEnv, seedVal)
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TSIG:      &TSIGZoneConfig{SeedEnv: seedEnv, Keys: []TSIGKey{{Name: "axfr-key."}}},
+	}}}
+
+	config.GenerateTSIGKeys(cfg)
+	key := cfg.Zones[0].TSIG.Keys[0]
+
+	srv, addr, _ := startTestServer(t, cfg, map[string]string{key.Name: key.Secret}, nil)
+	defer srv.Shutdown()
+
+	tr := new(dns.Transfer)
+	tr.TsigSecret = map[string]string{"wrong-key.": key.Secret}
+	m := new(dns.Msg)
+	m.SetAxfr("example.org.")
+	m.SetTsig("wrong-key.", dns.HmacSHA256, 300, time.Now().Unix())
+	env, err := tr.In(m, addr)
+	if err != nil {
+		t.Fatalf("transfer setup: %v", err)
+	}
+	e, ok := <-env
+	if !ok {
+		t.Fatalf("no response received")
+	}
+	if e.Error == nil {
+		t.Fatalf("expected transfer refusal with incorrect key")
+	}
+}
+
 func TestTSIGMismatchedSignatureRefused(t *testing.T) {
 	ensureIPv4(t)
 	seedEnv := "TSIG_SEED_MISMATCH"

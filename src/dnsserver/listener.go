@@ -14,36 +14,32 @@ import (
 type bindTarget struct{ netw, addr string }
 
 // StartListeners binds network listeners based on configuration.
-func StartListeners(h dns.Handler, cfg *config.Config, workers int) {
+// The secrets map should contain all TSIG keys across configured zones.
+// It may be nil if no keys are configured.
+func StartListeners(h dns.Handler, cfg *config.Config, workers int, secrets map[string]string) {
 	addrs := targetsFromConfig(cfg)
 	if workers <= 0 {
 		workers = runtime.NumCPU()
-	}
-	secrets := map[string]string{}
-	for _, z := range cfg.Zones {
-		if z.TSIG == nil {
-			continue
-		}
-		for _, k := range z.TSIG.Keys {
-			name := dns.Fqdn(strings.ToLower(k.Name))
-			secrets[name] = k.Secret
-		}
 	}
 	logged := map[string]bool{}
 	for _, a := range addrs {
 		key := a.netw + "|" + a.addr
 		if strings.HasPrefix(a.netw, "udp") {
-			pc, err := listenUDP(a.netw, a.addr)
-			if err != nil {
-				log.Fatalf("listen %s %s: %v", a.netw, a.addr, err)
-			}
-			uc := pc.(*net.UDPConn)
 			if !logged[key] {
 				log.Printf("listening on %s %s", a.netw, a.addr)
 				logged[key] = true
 			}
 			for i := 0; i < workers; i++ {
-				go serveUDPWorker(h, uc)
+				pc, err := listenUDP(a.netw, a.addr)
+				if err != nil {
+					log.Fatalf("listen %s %s: %v", a.netw, a.addr, err)
+				}
+				srv := &dns.Server{PacketConn: pc, Handler: h, TsigSecret: secrets}
+				go func(netw, addr string, s *dns.Server) {
+					if err := s.ActivateAndServe(); err != nil {
+						log.Fatalf("listen %s %s: %v", netw, addr, err)
+					}
+				}(a.netw, a.addr, srv)
 			}
 			continue
 		}
@@ -194,40 +190,3 @@ func derivePort(listen string) string {
 	}
 	return "53"
 }
-
-func serveUDPWorker(h dns.Handler, conn *net.UDPConn) {
-	buf := make([]byte, 65535)
-	for {
-		n, addr, err := conn.ReadFromUDP(buf)
-		if err != nil {
-			continue
-		}
-		msg := &dns.Msg{}
-		if err := msg.Unpack(buf[:n]); err != nil {
-			continue
-		}
-		rw := &responseWriter{conn: conn, addr: addr}
-		h.ServeDNS(rw, msg)
-	}
-}
-
-type responseWriter struct {
-	conn *net.UDPConn
-	addr *net.UDPAddr
-}
-
-func (rw *responseWriter) LocalAddr() net.Addr  { return rw.conn.LocalAddr() }
-func (rw *responseWriter) RemoteAddr() net.Addr { return rw.addr }
-func (rw *responseWriter) WriteMsg(m *dns.Msg) error {
-	b, err := m.Pack()
-	if err != nil {
-		return err
-	}
-	_, err = rw.conn.WriteToUDP(b, rw.addr)
-	return err
-}
-func (rw *responseWriter) Write([]byte) (int, error) { return 0, nil }
-func (rw *responseWriter) Close() error              { return nil }
-func (rw *responseWriter) TsigStatus() error         { return nil }
-func (rw *responseWriter) TsigTimersOnly(bool)       {}
-func (rw *responseWriter) Hijack()                   {}
