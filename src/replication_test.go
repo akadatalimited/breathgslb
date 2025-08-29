@@ -25,6 +25,7 @@ func startTestServer(t *testing.T, cfg *Config, secrets map[string]string, prev 
 	srv := &dns.Server{Listener: l, Handler: mux, TsigSecret: secrets}
 	go func() { _ = srv.ActivateAndServe() }()
 	t.Cleanup(func() { srv.Shutdown() })
+	t.Cleanup(auth.cancel)
 	return srv, l.Addr().String(), auth
 }
 

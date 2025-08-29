@@ -24,6 +24,7 @@ func startRecordServer(t *testing.T, cfg *Config, gr *geoResolver) (string, *aut
 	srv := &dns.Server{Listener: l, Handler: mux}
 	go func() { _ = srv.ActivateAndServe() }()
 	t.Cleanup(func() { srv.Shutdown() })
+	t.Cleanup(auth.cancel)
 	return l.Addr().String(), auth
 }
 

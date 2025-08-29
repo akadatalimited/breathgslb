@@ -302,8 +302,6 @@ func TestTSIGUnsignedTransferRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("transfer setup: %v", err)
 	}
-	// Disable TSIG verification for responses to observe the server's rcode.
-	tr.TsigSecret = nil
 	e, ok := <-env
 	if !ok {
 		t.Fatalf("no response received")
