@@ -15,6 +15,7 @@ type bindTarget struct{ netw, addr string }
 
 // StartListeners binds network listeners based on configuration.
 // The secrets map should contain all TSIG keys across configured zones.
+// It may be nil if no keys are configured.
 func StartListeners(h dns.Handler, cfg *config.Config, workers int, secrets map[string]string) {
 	addrs := targetsFromConfig(cfg)
 	if workers <= 0 {
