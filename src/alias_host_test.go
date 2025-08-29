@@ -32,6 +32,7 @@ func TestAliasHostResolution(t *testing.T) {
 		t.Fatalf("unexpected A: %v", r.Answer)
 	}
 
+	ensureIPv6(t)
 	m.SetQuestion("www.example.org.", dns.TypeAAAA)
 	r, _, err = c.Exchange(m, addr)
 	if err != nil {
