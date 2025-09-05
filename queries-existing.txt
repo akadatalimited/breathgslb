@@ -1,0 +1,7 @@
+AAAA ns2-gslb.akadata.ltd
+A     ns2-gslb.akadata.ltd
+NS    gslb-sitetest.akadata.ltd
+SOA   gslb-sitetest.akadata.ltd
+TXT   gslb-sitetest.akadata.ltd
+A     www.gslb-sitetest.akadata.ltd
+AAAA  www.gslb-sitetest.akadata.ltd

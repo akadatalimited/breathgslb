@@ -1,0 +1,6 @@
+gslb-sitetest.akadata.ltd. SOA
+gslb-sitetest.akadata.ltd. NS
+gslb-sitetest.akadata.ltd. TXT
+www.gslb-sitetest.akadata.ltd. A
+www.gslb-sitetest.akadata.ltd. AAAA
+
