@@ -10,7 +10,7 @@ import (
 func TestLoadDNSSECOff(t *testing.T) {
 	z := Zone{Name: "example.org.", DNSSEC: &DNSSECZoneConfig{Mode: DNSSECModeOff}}
 	k := loadDNSSEC(z)
-	if k.Enabled {
+	if k.enabled {
 		t.Fatalf("expected DNSSEC disabled")
 	}
 }
@@ -27,7 +27,7 @@ func TestLoadDNSSECManual(t *testing.T) {
 	}
 	z := Zone{Name: "example.org.", DNSSEC: &DNSSECZoneConfig{Mode: DNSSECModeManual, ZSKFile: prefix, KSKFile: prefix}}
 	k := loadDNSSEC(z)
-	if !k.Enabled || k.zsk == nil || k.ksk == nil {
+	if !k.enabled || k.zsk == nil || k.ksk == nil {
 		t.Fatalf("expected keys loaded")
 	}
 }
@@ -40,7 +40,7 @@ func TestLoadDNSSECGenerated(t *testing.T) {
 	prefix := filepath.Join(dir, "gen")
 	z := Zone{Name: "example.org.", DNSSEC: &DNSSECZoneConfig{Mode: DNSSECModeGenerated, ZSKFile: prefix, KSKFile: prefix}}
 	k := loadDNSSEC(z)
-	if !k.Enabled || k.zsk == nil || k.ksk == nil {
+	if !k.enabled || k.zsk == nil || k.ksk == nil {
 		t.Fatalf("expected keys generated")
 	}
 	if _, err := os.Stat(prefix + ".zsk.key"); err != nil {

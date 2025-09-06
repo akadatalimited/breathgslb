@@ -1,15 +1,13 @@
 package main
 
+import (
+        "sort"
+        "strings"
+)
+
 // zone_index.go contains helpers for building and querying an index of zone
 // names and record types. The index is used when constructing DNSSEC records
 // such as NSEC to describe which names and types exist in a zone.
-
-import (
-	"sort"
-	"strings"
-
-	"github.com/miekg/dns"
-)
 
 // canonicalLess compares two domain names using the DNSSEC canonical
 // ordering as defined in RFC4034 §6.1. Labels are compared
