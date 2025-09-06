@@ -1,0 +1,125 @@
+# Sample configuration for BreathGSLB zone replication
+#
+# This example shows how to configure two BreathGSLB servers:
+# 1. Primary server (ns1.example.com) - serves the zone authoritatively
+# 2. Secondary server (ns2.example.com) - replicates the zone from the primary
+
+# Primary server configuration (ns1.example.com)
+---
+listen: ":53"
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+jitter_ms: 600
+cooldown_sec: 30
+edns_buf: 1232
+log_queries: true
+log_file: "/var/log/breathgslb/breathgslb.log"
+max_cpu_cores: 4
+max_threads: 16
+
+# TSIG configuration for secure zone transfers
+tsig:
+  path: "/etc/breathgslb/tsig"
+
+zones:
+  # Primary zone served by this server
+  - name: "example.com."
+    serve: "primary"  # Explicitly mark as primary
+    ns: 
+      - "ns1.example.com."
+      - "ns2.example.com."
+    admin: "hostmaster.example.com."
+    ttl_soa: 3600
+    ttl_answer: 300
+    refresh: 3600
+    retry: 600
+    expire: 1209600
+    minttl: 300
+    
+    # Health check configuration
+    health:
+      kind: http
+      host_header: "example.com"
+      sni: "example.com"
+      path: "/health"
+      expect: "OK"
+    
+    # Primary IP addresses
+    a_master: 
+      - "203.0.113.10"
+    aaaa_master: 
+      - "2001:db8::10"
+    
+    # TSIG key for secure transfers
+    tsig:
+      keys:
+        - name: "example-transfer-key."
+          algorithm: "hmac-sha256"
+          secret: "base64encodedTSIGsecret=="  # Generated secret
+          allow_xfr_from:
+            - "192.0.2.2"  # IP of secondary server
+            - "2001:db8:1::2"  # IPv6 of secondary server
+            
+    # Additional records
+    txt:
+      - text: 
+          - "v=spf1 mx ~all"
+    
+    mx:
+      - preference: 10
+        exchange: "mail.example.com."
+
+# Secondary server configuration (ns2.example.com)
+---
+listen: ":53"
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+jitter_ms: 600
+cooldown_sec: 30
+edns_buf: 1232
+log_queries: true
+log_file: "/var/log/breathgslb/breathgslb.log"
+max_cpu_cores: 4
+max_threads: 16
+
+# TSIG configuration for secure zone transfers
+tsig:
+  path: "/etc/breathgslb/tsig"
+
+zones:
+  # Secondary zone replicated from primary server
+  - name: "example.com."
+    serve: "secondary"  # Explicitly mark as secondary
+    masters:
+      - "192.0.2.1"  # IP of primary server (ns1.example.com)
+      - "2001:db8:1::1"  # IPv6 of primary server
+    ns: 
+      - "ns1.example.com."
+      - "ns2.example.com."
+    admin: "hostmaster.example.com."
+    ttl_soa: 3600
+    ttl_answer: 300
+    refresh: 3600
+    retry: 600
+    expire: 1209600
+    minttl: 300
+    
+    # TSIG key for secure transfers (same key as primary)
+    tsig:
+      keys:
+        - name: "example-transfer-key."
+          algorithm: "hmac-sha256"
+          secret: "base64encodedTSIGsecret=="  # Same secret as primary
+          
+    # Additional records (will be overridden by AXFR)
+    txt:
+      - text: 
+          - "v=spf1 mx ~all"
+    
+    mx:
+      - preference: 10
+        exchange: "mail.example.com."

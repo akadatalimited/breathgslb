@@ -64,6 +64,12 @@ string.
 Path to the TLS certificate for the admin API.
 ## api-key
 Path to the TLS key for the admin API.
+
+## max_cpu_cores
+Maximum number of CPU cores to use. Defaults to the number of available CPU cores.
+
+## max_threads
+Maximum number of threads to use. Defaults to 4 times the number of CPU cores.
 # ZONES
 Each element of the
 **zones**

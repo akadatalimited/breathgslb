@@ -104,6 +104,14 @@ func SetupDefaults(cfg *Config) {
 			cfg.GeoIP.CacheTTLSec = 600
 		}
 	}
+	// CPU limiting defaults
+	if cfg.MaxCPUCores <= 0 {
+		cfg.MaxCPUCores = runtime.NumCPU()
+	}
+	if cfg.MaxThreads <= 0 {
+		// Default to 4 threads per CPU core
+		cfg.MaxThreads = cfg.MaxCPUCores * 4
+	}
 }
 
 // GenerateTSIGKeys populates missing TSIG secrets and optionally writes them to disk.

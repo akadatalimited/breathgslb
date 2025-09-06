@@ -107,8 +107,14 @@ func buildIndex(z Zone) *zoneIndex {
 		add(ownerName(z.Name, n.Name), dns.TypeNAPTR)
 	}
 	dnssecActive := z.DNSSEC != nil && z.DNSSEC.Mode != "" && z.DNSSEC.Mode != DNSSECModeOff
+	nsec3Active := dnssecActive && z.DNSSEC.NSEC3Iterations > 0
+	
 	if dnssecActive {
 		add(zname, dns.TypeDNSKEY)
+	}
+	
+	if nsec3Active {
+		add(zname, dns.TypeNSEC3PARAM)
 	}
 
 	ns := make([]string, 0, len(m))
@@ -117,8 +123,15 @@ func buildIndex(z Zone) *zoneIndex {
 	}
 	if dnssecActive {
 		for _, k := range ns {
-			add(k, dns.TypeNSEC)
-			add(k, dns.TypeRRSIG)
+			if nsec3Active {
+				// For NSEC3, we still need NSEC for the NSEC3PARAM record itself
+				add(k, dns.TypeNSEC3)
+				add(k, dns.TypeRRSIG)
+			} else {
+				// Traditional NSEC
+				add(k, dns.TypeNSEC)
+				add(k, dns.TypeRRSIG)
+			}
 		}
 	}
 	sort.Slice(ns, func(i, j int) bool { return canonicalLess(ns[i], ns[j]) })

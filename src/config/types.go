@@ -87,6 +87,11 @@ type DNSSECZoneConfig struct {
 	Mode    DNSSECMode `yaml:"mode,omitempty"`
 	ZSKFile string     `yaml:"zsk_keyfile,omitempty"`
 	KSKFile string     `yaml:"ksk_keyfile,omitempty"`
+	
+	// NSEC3 parameters
+	NSEC3Iterations uint16 `yaml:"nsec3_iterations,omitempty"`
+	NSEC3Salt      string `yaml:"nsec3_salt,omitempty"`
+	NSEC3OptOut    bool   `yaml:"nsec3_optout,omitempty"`
 }
 
 // TSIGGlobalConfig holds global TSIG parameters.
@@ -169,6 +174,10 @@ type Config struct {
 	APIToken     string      `yaml:"api-token,omitempty"`
 	APICert      string      `yaml:"api-cert,omitempty"`
 	APIKey       string      `yaml:"api-key,omitempty"`
+
+	// CPU limiting options
+	MaxCPUCores  int `yaml:"max_cpu_cores,omitempty"`
+	MaxThreads   int `yaml:"max_threads,omitempty"`
 }
 
 // Shared record types.

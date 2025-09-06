@@ -1,0 +1,173 @@
+# BreathGSLB API Configuration
+#
+# This configuration file defines the API server settings,
+# including manager user, security settings, and default limits.
+
+# Manager user configuration
+# The manager user has special privileges to create and manage other users
+manager:
+  uuid: ""  # Will be auto-generated on first run
+  email: "manager@example.com"
+  password_hash: ""  # Will be auto-generated on first run
+  jwt_secret: ""     # Will be auto-generated on first run
+  aes_key: ""        # Will be auto-generated on first run
+
+# API server settings
+api:
+  # Enable the API server
+  enabled: true
+  
+  # Listen address for the API server
+  listen: ":8443"
+  
+  # Interface to bind to (optional)
+  interface: []
+  
+  # TLS certificate and key files
+  cert_file: "/etc/breathgslb/api.crt"
+  key_file: "/etc/breathgslb/api.key"
+  
+  # Token file (contains the bearer token for API access)
+  token_file: "/etc/breathgslb/api.token"
+  
+  # CORS settings
+  cors:
+    allowed_origins:
+      - "*"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    allowed_headers:
+      - "Content-Type"
+      - "Authorization"
+  
+  # Rate limiting settings
+  rate_limiting:
+    enabled: true
+    requests_per_second: 100
+    burst_size: 200
+    window_size: 60  # seconds
+
+# Default account limits
+# These are applied to new user accounts unless overridden
+default_limits:
+  max_zones: 1
+  max_records: 100
+  max_requests: 1000
+  request_reset_interval: 86400  # 24 hours in seconds
+
+# Security settings
+security:
+  # JWT settings
+  jwt:
+    algorithm: "HS256"
+    expiration: 86400  # 24 hours in seconds
+  
+  # API key settings
+  api_key:
+    min_length: 32
+    character_set: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  
+  # Password requirements
+  password:
+    min_length: 12
+    require_uppercase: true
+    require_lowercase: true
+    require_numbers: true
+    require_symbols: true
+    max_attempts: 5
+    lockout_duration: 900  # 15 minutes in seconds
+
+# Logging settings
+logging:
+  level: "info"
+  format: "json"
+  file: "/var/log/breathgslb/api.log"
+  syslog: false
+
+# Database settings (for storing user accounts and API keys)
+database:
+  driver: "sqlite"
+  dsn: "/var/lib/breathgslb/api.db"
+  max_connections: 10
+  max_idle_connections: 5
+  connection_max_lifetime: 3600  # 1 hour in seconds
+
+# Encryption settings
+encryption:
+  # AES encryption for sensitive data at rest
+  aes_key_file: "/etc/breathgslb/aes.key"
+  key_rotation_interval: 2592000  # 30 days in seconds
+
+# Session settings
+session:
+  cookie_name: "breathgslb_session"
+  max_age: 86400  # 24 hours in seconds
+  secure: true
+  http_only: true
+  same_site: "strict"
+
+# GDPR compliance settings
+gdpr:
+  # Data retention period
+  retention_period: 7776000  # 90 days in seconds
+  
+  # Data anonymization settings
+  anonymize_ips: true
+  anonymize_user_agents: true
+  
+  # Right to erasure settings
+  allow_erasure_requests: true
+  erasure_request_review_period: 86400  # 24 hours in seconds
+  
+  # Data portability settings
+  allow_data_export: true
+  export_formats: ["json", "csv"]
+
+# Audit logging settings
+audit:
+  enabled: true
+  log_file: "/var/log/breathgslb/audit.log"
+  log_level: "info"
+  retention_period: 2592000  # 30 days in seconds
+
+# Backup settings
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention_count: 30
+  destination: "/var/backups/breathgslb"
+
+# Notification settings
+notifications:
+  enabled: true
+  email:
+    enabled: true
+    smtp_server: "localhost:25"
+    from_address: "noreply@breathgslb.example.com"
+  webhook:
+    enabled: false
+    urls: []
+
+# Health check settings
+health:
+  enabled: true
+  endpoint: "/health"
+  check_interval: 30  # seconds
+  failure_threshold: 3
+  success_threshold: 1
+
+# Metrics settings
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  scrape_interval: 60  # seconds
+
+# Debug settings
+debug:
+  enabled: false
+  pprof_endpoint: "/debug/pprof"
+  log_level: "debug"

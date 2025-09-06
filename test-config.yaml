@@ -1,0 +1,30 @@
+listen: ":5353"
+timeout_sec: 3
+interval_sec: 4
+rise: 1
+fall: 2
+jitter_ms: 600
+cooldown_sec: 30
+edns_buf: 1232
+log_queries: false
+log_file: "/tmp/breathgslb-test.log"
+max_cpu_cores: 2
+max_threads: 8
+
+zones:
+  - name: "test.akadata.ltd."
+    ns: ["ns-test.akadata.ltd."]
+    admin: "hostmaster.akadata.ltd."
+    ttl_soa: 900
+    ttl_answer: 300 
+    refresh: 3600
+    retry: 600
+    expire: 1209600
+    minttl: 300
+    a_master: ["127.0.0.1"]
+    aaaa_master: ["::1"]
+    health:
+      host_header: "test.akadata.ltd"
+      sni: "test.akadata.ltd"
+      path: "/health"
+      insecure_tls: false
