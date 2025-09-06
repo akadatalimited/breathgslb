@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/miekg/dns"
 	"github.com/akadatalimited/breathgslb/src/config"
+	"github.com/miekg/dns"
 	maxminddb "github.com/oschwald/maxminddb-golang"
 )
 
@@ -35,19 +35,22 @@ type state struct {
 
 // ---- DNSSEC runtime structures ----
 
-// DnssecKeys holds DNSSEC key material for a zone.
-type DnssecKeys struct {
+// dnssecKeys holds DNSSEC key material for a zone.
+type dnssecKeys struct {
 	enabled bool
 	zsk     *dns.DNSKEY
 	zskPriv crypto.Signer
 	ksk     *dns.DNSKEY // may equal zsk
 	kskPriv crypto.Signer
-	
+
 	// NSEC3 parameters
 	nsec3Iterations uint16
-	nsec3Salt      string
-	nsec3OptOut    bool
+	nsec3Salt       string
+	nsec3OptOut     bool
 }
+
+// DnssecKeys is an exported alias for dnssecKeys for backward compatibility.
+type DnssecKeys = dnssecKeys
 
 // zoneIndex tracks owner names and type bitmaps for NSEC.
 type zoneIndex struct {

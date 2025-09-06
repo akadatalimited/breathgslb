@@ -1,24 +1,14 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"math/rand"
-	"net"
 	"sort"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	config "github.com/akadatalimited/breathgslb/src/config"
 	"github.com/miekg/dns"
 )
 
 // Utility functions
-
-
-
-
 
 // buildIndex constructs a zoneIndex for quick name/type lookups.
 func buildIndex(z config.Zone) *zoneIndex {
@@ -87,7 +77,6 @@ func buildIndexFromRRs(apex string, rrs []dns.RR) *zoneIndex {
 		}
 		m[name][t] = true
 	}
-	zname := ensureDot(apex)
 	for _, rr := range rrs {
 		h := rr.Header()
 		name := strings.ToLower(ensureDot(h.Name))
@@ -167,16 +156,3 @@ func rrDiff(old, new []dns.RR) (del, add []dns.RR) {
 	sort.Slice(add, func(i, j int) bool { return add[i].String() < add[j].String() })
 	return
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

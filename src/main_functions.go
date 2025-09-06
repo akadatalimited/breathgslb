@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	_ "net/http/pprof"
@@ -12,19 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time
-
-	"github.com/akadatalimited/breathgslb/src/config"
-	"github.com/akadatalimited/breathgslb/src/dnsserver"
-	"github.com/akadatalimited/breathgslb/src/doc"
-	"github.com/akadatalimited/breathgslb/src/healthcheck"
-	"github.com/akadatalimited/breathgslb/src/logging"
-	"github.com/miekg/dns"
-
-	maxminddb "github.com/oschwald/maxminddb-golang"
+	"time"
 )
-
-
 
 func init() {
 	version = strings.TrimSpace(version)
@@ -258,6 +248,3 @@ func supportRequest() error {
 	fmt.Println("support request initiated")
 	return nil
 }
-
-
-
