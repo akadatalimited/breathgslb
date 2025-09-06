@@ -1,43 +1,24 @@
 package main
 
 import (
+	"fmt"
+	"log"
+	"math/rand"
 	"net"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
+	config "github.com/akadatalimited/breathgslb/src/config"
 	"github.com/miekg/dns"
 )
 
 // Utility functions
 
-// canonicalLess compares two domain names using the DNSSEC canonical
-// ordering as defined in RFC4034 §6.1. Labels are compared
-// case-insensitively from right to left. The shorter name sorts first
-// when all compared labels are equal.
-func canonicalLess(a, b string) bool {
-	a = strings.ToLower(ensureDot(a))
-	b = strings.ToLower(ensureDot(b))
-	a = strings.TrimSuffix(a, ".")
-	b = strings.TrimSuffix(b, ".")
-	as := strings.Split(a, ".")
-	bs := strings.Split(b, ".")
-	for i, j := len(as)-1, len(bs)-1; i >= 0 && j >= 0; i, j = i-1, j-1 {
-		if as[i] == bs[j] {
-			continue
-		}
-		return as[i] < bs[j]
-	}
-	return len(as) < len(bs)
-}
 
-// zoneIndex tracks owner names and type bitmaps for NSEC.
-type zoneIndex struct {
-	names []string
-	types map[string]map[uint16]bool
-}
+
+
 
 // buildIndex constructs a zoneIndex for quick name/type lookups.
 func buildIndex(z config.Zone) *zoneIndex {
@@ -49,15 +30,14 @@ func buildIndex(z config.Zone) *zoneIndex {
 		}
 		m[name][t] = true
 	}
-	zname := ensureDot(z.Name)
 	// synthetic apex records
-	add(zname, dns.TypeSOA)
-	add(zname, dns.TypeNS)
+	add(ensureDot(z.Name), dns.TypeSOA)
+	add(ensureDot(z.Name), dns.TypeNS)
 	if len(z.AMaster) > 0 || len(z.AStandby) > 0 || len(z.AFallback) > 0 {
-		add(zname, dns.TypeA)
+		add(ensureDot(z.Name), dns.TypeA)
 	}
 	if len(z.AAAAMaster) > 0 || len(z.AAAAStandby) > 0 || len(z.AAAAFallback) > 0 {
-		add(zname, dns.TypeAAAA)
+		add(ensureDot(z.Name), dns.TypeAAAA)
 	}
 	// static records
 	for _, t := range z.TXT {
@@ -188,82 +168,15 @@ func rrDiff(old, new []dns.RR) (del, add []dns.RR) {
 	return
 }
 
-// clientIP extracts the client IP from a DNS request.
-func clientIP(w dns.ResponseWriter, r *dns.Msg) net.IP {
-	// Prefer ECS if present
-	if opt := r.IsEdns0(); opt != nil {
-		for _, o := range opt.Option {
-			if s, ok := o.(*dns.EDNS0_SUBNET); ok {
-				if s.Address != nil {
-					return s.Address
-				}
-			}
-		}
-	}
-	addr := w.RemoteAddr()
-	ua, _ := net.ResolveUDPAddr("udp", addr.String())
-	if ua != nil && ua.IP != nil {
-		return ua.IP
-	}
-	ta, _ := net.ResolveTCPAddr("tcp", addr.String())
-	if ta != nil {
-		return ta.IP
-	}
-	return nil
-}
 
-// pickAddr selects an address from a list based on the persistence mode.
-func pickAddr(addrs []string, mode string, ctr *atomic.Uint64) string {
-	if len(addrs) == 0 {
-		return ""
-	}
-	switch strings.ToLower(mode) {
-	case "random":
-		return addrs[rand.Intn(len(addrs))]
-	case "wrr", "rr":
-		fallthrough
-	default:
-		idx := ctr.Add(1) - 1
-		return addrs[int(idx)%len(addrs)]
-	}
-}
 
-// inAnyCIDR checks if an IP is contained in any of the provided CIDR blocks.
-func inAnyCIDR(ip net.IP, nets []*net.IPNet) bool {
-	for _, n := range nets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
-}
 
-// ensureDot ensures a domain name ends with a dot.
-func ensureDot(s string) string {
-	if !strings.HasSuffix(s, ".") {
-		return s + "."
-	}
-	return s
-}
 
-// ownerName constructs an owner name from an apex and relative name.
-func ownerName(apex, s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "." || s == "@" {
-		return ensureDot(apex)
-	}
-	return ensureDot(s)
-}
 
-// hdr creates a DNS RR header.
-func hdr(name string, t uint16, ttl uint32) dns.RR_Header {
-	return dns.RR_Header{Name: name, Rrtype: t, Class: dns.ClassINET, Ttl: ttl}
-}
 
-// wantDNSSEC checks if a DNS query requests DNSSEC records.
-func wantDNSSEC(r *dns.Msg) bool {
-	if o := r.IsEdns0(); o != nil {
-		return o.Do()
-	}
-	return false
-}
+
+
+
+
+
+

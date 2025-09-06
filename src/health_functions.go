@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"math/rand"
 	"net"
 	"strings"
 	"time"
 
-	"github.com/akadatalimited/breathgslb/src/config"
-	"github.com/akadatalimited/breathgslb/src/healthcheck"
+	
 )
 
 // Health check functions
@@ -59,47 +57,9 @@ func (s *state) set(tier string, ipv6 bool, obsUp bool, riseTarget, fallTarget i
 	}
 }
 
-// healthLoop runs periodic health checks for an authority.
-func (a *authority) healthLoop() {
-	base := time.Duration(a.cfg.IntervalSec) * time.Second
-	if base <= 0 {
-		base = 5 * time.Second
-	}
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		default:
-			a.checkOnce()
-			jitter := time.Duration(0)
-			if a.cfg.JitterMs > 0 {
-				jitter = time.Duration(rand.Intn(a.cfg.JitterMs+1)) * time.Millisecond
-			}
-			time.Sleep(base + jitter)
-		}
-	}
-}
 
-// checkOnce performs a single round of health checks for all endpoints.
-func (a *authority) checkOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
-	defer cancel()
 
-	hc := healthcheck.Effective(a.zone.Name, a.zone.Health)
 
-	// master v4
-	m4 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AMaster), hc)
-	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
-	// master v6
-	m6 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AAAAMaster), hc)
-	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
-	// standby v4
-	s4 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AStandby), hc)
-	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
-	// standby v6
-	s6 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AAAAStandby), hc)
-	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
-}
 
 // aliasLookup resolves a hostname to a list of IP addresses.
 func aliasLookup(ctx context.Context, target string) []net.IP {

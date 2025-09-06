@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/akadatalimited/breathgslb/src/config"
 )
 
 func handleSignals(cfgPath string) {
@@ -16,14 +18,13 @@ func handleSignals(cfgPath string) {
 		s := <-sigc
 		switch s {
 		case syscall.SIGHUP:
-			if err := reload(cfgPath); err != nil {
+			if _, err := config.Load(cfgPath); err != nil {
 				log.Printf("reload failed: %v", err)
 			} else {
 				log.Printf("reloaded configuration")
 			}
 		case syscall.SIGINT, syscall.SIGTERM:
 			log.Printf("signal %v: shutting down", s)
-			shutdown()
 			return
 		}
 	}

@@ -2,16 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"math/rand"
 	"net"
-	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/akadatalimited/breathgslb/src/config"
-	"github.com/akadatalimited/breathgslb/src/healthcheck"
 	"github.com/miekg/dns"
 )
 

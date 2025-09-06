@@ -37,16 +37,16 @@ type state struct {
 
 // DnssecKeys holds DNSSEC key material for a zone.
 type DnssecKeys struct {
-	Enabled bool
-	Zsk     *dns.DNSKEY
-	ZskPriv crypto.Signer
-	Ksk     *dns.DNSKEY // may equal zsk
-	KskPriv crypto.Signer
+	enabled bool
+	zsk     *dns.DNSKEY
+	zskPriv crypto.Signer
+	ksk     *dns.DNSKEY // may equal zsk
+	kskPriv crypto.Signer
 	
 	// NSEC3 parameters
-	Nsec3Iterations uint16
-	Nsec3Salt      string
-	Nsec3OptOut    bool
+	nsec3Iterations uint16
+	nsec3Salt      string
+	nsec3OptOut    bool
 }
 
 // zoneIndex tracks owner names and type bitmaps for NSEC.

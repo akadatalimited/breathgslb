@@ -6,9 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/akadatalimited/breathgslb/src/config"
@@ -540,15 +538,3 @@ func (a *authority) checkOnce() {
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
 
-func aliasLookup(ctx context.Context, target string) []net.IP {
-	target = strings.TrimSuffix(target, ".")
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, target)
-	if err != nil {
-		return nil
-	}
-	ips := make([]net.IP, 0, len(addrs))
-	for _, a := range addrs {
-		ips = append(ips, a.IP)
-	}
-	return ips
-}

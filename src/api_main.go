@@ -5,20 +5,15 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/miekg/dns"
 )
 
 // APIMain is the main API server struct
@@ -143,27 +138,27 @@ func (a *APIMain) registerRoutes() {
 
 	// Protected routes (authentication required)
 	// Zones
-	a.router.HandleFunc("/zones", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneListHandler)))).Methods("GET")
-	a.router.HandleFunc("/zones", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneCreateHandler)))).Methods("POST")
-	a.router.HandleFunc("/zones/{zone}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneGetHandler)))).Methods("GET")
-	a.router.HandleFunc("/zones/{zone}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneUpdateHandler)))).Methods("PUT")
-	a.router.HandleFunc("/zones/{zone}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneDeleteHandler)))).Methods("DELETE")
+	a.router.HandleFunc("/zones", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneListHandler))))).Methods("GET")
+	a.router.HandleFunc("/zones", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneCreateHandler))))).Methods("POST")
+	a.router.HandleFunc("/zones/{zone}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneGetHandler))))).Methods("GET")
+	a.router.HandleFunc("/zones/{zone}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneUpdateHandler))))).Methods("PUT")
+	a.router.HandleFunc("/zones/{zone}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.ZoneDeleteHandler))))).Methods("DELETE")
 
 	// Records
-	a.router.HandleFunc("/zones/{zone}/records", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordListHandler)))).Methods("GET")
-	a.router.HandleFunc("/zones/{zone}/records", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordCreateHandler)))).Methods("POST")
-	a.router.HandleFunc("/zones/{zone}/records/{record}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordUpdateHandler)))).Methods("PUT")
-	a.router.HandleFunc("/zones/{zone}/records/{record}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordDeleteHandler)))).Methods("DELETE")
+	a.router.HandleFunc("/zones/{zone}/records", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordListHandler))))).Methods("GET")
+	a.router.HandleFunc("/zones/{zone}/records", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordCreateHandler))))).Methods("POST")
+	a.router.HandleFunc("/zones/{zone}/records/{record}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordUpdateHandler))))).Methods("PUT")
+	a.router.HandleFunc("/zones/{zone}/records/{record}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.RecordDeleteHandler))))).Methods("DELETE")
 
 	// Users (manager only)
-	a.router.HandleFunc("/users", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserListHandler))))).Methods("GET")
-	a.router.HandleFunc("/users", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserCreateHandler))))).Methods("POST")
-	a.router.HandleFunc("/users/{user}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserGetHandler))))).Methods("GET")
-	a.router.HandleFunc("/users/{user}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserUpdateHandler))))).Methods("PUT")
-	a.router.HandleFunc("/users/{user}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserDeleteHandler))))).Methods("DELETE")
+	a.router.HandleFunc("/users", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserListHandler)))))).Methods("GET")
+	a.router.HandleFunc("/users", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserCreateHandler)))))).Methods("POST")
+	a.router.HandleFunc("/users/{user}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserGetHandler)))))).Methods("GET")
+	a.router.HandleFunc("/users/{user}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserUpdateHandler)))))).Methods("PUT")
+	a.router.HandleFunc("/users/{user}", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.PermissionMiddleware("admin", a.handlers.UserDeleteHandler)))))).Methods("DELETE")
 
 	// Stats
-	a.router.HandleFunc("/stats", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.StatsHandler)))).Methods("GET")
+	a.router.HandleFunc("/stats", a.handlers.CORSHandler(a.handlers.LoggingHandler(a.handlers.RateLimitHandler(a.handlers.AuthMiddleware(a.handlers.StatsHandler))))).Methods("GET")
 
 	// Catch-all for 404
 	a.router.PathPrefix("/").HandlerFunc(a.handlers.NotFoundHandler)
@@ -223,41 +218,5 @@ func generateUUID() string {
 		uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:])
 }
 
-// Main function for the API server
-func main() {
-	var configPath string
-	var showHelp bool
-
-	flag.StringVar(&configPath, "config", "api_config.yaml", "path to API configuration file")
-	flag.StringVar(&configPath, "c", "api_config.yaml", "path to API configuration file")
-	flag.BoolVar(&showHelp, "help", false, "show help")
-	flag.BoolVar(&showHelp, "h", false, "show help")
-
-	flag.Parse()
-
-	if showHelp {
-		fmt.Println("BreathGSLB API Server")
-		fmt.Println("Usage:")
-		flag.PrintDefaults()
-		return
-	}
-
-	// Load configuration
-	config, err := LoadAPIConfig(configPath)
-	if err != nil {
-		log.Fatalf("Failed to load API configuration: %v", err)
-	}
-
-	// Create API server
-	apiMain, err := NewAPIMain(config)
-	if err != nil {
-		log.Fatalf("Failed to create API server: %v", err)
-	}
-
-	// Start API server
-	if err := apiMain.Start(); err != nil {
-		log.Fatalf("API server failed: %v", err)
-	}
-
-	log.Println("BreathGSLB API server shutdown complete")
-}
+// Removed duplicate main function to avoid conflicts with main.go
+// The main function is already defined in main.go

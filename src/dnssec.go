@@ -4,26 +4,15 @@ import (
 	"crypto"
 	"fmt"
 	"log"
-	"sort"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/miekg/dns"
 )
 
-// DnssecKeys holds DNSSEC key material for a zone.
-type DnssecKeys struct {
-	Enabled bool
-	Zsk     *dns.DNSKEY
-	ZskPriv crypto.Signer
-	Ksk     *dns.DNSKEY // may equal zsk
-	KskPriv crypto.Signer
-	
-	// NSEC3 parameters
-	Nsec3Iterations uint16
-	Nsec3Salt      string
-	Nsec3OptOut    bool
-}
+
 
 // signAll walks over rrs and appends RRSIGs per RRset type/name (ZSK; DNSKEY uses KSK)
 func (a *authority) signAll(in []dns.RR) []dns.RR {
