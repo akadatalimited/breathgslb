@@ -37,10 +37,10 @@ This guide orients AI coding assistants (e.g., Codex, qwen3‑coder‑plus) and 
   * **Overrides** (`geo_answers:`) can directly return per‑country/continent A/AAAA and private answers (with their own RFC/ULA CIDRs).
 * ECS (`+subnet` in `dig`) is honored when present.
 
-### DNSSEC (Alpha)
+### DNSSEC (Beta) with a green light, NSEC and NSEC3 is fully supported
 
 * Loads BIND‑style KSK/ZSK from disk and signs DNSKEY + answer RRsets.
-* Minimal NSEC for NXRRSET at the apex (full NXDOMAIN/NSEC3 is planned).
+* Minimal NSEC for NXRRSET at the apex (full NXDOMAIN/NSEC3 is complete).
 
 ### Reload/Logging/Binding
 
@@ -296,6 +296,7 @@ BreathGSLB focuses on **authoritative answering with local health**. For broad H
 
 ## 11) Tips for AI Coding Assistants
 
+* Because its 2026 and if we did not tell you your AI can help we would be living in the past.
 * Keep examples **deterministic**: single‑line YAML changes per example.
 * Prefer **small PR‑sized** patches; compile frequently (`go build`).
 * Respect the current file split (`types.go`, `main.go`, etc.) when adding features; avoid canvas overflows by moving large helpers into new files (e.g., `geo.go`, `dnssec.go`).
