@@ -647,12 +647,16 @@ stable.
 
 ## Licensing & Support
 
-BreathGSLB uses a simple license payload to gate features and track support
-contracts. Licenses are permanent; only support agreements expire according to
-`support_expiry`. After activation, the key and payload are stored in
-`/etc/breathgslb/license` and `/etc/breathgslb/license.payload`, allowing future
-runs without the `-license-payload` flag. Each license now includes only the
-following fields:
+BreathGSLB includes a node identity and trust payload used for support identification, cluster trust, 
+and deployment validation. This identification protocol is released with the product so operators 
+can license and validate their own servers as part of a trusted deployment.
+
+Core authoritative DNS and health-checked GSLB features remain available without feature gating. 
+Licenses are permanent; only support agreements expire according to support_expiry. Support is 
+available where needed, however the software remains fully usable without an active support contract.
+
+After activation, the key and payload are stored in /etc/breathgslb/license and /etc/breathgslb/license.payload, 
+allowing future runs without the -license-payload flag. Each license now includes only the following fields:
 
 | Field          | Purpose |
 | -------------- | ------- |
