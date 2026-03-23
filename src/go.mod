@@ -4,7 +4,7 @@ go 1.24.5
 
 require (
 	github.com/go-sql-driver/mysql v1.8.0
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/gorilla/mux v1.8.1
 	github.com/miekg/dns v1.1.68
 	github.com/oschwald/maxminddb-golang v1.13.1
