@@ -54,8 +54,10 @@ type DnssecKeys = dnssecKeys
 
 // zoneIndex tracks owner names and type bitmaps for NSEC.
 type zoneIndex struct {
-	names []string
-	types map[string]map[uint16]bool
+	names      []string
+	types      map[string]map[uint16]bool
+	nsec3Names []string
+	nsec3Owner map[string]string
 }
 
 // parsed local CIDRs per tier

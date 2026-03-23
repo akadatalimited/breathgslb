@@ -182,14 +182,9 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		}
 		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled && a.zidx != nil {
 			if missing {
-				// Check if NSEC3 is enabled
 				if a.keys.nsec3Iterations > 0 {
-					// Generate NSEC3 denial of existence proof
-					if nsec3 := a.makeNSEC3(name); nsec3 != nil {
-						m.Ns = append(m.Ns, nsec3)
-					}
+					m.Ns = append(m.Ns, a.nsec3DenialProofs(name)...)
 				} else {
-					// Traditional NSEC
 					closest := a.zidx.closestEncloser(name)
 					nsecMap := map[string]*dns.NSEC{}
 					var order []string
@@ -216,14 +211,11 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 					}
 				}
 			} else {
-				// Check if NSEC3 is enabled
 				if a.keys.nsec3Iterations > 0 {
-					// Generate NSEC3 record
 					if nsec3 := a.makeNSEC3(name); nsec3 != nil {
 						m.Ns = append(m.Ns, nsec3)
 					}
 				} else {
-					// Traditional NSEC
 					if nsec := a.makeNSEC(name); nsec != nil {
 						m.Ns = append(m.Ns, nsec)
 					}

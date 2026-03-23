@@ -1,8 +1,10 @@
 package main
 
 import (
-        "sort"
-        "strings"
+	"sort"
+	"strings"
+
+	"github.com/miekg/dns"
 )
 
 // zone_index.go contains helpers for building and querying an index of zone
@@ -29,14 +31,7 @@ func canonicalLess(a, b string) bool {
 	return len(as) < len(bs)
 }
 
-
-
-
-
 // hasName reports whether owner exists in the zone index.
-
-
-
 
 // successor returns the index of the smallest element in names that is
 // canonically greater than q. The result wraps to 0 if q is greater than all
@@ -68,7 +63,46 @@ func (z *zoneIndex) nextName(owner string) string {
 	return z.names[successor(z.names, owner)]
 }
 
+func (z *zoneIndex) nsec3Hash(owner string, iterations uint16, salt string) string {
+	if z == nil {
+		return ""
+	}
+	return strings.ToLower(dns.HashName(strings.ToLower(ensureDot(owner)), dns.SHA1, iterations, salt))
+}
 
+func (z *zoneIndex) nsec3CoveringHash(hash string) string {
+	hash = strings.ToLower(strings.TrimSuffix(hash, "."))
+	if len(z.nsec3Names) == 0 {
+		return ""
+	}
+	i := sort.Search(len(z.nsec3Names), func(i int) bool { return z.nsec3Names[i] >= hash })
+	if i < len(z.nsec3Names) && z.nsec3Names[i] == hash {
+		return z.nsec3Names[i]
+	}
+	if i == 0 {
+		return z.nsec3Names[len(z.nsec3Names)-1]
+	}
+	return z.nsec3Names[i-1]
+}
+
+func (z *zoneIndex) nsec3NextHash(hash string) string {
+	hash = strings.ToLower(strings.TrimSuffix(hash, "."))
+	if len(z.nsec3Names) == 0 {
+		return ""
+	}
+	i := sort.Search(len(z.nsec3Names), func(i int) bool { return z.nsec3Names[i] > hash })
+	if i == len(z.nsec3Names) {
+		return z.nsec3Names[0]
+	}
+	return z.nsec3Names[i]
+}
+
+func (z *zoneIndex) nsec3OwnerName(hash string) string {
+	if z == nil {
+		return ""
+	}
+	return z.nsec3Owner[strings.ToLower(strings.TrimSuffix(hash, "."))]
+}
 
 // typeBitmap returns the type bitmap for the given owner.
 func (z *zoneIndex) typeBitmap(owner string) []uint16 {
@@ -84,5 +118,3 @@ func (z *zoneIndex) typeBitmap(owner string) []uint16 {
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
-
-

@@ -6,7 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	config "github.com/akadatalimited/breathgslb/src/config"
 	"github.com/miekg/dns"
@@ -14,102 +16,127 @@ import (
 
 // DNSSEC functions
 
-// loadDNSSEC loads DNSSEC keys for a zone.
 func loadDNSSEC(z config.Zone) *DnssecKeys {
-	if z.DNSSEC == nil || z.DNSSEC.Mode == DNSSECModeOff {
-		return nil
+	if z.DNSSEC == nil || z.DNSSEC.Mode == "" || z.DNSSEC.Mode == DNSSECModeOff {
+		return &DnssecKeys{enabled: false}
 	}
-	k := &DnssecKeys{enabled: true}
+
+	baseZ := strings.TrimSuffix(ensureDot(z.Name), ".")
+	keys := &DnssecKeys{enabled: false}
+
 	switch z.DNSSEC.Mode {
 	case DNSSECModeManual:
-		if z.DNSSEC.ZSKFile == "" {
-			return nil
-		}
-		zsk, zskPriv, err := loadKeyPair(z.DNSSEC.ZSKFile)
-		if err != nil {
-			log.Printf("dnssec: load zsk %s failed: %v", z.DNSSEC.ZSKFile, err)
-			return nil
-		}
-		k.zsk = zsk
-		k.zskPriv = zskPriv
-		if z.DNSSEC.KSKFile != "" && z.DNSSEC.KSKFile != z.DNSSEC.ZSKFile {
-			ksk, kskPriv, err := loadKeyPair(z.DNSSEC.KSKFile)
-			if err != nil {
-				log.Printf("dnssec: load ksk %s failed: %v", z.DNSSEC.KSKFile, err)
-				return nil
-			}
-			k.ksk = ksk
-			k.kskPriv = kskPriv
-		} else {
-			// Use ZSK as KSK when not specified
-			k.ksk = k.zsk
-			k.kskPriv = k.zskPriv
-		}
-	case DNSSECModeGenerated:
-		fallthrough
-	default:
-		// Generate keys in memory or load from disk
-		prefix := "K" + strings.TrimSuffix(strings.ToLower(strings.TrimSuffix(z.Name, ".")), ".")
 		zskPath := z.DNSSEC.ZSKFile
 		kskPath := z.DNSSEC.KSKFile
-		// Extract directory from key file paths and create directories if they don't exist
-		if zskPath != "" {
-			zskDir := filepath.Dir(zskPath)
-			if zskDir != "" {
-				_ = os.MkdirAll(zskDir, 0755)
-			}
-		} else {
-			zskPath = filepath.Join(".", prefix+".zsk")
+		if zskPath == "" {
+			return keys
 		}
-		if kskPath != "" {
-			kskDir := filepath.Dir(kskPath)
-			if kskDir != "" && kskDir != filepath.Dir(zskPath) {
-				_ = os.MkdirAll(kskDir, 0755)
-			}
-		} else {
-			kskPath = filepath.Join(".", prefix+".ksk")
+		if kskPath == "" {
+			kskPath = zskPath
 		}
-		// Try to load existing keys
-		zsk, zskPriv, err := loadKeyPair(zskPath)
-		if err == nil {
-			k.zsk = zsk
-			k.zskPriv = zskPriv
+		zsk, zskPriv, err := parseBindKeyPair(baseZ, zskPath)
+		if err != nil {
+			log.Printf("dnssec zsk load failed: %v", err)
+			return keys
+		}
+		keys.enabled = true
+		keys.zsk = zsk
+		keys.zskPriv = zskPriv
+		if zskPath == kskPath {
+			keys.ksk = zsk
+			keys.kskPriv = zskPriv
 		} else {
-			// Generate new ZSK
-			k.zsk, k.zskPriv = generateKeyPair(dns.ECDSAP256SHA256)
-			if err := writeKeyPair(zskPath, k.zsk, k.zskPriv); err != nil {
-				log.Printf("dnssec: write zsk %s failed: %v", zskPath, err)
+			ksk, kskPriv, err := parseBindKeyPair(baseZ, kskPath)
+			if err != nil {
+				log.Printf("dnssec ksk load failed: %v", err)
+				return &DnssecKeys{enabled: false}
+			}
+			keys.ksk = ksk
+			keys.kskPriv = kskPriv
+		}
+
+	case DNSSECModeGenerated:
+		zskPath := z.DNSSEC.ZSKFile
+		kskPath := z.DNSSEC.KSKFile
+		if zskPath == "" {
+			zskPath = filepath.Join(".", baseZ)
+		}
+		if kskPath == "" {
+			kskPath = zskPath
+		}
+		if zskPath == kskPath {
+			zskPath += ".zsk"
+			kskPath += ".ksk"
+		}
+
+		zsk, zskPriv, err := parseBindKeyPair(baseZ, zskPath)
+		if err != nil {
+			zsk = &dns.DNSKEY{
+				Hdr:       dns.RR_Header{Name: ensureDot(z.Name), Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600},
+				Flags:     256,
+				Protocol:  3,
+				Algorithm: dns.ECDSAP256SHA256,
+			}
+			priv, genErr := zsk.Generate(256)
+			if genErr != nil {
+				log.Printf("dnssec zsk generate failed: %v", genErr)
+				return keys
+			}
+			zskPriv, _ = priv.(crypto.Signer)
+			if zskPriv == nil {
+				log.Printf("dnssec zsk priv not signer")
+				return keys
+			}
+			if writeErr := writeBindKeyPair(zskPath, zsk, priv); writeErr != nil {
+				log.Printf("dnssec zsk persist failed: %v", writeErr)
 			}
 		}
-		if kskPath != "" && kskPath != zskPath {
-			ksk, kskPriv, err := loadKeyPair(kskPath)
-			if err == nil {
-				k.ksk = ksk
-				k.kskPriv = kskPriv
-			} else {
-				// Generate new KSK
-				k.ksk, k.kskPriv = generateKeyPair(dns.ECDSAP256SHA256)
-				if err := writeKeyPair(kskPath, k.ksk, k.kskPriv); err != nil {
-					log.Printf("dnssec: write ksk %s failed: %v", kskPath, err)
-				}
+
+		ksk, kskPriv, err := parseBindKeyPair(baseZ, kskPath)
+		if err != nil {
+			ksk = &dns.DNSKEY{
+				Hdr:       dns.RR_Header{Name: ensureDot(z.Name), Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600},
+				Flags:     257,
+				Protocol:  3,
+				Algorithm: dns.ECDSAP256SHA256,
 			}
-		} else {
-			// Use ZSK as KSK when not specified or when paths are the same
-			k.ksk = k.zsk
-			k.kskPriv = k.zskPriv
+			priv, genErr := ksk.Generate(256)
+			if genErr != nil {
+				log.Printf("dnssec ksk generate failed: %v", genErr)
+				return keys
+			}
+			kskPriv, _ = priv.(crypto.Signer)
+			if kskPriv == nil {
+				log.Printf("dnssec ksk priv not signer")
+				return keys
+			}
+			if writeErr := writeBindKeyPair(kskPath, ksk, priv); writeErr != nil {
+				log.Printf("dnssec ksk persist failed: %v", writeErr)
+			}
 		}
+
+		keys.enabled = true
+		keys.zsk = zsk
+		keys.zskPriv = zskPriv
+		keys.ksk = ksk
+		keys.kskPriv = kskPriv
+
+	default:
+		log.Printf("dnssec mode %q not supported", z.DNSSEC.Mode)
+		return keys
 	}
-	// Set NSEC3 parameters if any
-	if z.DNSSEC.NSEC3Iterations > 0 {
-		k.nsec3Iterations = z.DNSSEC.NSEC3Iterations
-		k.nsec3Salt = z.DNSSEC.NSEC3Salt
-		k.nsec3OptOut = z.DNSSEC.NSEC3OptOut
+
+	if keys.enabled && z.DNSSEC.NSEC3Iterations > 0 {
+		keys.nsec3Iterations = z.DNSSEC.NSEC3Iterations
+		keys.nsec3Salt = z.DNSSEC.NSEC3Salt
+		keys.nsec3OptOut = z.DNSSEC.NSEC3OptOut
 	}
-	return k
+
+	return keys
 }
 
-// loadKeyPair loads a DNSKEY pair from files.
-func loadKeyPair(prefix string) (*dns.DNSKEY, crypto.Signer, error) {
+// Expect pub in <prefix>.key and private in <prefix>.private.
+func parseBindKeyPair(zone string, prefix string) (*dns.DNSKEY, crypto.Signer, error) {
 	pubPath := prefix
 	privPath := prefix
 	if !strings.HasSuffix(pubPath, ".key") {
@@ -118,65 +145,35 @@ func loadKeyPair(prefix string) (*dns.DNSKEY, crypto.Signer, error) {
 	if !strings.HasSuffix(privPath, ".private") {
 		privPath += ".private"
 	}
-	pub, err := os.ReadFile(pubPath)
+	pubData, err := os.ReadFile(pubPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	priv, err := os.ReadFile(privPath)
+	rr, err := dns.NewRR(string(pubData))
 	if err != nil {
 		return nil, nil, err
 	}
-	
-	// Parse the public key as a DNSKEY record
-	rr, err := dns.NewRR(string(pub))
-	if err != nil {
-		return nil, nil, err
-	}
-	k, ok := rr.(*dns.DNSKEY)
+	dk, ok := rr.(*dns.DNSKEY)
 	if !ok {
-		return nil, nil, fmt.Errorf("public key is not a DNSKEY record")
+		return nil, nil, fmt.Errorf("not a DNSKEY in %s", pubPath)
 	}
-	
-	p, err := k.ReadPrivateKey(strings.NewReader(string(priv)), "")
+	f, err := os.Open(privPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	s, ok := p.(crypto.Signer)
-	if !ok {
-		return nil, nil, fmt.Errorf("private key is not a crypto.Signer")
+	defer f.Close()
+	privAny, err := dk.ReadPrivateKey(f, privPath)
+	if err != nil {
+		return nil, nil, err
 	}
-	return k, s, nil
+	signer, ok := privAny.(crypto.Signer)
+	if !ok {
+		return nil, nil, fmt.Errorf("private key %s does not implement crypto.Signer", privPath)
+	}
+	return dk, signer, nil
 }
 
-// generateKeyPair generates a new DNSSEC key pair for the given algorithm.
-func generateKeyPair(alg uint8) (*dns.DNSKEY, crypto.Signer) {
-	k := new(dns.DNSKEY)
-	k.Hdr.Rrtype = dns.TypeDNSKEY
-	k.Hdr.Class = dns.ClassINET
-	k.Hdr.Ttl = 3600 // Standard TTL for DNSKEY
-	k.Flags = 256    // ZSK flag
-	k.Protocol = 3  // DNSSEC protocol
-	k.Algorithm = alg
-
-	// Generate the key pair
-	privkey, err := k.Generate(int(alg))
-	if err != nil {
-		log.Printf("dnssec: key generation failed: %v", err)
-		return nil, nil
-	}
-
-	// Convert to crypto.Signer
-	signer, ok := privkey.(crypto.Signer)
-	if !ok {
-		log.Printf("dnssec: private key does not implement crypto.Signer")
-		return nil, nil
-	}
-
-	return k, signer
-}
-
-// writeKeyPair writes a DNSKEY pair to files.
-func writeKeyPair(prefix string, key *dns.DNSKEY, priv crypto.PrivateKey) error {
+func writeBindKeyPair(prefix string, key *dns.DNSKEY, priv crypto.PrivateKey) error {
 	pubPath := prefix
 	privPath := prefix
 	if !strings.HasSuffix(pubPath, ".key") {
@@ -185,20 +182,19 @@ func writeKeyPair(prefix string, key *dns.DNSKEY, priv crypto.PrivateKey) error 
 	if !strings.HasSuffix(privPath, ".private") {
 		privPath += ".private"
 	}
-	if err := os.MkdirAll(filepath.Dir(pubPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(pubPath), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(pubPath, []byte(key.String()+"\n"), 0644); err != nil {
+	if err := os.WriteFile(pubPath, []byte(key.String()+"\n"), 0o644); err != nil {
 		return err
 	}
 	privStr := key.PrivateKeyString(priv)
-	if err := os.WriteFile(privPath, []byte(privStr), 0600); err != nil {
+	if err := os.WriteFile(privPath, []byte(privStr), 0o600); err != nil {
 		return err
 	}
 	return nil
 }
 
-// dnskeyRRSet returns the DNSKEY RR set for a zone.
 func (a *authority) dnskeyRRSet() []dns.RR {
 	if a.keys == nil || !a.keys.enabled {
 		return nil
@@ -210,12 +206,6 @@ func (a *authority) dnskeyRRSet() []dns.RR {
 	if a.keys.ksk != nil && a.keys.ksk != a.keys.zsk {
 		out = append(out, a.keys.ksk)
 	}
-	// Add NSEC3PARAM record when NSEC3 is enabled
-	if a.keys.nsec3Iterations > 0 {
-		if nsec3param := a.makeNSEC3PARAM(); nsec3param != nil {
-			out = append(out, nsec3param)
-		}
-	}
 	for i := range out {
 		out[i].Header().Name = ensureDot(a.zone.Name)
 		out[i].Header().Ttl = a.zone.TTLAnswer
@@ -223,80 +213,223 @@ func (a *authority) dnskeyRRSet() []dns.RR {
 	return out
 }
 
-
-
-
-
-// makeNSEC builds an NSEC record for the provided owner. The owner must exist
-// in the zone index.
-func (a *authority) makeNSEC(owner string) dns.RR {
-	if a.zidx == nil {
-		return nil
+// signAll walks over rrs and appends RRSIGs per RRset type/name (ZSK; DNSKEY uses KSK).
+func (a *authority) signAll(in []dns.RR) []dns.RR {
+	if a.keys == nil || !a.keys.enabled {
+		return in
 	}
+	if len(in) == 0 {
+		return in
+	}
+	groups := map[string][]dns.RR{}
+	var out []dns.RR
+	for _, rr := range in {
+		if rr.Header().Rrtype == dns.TypeRRSIG {
+			out = append(out, rr)
+			continue
+		}
+		k := strings.ToLower(rr.Header().Name) + ":" + fmt.Sprint(rr.Header().Rrtype)
+		groups[k] = append(groups[k], rr)
+	}
+	for _, g := range groups {
+		out = append(out, g...)
+		key := a.keys.zsk
+		priv := a.keys.zskPriv
+		if len(g) > 0 && g[0].Header().Rrtype == dns.TypeDNSKEY {
+			key = a.keys.ksk
+			priv = a.keys.kskPriv
+		}
+		if key == nil || priv == nil {
+			continue
+		}
+		sig := a.makeRRSIG(g, key)
+		if err := sig.Sign(priv, g); err == nil {
+			out = append(out, sig)
+		} else {
+			log.Printf("dnssec sign error for %s/%d: %v", g[0].Header().Name, g[0].Header().Rrtype, err)
+		}
+	}
+	return out
+}
+
+func (a *authority) makeRRSIG(rrset []dns.RR, key *dns.DNSKEY) *dns.RRSIG {
+	name := rrset[0].Header().Name
+	ttl := rrset[0].Header().Ttl
+	labels := uint8(strings.Count(strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(name), "."), "."), ".") + 1)
+	now := time.Now().UTC()
+	incep := uint32(now.Add(-5 * time.Minute).Unix())
+	exp := uint32(now.Add(6 * time.Hour).Unix())
+	return &dns.RRSIG{
+		Hdr:         hdr(name, dns.TypeRRSIG, ttl),
+		TypeCovered: rrset[0].Header().Rrtype,
+		Algorithm:   key.Algorithm,
+		Labels:      labels,
+		OrigTtl:     ttl,
+		Expiration:  exp,
+		Inception:   incep,
+		KeyTag:      key.KeyTag(),
+		SignerName:  ensureDot(a.zone.Name),
+	}
+}
+
+// makeNSEC builds an NSEC record for the provided owner. The owner must exist in the zone index.
+func (a *authority) makeNSEC(owner string) dns.RR {
 	owner = strings.ToLower(ensureDot(owner))
-	if !a.zidx.hasName(owner) {
+	if a.zidx == nil || !a.zidx.hasName(owner) {
 		return nil
 	}
 	next := a.zidx.nextName(owner)
-	if next == "" {
-		// Wrap to apex
-		next = ensureDot(a.zone.Name)
-	}
-	typeBitmap := []uint16{}
-	if t, ok := a.zidx.types[owner]; ok {
-		for ty := range t {
-			typeBitmap = append(typeBitmap, ty)
+	typesHere := a.zidx.typeBitmap(owner)
+	zname := strings.ToLower(ensureDot(a.zone.Name))
+	bm := make([]uint16, 0, len(typesHere)+2)
+	if owner == zname {
+		bm = append(bm, typesHere...)
+	} else {
+		for _, t := range typesHere {
+			if t == dns.TypeSOA || t == dns.TypeDNSKEY {
+				continue
+			}
+			bm = append(bm, t)
 		}
 	}
-	return &dns.NSEC{Hdr: hdr(owner, dns.TypeNSEC, a.zone.TTLAnswer), NextDomain: next, TypeBitMap: typeBitmap}
+
+	hasNSEC, hasRRSIG := false, false
+	for _, t := range bm {
+		if t == dns.TypeNSEC {
+			hasNSEC = true
+		}
+		if t == dns.TypeRRSIG {
+			hasRRSIG = true
+		}
+	}
+	if !hasNSEC {
+		bm = append(bm, dns.TypeNSEC)
+	}
+	if !hasRRSIG {
+		bm = append(bm, dns.TypeRRSIG)
+	}
+	sort.Slice(bm, func(i, j int) bool { return bm[i] < bm[j] })
+
+	return &dns.NSEC{Hdr: hdr(owner, dns.TypeNSEC, a.zone.TTLAnswer), NextDomain: ensureDot(next), TypeBitMap: bm}
 }
 
-// makeNSEC3 builds an NSEC3 record for the provided owner name.
 func (a *authority) makeNSEC3(owner string) *dns.NSEC3 {
-	if a.keys == nil || a.keys.nsec3Iterations == 0 || a.zidx == nil {
+	if a.keys == nil || a.keys.nsec3Iterations == 0 || a.zidx == nil || len(a.zidx.nsec3Names) == 0 {
 		return nil
 	}
-	owner = strings.ToLower(ensureDot(owner))
-	// Hash the owner name
-	hashedOwner := dns.HashName(owner, dns.SHA1, a.keys.nsec3Iterations, a.keys.nsec3Salt)
-	// Find the next hashed name in the zone
-	nextHash := a.zidx.nextName(hashedOwner)
-		if nextHash == "" {
-			// Wrap around to first name (use the first name in the zone)
-			if len(a.zidx.names) > 0 {
-				nextHash = a.zidx.names[0]
-			}
-		}
-		// Get the types for this owner
-		// Use typeBitmap instead of hashedTypes
-		typeBitmap := []uint16{}
-		if t := a.zidx.typeBitmap(hashedOwner); len(t) > 0 {
-			for _, ty := range t {
-				typeBitmap = append(typeBitmap, ty)
-			}
-		}
-		// Create the NSEC3 record
-		return &dns.NSEC3{
-			Hdr:        hdr(hashedOwner+"."+ensureDot(a.zone.Name), dns.TypeNSEC3, a.zone.TTLAnswer),
-			Hash:       dns.SHA1,
-			Flags:      0,
-			Iterations: a.keys.nsec3Iterations,
-			Salt:       a.keys.nsec3Salt,
-			NextDomain: nextHash,
-			TypeBitMap: typeBitmap,
-		}
+
+	queryHash := a.zidx.nsec3Hash(owner, a.keys.nsec3Iterations, a.keys.nsec3Salt)
+	coverHash := a.zidx.nsec3CoveringHash(queryHash)
+	coverOwner := a.zidx.nsec3OwnerName(coverHash)
+	if coverHash == "" || coverOwner == "" {
+		return nil
+	}
+
+	nextHash := a.zidx.nsec3NextHash(coverHash)
+	flags := uint8(0)
+	if a.keys.nsec3OptOut {
+		flags = 1
+	}
+
+	return &dns.NSEC3{
+		Hdr:        hdr(coverHash+"."+ensureDot(a.zone.Name), dns.TypeNSEC3, a.zone.TTLAnswer),
+		Hash:       dns.SHA1,
+		Flags:      flags,
+		Iterations: a.keys.nsec3Iterations,
+		SaltLength: uint8(len(a.keys.nsec3Salt) / 2),
+		Salt:       a.keys.nsec3Salt,
+		HashLength: 20,
+		NextDomain: nextHash,
+		TypeBitMap: a.nsec3TypeBitmap(coverOwner),
+	}
 }
 
-// makeNSEC3PARAM builds an NSEC3PARAM record for the zone.
 func (a *authority) makeNSEC3PARAM() *dns.NSEC3PARAM {
 	if a.keys == nil || a.keys.nsec3Iterations == 0 {
 		return nil
 	}
+	flags := uint8(0)
+	if a.keys.nsec3OptOut {
+		flags = 1
+	}
 	return &dns.NSEC3PARAM{
 		Hdr:        hdr(ensureDot(a.zone.Name), dns.TypeNSEC3PARAM, a.zone.TTLAnswer),
 		Hash:       dns.SHA1,
-		Flags:      0,
-		Iterations:  a.keys.nsec3Iterations,
+		Flags:      flags,
+		Iterations: a.keys.nsec3Iterations,
+		SaltLength: uint8(len(a.keys.nsec3Salt) / 2),
 		Salt:       a.keys.nsec3Salt,
 	}
+}
+
+func (a *authority) nsec3TypeBitmap(owner string) []uint16 {
+	typesHere := a.zidx.typeBitmap(owner)
+	zname := strings.ToLower(ensureDot(a.zone.Name))
+	seen := make(map[uint16]bool, len(typesHere)+2)
+	var bm []uint16
+	for _, t := range typesHere {
+		switch t {
+		case dns.TypeNSEC, dns.TypeNSEC3:
+			continue
+		case dns.TypeSOA, dns.TypeDNSKEY:
+			if owner != zname {
+				continue
+			}
+		}
+		if !seen[t] {
+			seen[t] = true
+			bm = append(bm, t)
+		}
+	}
+	for _, t := range []uint16{dns.TypeNSEC3, dns.TypeRRSIG} {
+		if !seen[t] {
+			seen[t] = true
+			bm = append(bm, t)
+		}
+	}
+	sort.Slice(bm, func(i, j int) bool { return bm[i] < bm[j] })
+	return bm
+}
+
+func (a *authority) nsec3DenialProofs(name string) []dns.RR {
+	if a.keys == nil || a.keys.nsec3Iterations == 0 || a.zidx == nil {
+		return nil
+	}
+
+	proofs := map[string]*dns.NSEC3{}
+	var order []string
+	add := func(owner string) {
+		if rr := a.makeNSEC3(owner); rr != nil {
+			key := strings.ToLower(rr.Hdr.Name) + "|" + strings.ToLower(rr.NextDomain)
+			if _, ok := proofs[key]; ok {
+				return
+			}
+			proofs[key] = rr
+			order = append(order, key)
+		}
+	}
+
+	add(name)
+	if closest := a.zidx.closestEncloser(name); closest != "" {
+		add("*." + closest)
+		needClosest := len(order) == 1 && len(a.zidx.names) > 2
+		if !needClosest && len(order) == 1 && strings.EqualFold(closest, a.zone.Name) {
+			apex := strings.ToLower(ensureDot(a.zone.Name))
+			for _, owner := range a.zidx.names {
+				if owner != apex && strings.HasPrefix(owner, "_") {
+					needClosest = true
+					break
+				}
+			}
+		}
+		if needClosest {
+			add(closest)
+		}
+	}
+
+	out := make([]dns.RR, 0, len(order))
+	for _, key := range order {
+		out = append(out, proofs[key])
+	}
+	return out
 }
