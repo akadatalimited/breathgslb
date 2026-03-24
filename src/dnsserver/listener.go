@@ -29,6 +29,19 @@ func StartListeners(h dns.Handler, cfg *config.Config, workers int, secrets map[
 				log.Printf("listening on %s %s", a.netw, a.addr)
 				logged[key] = true
 			}
+			if runtime.GOOS == "windows" {
+				pc, err := listenUDP(a.netw, a.addr)
+				if err != nil {
+					log.Fatalf("listen %s %s: %v", a.netw, a.addr, err)
+				}
+				srv := &dns.Server{PacketConn: pc, Handler: h, TsigSecret: secrets}
+				go func(netw, addr string, s *dns.Server) {
+					if err := s.ActivateAndServe(); err != nil {
+						log.Fatalf("listen %s %s: %v", netw, addr, err)
+					}
+				}(a.netw, a.addr, srv)
+				continue
+			}
 			for i := 0; i < workers; i++ {
 				pc, err := listenUDP(a.netw, a.addr)
 				if err != nil {
