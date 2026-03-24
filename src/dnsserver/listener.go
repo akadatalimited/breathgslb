@@ -71,23 +71,23 @@ func StartListeners(h dns.Handler, cfg *config.Config, workers int, secrets map[
 
 func targetsFromConfig(cfg *config.Config) []bindTarget {
 	var t []bindTarget
-	port := derivePort(cfg.Listen)
+	defaultPort := derivePort(cfg.Listen)
 
 	normalize := func(addr string) string {
-		host, p, err := net.SplitHostPort(addr)
+		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return addr
 		}
-		h := strings.Trim(host, "[]")
-		if ip := net.ParseIP(h); ip != nil {
+		trimmedHost := strings.Trim(host, "[]")
+		if ip := net.ParseIP(trimmedHost); ip != nil {
 			host = ip.String()
 		} else {
-			host = h
+			host = trimmedHost
 		}
 		if strings.Contains(host, ":") {
-			return "[" + host + "]:" + p
+			return "[" + host + "]:" + port
 		}
-		return host + ":" + p
+		return host + ":" + port
 	}
 
 	seen := map[string]map[string]bool{}
@@ -107,32 +107,32 @@ func targetsFromConfig(cfg *config.Config) []bindTarget {
 			if la == "" {
 				continue
 			}
-			host, p, err := net.SplitHostPort(la)
+			host, port, err := net.SplitHostPort(la)
 			if err != nil {
 				if i := strings.LastIndex(la, ":"); i >= 0 && i < len(la)-1 {
 					host = la[:i]
-					p = la[i+1:]
+					port = la[i+1:]
 				} else {
 					host = la
-					p = port
+					port = defaultPort
 				}
 			}
 			if host == "" || host == "0.0.0.0" {
-				add("udp4", "0.0.0.0:"+p)
-				add("tcp4", "0.0.0.0:"+p)
+				add("udp4", "0.0.0.0:"+port)
+				add("tcp4", "0.0.0.0:"+port)
 			} else if host == "::" || host == "[::]" || strings.Contains(host, ":") {
-				h := strings.Trim(host, "[]")
-				add("udp6", "["+h+"]:"+p)
-				add("tcp6", "["+h+"]:"+p)
+				trimmedHost := strings.Trim(host, "[]")
+				add("udp6", "["+trimmedHost+"]:"+port)
+				add("tcp6", "["+trimmedHost+"]:"+port)
 			} else {
 				ip := net.ParseIP(host)
 				if ip != nil && ip.To4() == nil {
-					add("udp6", "["+ip.String()+"]:"+p)
-					add("tcp6", "["+ip.String()+"]:"+p)
+					add("udp6", "["+ip.String()+"]:"+port)
+					add("tcp6", "["+ip.String()+"]:"+port)
 				}
 				if ip == nil || ip.To4() != nil {
-					add("udp4", host+":"+p)
-					add("tcp4", host+":"+p)
+					add("udp4", host+":"+port)
+					add("tcp4", host+":"+port)
 				}
 			}
 		}
@@ -165,15 +165,16 @@ func targetsFromConfig(cfg *config.Config) []bindTarget {
 				if ip == nil {
 					continue
 				}
+				// Only bind routable, non-special interface addresses here; wildcard fallback binding may be added later.
 				if ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
 					continue
 				}
 				if ip.To4() != nil {
-					add("udp4", ip.String()+":"+port)
-					add("tcp4", ip.String()+":"+port)
+					add("udp4", ip.String()+":"+defaultPort)
+					add("tcp4", ip.String()+":"+defaultPort)
 				} else {
-					add("udp6", "["+ip.String()+"]:"+port)
-					add("tcp6", "["+ip.String()+"]:"+port)
+					add("udp6", "["+ip.String()+"]:"+defaultPort)
+					add("tcp6", "["+ip.String()+"]:"+defaultPort)
 				}
 			}
 		}
@@ -182,10 +183,10 @@ func targetsFromConfig(cfg *config.Config) []bindTarget {
 		}
 		log.Printf("warn: no usable addresses from interfaces; falling back to all-addrs")
 	}
-	add("udp4", "0.0.0.0:"+port)
-	add("udp6", "[::]:"+port)
-	add("tcp4", "0.0.0.0:"+port)
-	add("tcp6", "[::]:"+port)
+	add("udp4", "0.0.0.0:"+defaultPort)
+	add("udp6", "[::]:"+defaultPort)
+	add("tcp4", "0.0.0.0:"+defaultPort)
+	add("tcp6", "[::]:"+defaultPort)
 	return t
 }
 
