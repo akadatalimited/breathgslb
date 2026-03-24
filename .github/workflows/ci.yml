@@ -41,6 +41,7 @@ jobs:
       - name: Build ${{ matrix.target }}
         env:
           CGO_ENABLED: ${{ matrix.cgo }}
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         run: make release-${{ matrix.target }}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
