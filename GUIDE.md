@@ -296,7 +296,7 @@ BreathGSLB focuses on **authoritative answering with local health**. For broad H
 
 ## 11) Tips for AI Coding Assistants
 
-* Because its 2026 and if we did not tell you your AI can help we would be living in the past.
+* Because it's 2026 and if we did not tell you your AI can help we would be living in the past.
 * Keep examples **deterministic**: single‑line YAML changes per example.
 * Prefer **small PR‑sized** patches; compile frequently (`go build`).
 * Respect the current file split (`types.go`, `main.go`, etc.) when adding features; avoid canvas overflows by moving large helpers into new files (e.g., `geo.go`, `dnssec.go`).
