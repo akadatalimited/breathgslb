@@ -15,9 +15,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.x'
+          cache-dependency-path: src/go.sum
+
       - name: Run tests
         working-directory: src
         run: go test -race ./...
@@ -38,13 +41,17 @@ jobs:
             cgo: 0
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.x'
+          cache-dependency-path: src/go.sum
+
       - name: Build ${{ matrix.target }}
         env:
           CGO_ENABLED: ${{ matrix.cgo }}
         run: make release-${{ matrix.target }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
