@@ -138,7 +138,7 @@ zones:
       path: "/health"
       insecure_tls: false
 
-    # DNSSEC (alpha)
+    # DNSSEC (Alpha)
     dnssec:
       enable: true
       zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+38151"
