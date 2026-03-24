@@ -37,7 +37,7 @@ This guide orients AI coding assistants (e.g., Codex, qwen3‑coder‑plus) and 
   * **Overrides** (`geo_answers:`) can directly return per‑country/continent A/AAAA and private answers (with their own RFC/ULA CIDRs).
 * ECS (`+subnet` in `dig`) is honored when present.
 
-### DNSSEC (Beta) with a green light, NSEC and NSEC3 is fully supported
+### DNSSEC (Beta) - NSEC and NSEC3 fully supported
 
 * Loads BIND‑style KSK/ZSK from disk and signs DNSKEY + answer RRsets.
 * Minimal NSEC for NXRRSET at the apex (full NXDOMAIN/NSEC3 is complete).
