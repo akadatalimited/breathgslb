@@ -12,6 +12,8 @@ type (
 	GeoPolicy        = configpkg.GeoPolicy
 	GeoAnswerSet     = configpkg.GeoAnswerSet
 	GeoAnswers       = configpkg.GeoAnswers
+	LightupFamily    = configpkg.LightupFamily
+	LightupConfig    = configpkg.LightupConfig
 	DNSSECMode       = configpkg.DNSSECMode
 	DNSSECZoneConfig = configpkg.DNSSECZoneConfig
 	TSIGGlobalConfig = configpkg.TSIGGlobalConfig
@@ -24,6 +26,7 @@ type (
 	SSHFPRecord      = configpkg.SSHFPRecord
 	SRVRecord        = configpkg.SRVRecord
 	NAPTRRecord      = configpkg.NAPTRRecord
+	PTRRecord        = configpkg.PTRRecord
 )
 
 const (

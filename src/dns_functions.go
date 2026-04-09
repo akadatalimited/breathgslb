@@ -77,12 +77,24 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 			}
 		} else {
 			for _, rr := range a.records[name] {
+				if rr.Header().Rrtype == dns.TypeRRSIG {
+					continue
+				}
 				if q.Qtype == dns.TypeANY || rr.Header().Rrtype == q.Qtype {
 					m.Answer = append(m.Answer, rr)
 				}
 			}
 		}
+		if len(m.Answer) == 0 && q.Qtype == dns.TypePTR {
+			if rr := a.lightupPTRRecord(name); rr != nil {
+				m.Answer = append(m.Answer, rr)
+			}
+		}
 		if len(m.Answer) == 0 {
+			missing := a.zidx == nil || !a.zidx.hasName(name)
+			if missing {
+				m.SetRcode(r, dns.RcodeNameError)
+			}
 			for _, rr := range a.records[z] {
 				if rr.Header().Rrtype == dns.TypeNS {
 					m.Ns = append(m.Ns, rr)
@@ -92,6 +104,11 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 				rr := *a.soaRR
 				m.Ns = append(m.Ns, &rr)
 			}
+			if wantDNSSEC(r) && a.secondaryDNSSECAvailable() {
+				m.Ns = append(m.Ns, a.secondaryDenialProofs(name, missing)...)
+			}
+		} else if wantDNSSEC(r) && q.Qtype != dns.TypeANY {
+			m.Answer = append(m.Answer, a.secondaryRRSIGs(name, q.Qtype)...)
 		}
 		a.mu.RUnlock()
 		_ = w.WriteMsg(m)
@@ -167,6 +184,8 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		m.Answer = append(m.Answer, a.srvFor(name)...)
 	case dns.TypeNAPTR:
 		m.Answer = append(m.Answer, a.naptrFor(name)...)
+	case dns.TypePTR:
+		m.Answer = append(m.Answer, a.ptrFor(name)...)
 	case dns.TypeNSEC3PARAM:
 		// NSEC3PARAM is handled in the apex section above
 	}
@@ -176,7 +195,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 			m.Ns = append(m.Ns, &dns.NS{Hdr: hdr(zone, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 		}
 		m.Ns = append(m.Ns, a.soa())
-		missing := a.zidx != nil && !a.zidx.hasName(name)
+		missing := !a.authoritativeNameExists(name)
 		if missing {
 			m.SetRcode(r, dns.RcodeNameError)
 		}
@@ -402,6 +421,46 @@ func (a *authority) axfrRecords() []dns.RR {
 		}
 		rrs = append(rrs, &dns.NAPTR{Hdr: hdr(name, dns.TypeNAPTR, ttl), Order: n.Order, Preference: n.Preference, Flags: n.Flags, Service: n.Services, Regexp: n.Regexp, Replacement: ensureDot(n.Replacement)})
 	}
+	for _, p := range a.zone.PTR {
+		name := ownerName(a.zone.Name, p.Name)
+		ttl := p.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.PTR{Hdr: hdr(name, dns.TypePTR, ttl), Ptr: ensureDot(p.PTR)})
+	}
+	if a.keys == nil || !a.keys.enabled {
+		out := rrs
+		rrs = nil
+		return out
+	}
+	rrs = append(rrs, a.dnskeyRRSet()...)
+	if a.keys.nsec3Iterations > 0 {
+		if nsec3param := a.makeNSEC3PARAM(); nsec3param != nil {
+			rrs = append(rrs, nsec3param)
+		}
+		seen := map[string]bool{}
+		for _, owner := range a.zidx.names {
+			nsec3 := a.makeNSEC3(owner)
+			if nsec3 == nil {
+				continue
+			}
+			key := strings.ToLower(nsec3.Hdr.Name)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			rrs = append(rrs, nsec3)
+		}
+	} else {
+		for _, owner := range a.zidx.names {
+			if nsec := a.makeNSEC(owner); nsec != nil {
+				rrs = append(rrs, nsec)
+			}
+		}
+	}
+	rrs = a.signAll(rrs)
+	rrs = append(rrs, a.rrsetSignatures([]dns.RR{a.soa()})...)
 	out := rrs
 	rrs = nil
 	return out
@@ -819,6 +878,117 @@ func (a *authority) naptrFor(owner string) []dns.RR {
 		rrs = append(rrs, &dns.NAPTR{Hdr: hdr(name, dns.TypeNAPTR, ttl), Order: n.Order, Preference: n.Preference, Flags: n.Flags, Service: n.Services, Regexp: n.Regexp, Replacement: ensureDot(n.Replacement)})
 	}
 	return rrs
+}
+
+func (a *authority) ptrFor(owner string) []dns.RR {
+	owner = ensureDot(owner)
+	rrs := []dns.RR{}
+	for _, p := range a.zone.PTR {
+		name := ownerName(a.zone.Name, p.Name)
+		if name != owner {
+			continue
+		}
+		ttl := p.TTL
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		rrs = append(rrs, &dns.PTR{Hdr: hdr(name, dns.TypePTR, ttl), Ptr: ensureDot(p.PTR)})
+	}
+	if len(rrs) > 0 {
+		return rrs
+	}
+	if rr := a.lightupPTRRecord(owner); rr != nil {
+		rrs = append(rrs, rr)
+	}
+	return rrs
+}
+
+func (a *authority) authoritativeNameExists(name string) bool {
+	if a.zidx != nil && a.zidx.hasName(name) {
+		return true
+	}
+	return a.runtimeNameExists(name)
+}
+
+func (a *authority) secondaryRRSIGs(owner string, covered uint16) []dns.RR {
+	owner = strings.ToLower(ensureDot(owner))
+	var out []dns.RR
+	for _, rr := range a.records[owner] {
+		sig, ok := rr.(*dns.RRSIG)
+		if !ok || sig.TypeCovered != covered {
+			continue
+		}
+		out = append(out, sig)
+	}
+	return out
+}
+
+func (a *authority) secondaryDenialProofs(name string, missing bool) []dns.RR {
+	if a.zidx == nil {
+		return nil
+	}
+	var out []dns.RR
+	if a.secondaryNSEC3Iterations() > 0 {
+		var proofs []dns.RR
+		if missing {
+			proofs = a.nsec3DenialProofs(name)
+		} else if nsec3 := a.makeNSEC3(name); nsec3 != nil {
+			proofs = append(proofs, nsec3)
+		}
+		for _, rr := range proofs {
+			out = append(out, rr)
+			out = append(out, a.secondaryRRSIGs(rr.Header().Name, rr.Header().Rrtype)...)
+		}
+		return out
+	}
+	if missing {
+		nsecMap := map[string]*dns.NSEC{}
+		var order []string
+		add := func(owner string) {
+			if n := a.makeNSEC(owner); n != nil {
+				ns := n.(*dns.NSEC)
+				key := strings.ToLower(ns.Hdr.Name) + "|" + strings.ToLower(ns.NextDomain)
+				if _, ok := nsecMap[key]; ok {
+					return
+				}
+				nsecMap[key] = ns
+				order = append(order, key)
+			}
+		}
+		add(a.zidx.prevName(name))
+		if closest := a.zidx.closestEncloser(name); closest != "" {
+			add(a.zidx.prevName("*." + closest))
+		}
+		for _, key := range order {
+			rr := nsecMap[key]
+			out = append(out, rr)
+			out = append(out, a.secondaryRRSIGs(rr.Header().Name, dns.TypeNSEC)...)
+		}
+		return out
+	}
+	if nsec := a.makeNSEC(name); nsec != nil {
+		out = append(out, nsec)
+		out = append(out, a.secondaryRRSIGs(nsec.Header().Name, dns.TypeNSEC)...)
+	}
+	return out
+}
+
+func (a *authority) secondaryDNSSECAvailable() bool {
+	return a.zone.DNSSEC != nil && a.zone.DNSSEC.Mode != "" && a.zone.DNSSEC.Mode != DNSSECModeOff
+}
+
+func (a *authority) secondaryNSEC3Iterations() uint16 {
+	if a.keys != nil && a.keys.nsec3Iterations > 0 {
+		return a.keys.nsec3Iterations
+	}
+	if a.zone.DNSSEC != nil {
+		return a.zone.DNSSEC.NSEC3Iterations
+	}
+	return 0
+}
+
+func (a *authority) runtimeNameExists(name string) bool {
+	return len(a.runtimeNameTypes(name)) > 0
 }
 
 func wantDNSSEC(r *dns.Msg) bool {

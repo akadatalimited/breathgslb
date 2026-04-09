@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -280,5 +281,134 @@ func TestAXFRMACChaining(t *testing.T) {
 		if mac == "" {
 			t.Fatalf("mac %d empty", i)
 		}
+	}
+}
+
+func TestAXFRIncludesDNSSECRRs(t *testing.T) {
+	ensureIPv4(t)
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TXT:       []TXTRecord{{Text: []string{"hi"}}},
+		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
+	}}}
+	_, addr, auth := startTestServer(t, cfg, nil, nil)
+	auth.setMasterUp(true, true)
+	auth.keys = generateTestKeys(t, cfg.Zones[0].Name)
+	auth.zidx = buildIndex(cfg.Zones[0])
+
+	tr := &dns.Transfer{}
+	m := new(dns.Msg)
+	m.SetAxfr("example.org.")
+	env, err := tr.In(m, addr)
+	if err != nil {
+		t.Fatalf("axfr: %v", err)
+	}
+	var got []dns.RR
+	for e := range env {
+		if e.Error != nil {
+			t.Fatalf("axfr env: %v", e.Error)
+		}
+		got = append(got, e.RR...)
+	}
+	var sawDNSKEY, sawRRSIG, sawNSEC bool
+	for _, rr := range got {
+		switch rr.(type) {
+		case *dns.DNSKEY:
+			sawDNSKEY = true
+		case *dns.RRSIG:
+			sawRRSIG = true
+		case *dns.NSEC:
+			sawNSEC = true
+		}
+	}
+	if !sawDNSKEY || !sawRRSIG || !sawNSEC {
+		t.Fatalf("expected DNSKEY/RRSIG/NSEC in AXFR, got %v", got)
+	}
+}
+
+func TestSecondaryServesTransferredDNSSECData(t *testing.T) {
+	ensureIPv4(t)
+	primaryCfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
+	}}}
+	_, primaryAddr, primaryAuth := startTestServer(t, primaryCfg, nil, nil)
+	primaryAuth.setMasterUp(true, true)
+	primaryAuth.keys = generateTestKeys(t, primaryCfg.Zones[0].Name)
+	primaryAuth.zidx = buildIndex(primaryCfg.Zones[0])
+
+	secondaryCfg := &Config{Zones: []Zone{{
+		Name:    "example.org.",
+		Serve:   "secondary",
+		Masters: []string{primaryAddr},
+		DNSSEC:  &DNSSECZoneConfig{Mode: DNSSECModeManual},
+	}}}
+	_, secondaryAddr, secondaryAuth := startTestServer(t, secondaryCfg, nil, nil)
+	if err := secondaryAuth.transferFromMasters(); err != nil {
+		t.Fatalf("initial transfer: %v", err)
+	}
+
+	c := &dns.Client{Net: "tcp"}
+	o := new(dns.OPT)
+	o.Hdr.Name = "."
+	o.Hdr.Rrtype = dns.TypeOPT
+	o.SetDo()
+
+	m := new(dns.Msg)
+	m.SetQuestion("example.org.", dns.TypeA)
+	m.Extra = append(m.Extra, o)
+
+	primaryResp, _, err := c.Exchange(m, primaryAddr)
+	if err != nil {
+		t.Fatalf("query primary: %v", err)
+	}
+	secondaryResp, _, err := c.Exchange(m, secondaryAddr)
+	if err != nil {
+		t.Fatalf("query secondary: %v", err)
+	}
+
+	toStrings := func(rrs []dns.RR) []string {
+		out := make([]string, 0, len(rrs))
+		for _, rr := range rrs {
+			out = append(out, rr.String())
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	gotPrimary := toStrings(primaryResp.Answer)
+	gotSecondary := toStrings(secondaryResp.Answer)
+	if strings.Join(gotPrimary, "\n") != strings.Join(gotSecondary, "\n") {
+		t.Fatalf("signed answer mismatch\nprimary:\n%s\nsecondary:\n%s", strings.Join(gotPrimary, "\n"), strings.Join(gotSecondary, "\n"))
+	}
+
+	m = new(dns.Msg)
+	m.SetQuestion("example.org.", dns.TypeDNSKEY)
+	m.Extra = append(m.Extra, o)
+	secondaryDNSKEY, _, err := c.Exchange(m, secondaryAddr)
+	if err != nil {
+		t.Fatalf("query secondary DNSKEY: %v", err)
+	}
+	var sawKey, sawSig bool
+	for _, rr := range secondaryDNSKEY.Answer {
+		switch rr.(type) {
+		case *dns.DNSKEY:
+			sawKey = true
+		case *dns.RRSIG:
+			sawSig = true
+		}
+	}
+	if !sawKey || !sawSig {
+		t.Fatalf("expected DNSKEY and RRSIG on secondary, got %v", secondaryDNSKEY.Answer)
 	}
 }

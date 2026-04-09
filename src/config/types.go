@@ -87,11 +87,38 @@ type DNSSECZoneConfig struct {
 	Mode    DNSSECMode `yaml:"mode,omitempty"`
 	ZSKFile string     `yaml:"zsk_keyfile,omitempty"`
 	KSKFile string     `yaml:"ksk_keyfile,omitempty"`
-	
+
 	// NSEC3 parameters
 	NSEC3Iterations uint16 `yaml:"nsec3_iterations,omitempty"`
-	NSEC3Salt      string `yaml:"nsec3_salt,omitempty"`
-	NSEC3OptOut    bool   `yaml:"nsec3_optout,omitempty"`
+	NSEC3Salt       string `yaml:"nsec3_salt,omitempty"`
+	NSEC3OptOut     bool   `yaml:"nsec3_optout,omitempty"`
+}
+
+type LightupFamily struct {
+	Family      string   `yaml:"family,omitempty"`
+	Class       string   `yaml:"class,omitempty"`
+	Prefix      string   `yaml:"prefix,omitempty"`
+	RespondAAAA bool     `yaml:"respond_aaaa,omitempty"`
+	RespondPTR  bool     `yaml:"respond_ptr,omitempty"`
+	Exclude     []string `yaml:"exclude,omitempty"`
+}
+
+// LightupConfig defines the zone-level configuration for deterministic
+// synthesized IPv6 space. The older single-prefix form remains supported for
+// compatibility while the phase-2 family-aware shape is added alongside it.
+type LightupConfig struct {
+	Enabled         bool            `yaml:"enabled,omitempty"`
+	Domain          string          `yaml:"domain,omitempty"`
+	TTL             uint32          `yaml:"ttl,omitempty"`
+	Forward         bool            `yaml:"forward,omitempty"`
+	Reverse         bool            `yaml:"reverse,omitempty"`
+	Strategy        string          `yaml:"strategy,omitempty"`
+	Prefix          string          `yaml:"prefix,omitempty"`
+	Exclude         []string        `yaml:"exclude,omitempty"`
+	Families        []LightupFamily `yaml:"families,omitempty"`
+	ForwardTemplate string          `yaml:"forward_template,omitempty"`
+	PTRTemplate     string          `yaml:"ptr_template,omitempty"`
+	NSAAAA          []string        `yaml:"ns_aaaa,omitempty"`
 }
 
 // TSIGGlobalConfig holds global TSIG parameters.
@@ -176,8 +203,8 @@ type Config struct {
 	APIKey       string      `yaml:"api-key,omitempty"`
 
 	// CPU limiting options
-	MaxCPUCores  int `yaml:"max_cpu_cores,omitempty"`
-	MaxThreads   int `yaml:"max_threads,omitempty"`
+	MaxCPUCores int `yaml:"max_cpu_cores,omitempty"`
+	MaxThreads  int `yaml:"max_threads,omitempty"`
 }
 
 // Shared record types.
@@ -235,6 +262,12 @@ type NAPTRRecord struct {
 	Regexp      string `yaml:"regexp"`
 	Replacement string `yaml:"replacement"`
 	TTL         uint32 `yaml:"ttl,omitempty"`
+}
+
+type PTRRecord struct {
+	Name string `yaml:"name,omitempty"`
+	PTR  string `yaml:"ptr"`
+	TTL  uint32 `yaml:"ttl,omitempty"`
 }
 
 // IPAddr represents an IP address with optional reverse generation.
@@ -311,9 +344,11 @@ type Zone struct {
 	SSHFP []SSHFPRecord `yaml:"sshfp,omitempty"`
 	SRV   []SRVRecord   `yaml:"srv,omitempty"`
 	NAPTR []NAPTRRecord `yaml:"naptr,omitempty"`
+	PTR   []PTRRecord   `yaml:"ptr,omitempty"`
 
-	Geo        *GeoPolicy  `yaml:"geo,omitempty"`
-	GeoAnswers *GeoAnswers `yaml:"geo_answers,omitempty"`
+	Geo        *GeoPolicy     `yaml:"geo,omitempty"`
+	GeoAnswers *GeoAnswers    `yaml:"geo_answers,omitempty"`
+	Lightup    *LightupConfig `yaml:"lightup,omitempty"`
 
 	Health *HealthConfig     `yaml:"health,omitempty"`
 	DNSSEC *DNSSECZoneConfig `yaml:"dnssec,omitempty"`

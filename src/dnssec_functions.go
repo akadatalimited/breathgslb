@@ -222,6 +222,7 @@ func (a *authority) signAll(in []dns.RR) []dns.RR {
 		return in
 	}
 	groups := map[string][]dns.RR{}
+	order := []string{}
 	var out []dns.RR
 	for _, rr := range in {
 		if rr.Header().Rrtype == dns.TypeRRSIG {
@@ -229,27 +230,69 @@ func (a *authority) signAll(in []dns.RR) []dns.RR {
 			continue
 		}
 		k := strings.ToLower(rr.Header().Name) + ":" + fmt.Sprint(rr.Header().Rrtype)
+		if _, ok := groups[k]; !ok {
+			order = append(order, k)
+		}
 		groups[k] = append(groups[k], rr)
 	}
-	for _, g := range groups {
+	for _, k := range order {
+		g := groups[k]
 		out = append(out, g...)
-		key := a.keys.zsk
-		priv := a.keys.zskPriv
-		if len(g) > 0 && g[0].Header().Rrtype == dns.TypeDNSKEY {
-			key = a.keys.ksk
-			priv = a.keys.kskPriv
-		}
-		if key == nil || priv == nil {
-			continue
-		}
-		sig := a.makeRRSIG(g, key)
-		if err := sig.Sign(priv, g); err == nil {
-			out = append(out, sig)
-		} else {
-			log.Printf("dnssec sign error for %s/%d: %v", g[0].Header().Name, g[0].Header().Rrtype, err)
-		}
+		out = append(out, a.rrsetSignatures(g)...)
 	}
 	return out
+}
+
+func (a *authority) rrsetSignatures(rrset []dns.RR) []dns.RR {
+	if a.keys == nil || !a.keys.enabled || len(rrset) == 0 {
+		return nil
+	}
+	key := a.keys.zsk
+	priv := a.keys.zskPriv
+	if rrset[0].Header().Rrtype == dns.TypeDNSKEY {
+		key = a.keys.ksk
+		priv = a.keys.kskPriv
+	}
+	if key == nil || priv == nil {
+		return nil
+	}
+
+	sorted := append([]dns.RR(nil), rrset...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].String() < sorted[j].String() })
+	cacheKey := a.sigCacheKey(sorted)
+
+	now := uint32(time.Now().UTC().Unix())
+	a.sigMu.Lock()
+	if cached, ok := a.sigCache[cacheKey]; ok && cached.exp > now+60 {
+		out := append([]dns.RR(nil), cached.sigs...)
+		a.sigMu.Unlock()
+		return out
+	}
+	a.sigMu.Unlock()
+
+	sig := a.makeRRSIG(sorted, key)
+	if err := sig.Sign(priv, sorted); err != nil {
+		log.Printf("dnssec sign error for %s/%d: %v", sorted[0].Header().Name, sorted[0].Header().Rrtype, err)
+		return nil
+	}
+	out := []dns.RR{sig}
+	a.sigMu.Lock()
+	a.sigCache[cacheKey] = sigCacheEntry{sigs: out, exp: sig.Expiration}
+	a.sigMu.Unlock()
+	return append([]dns.RR(nil), out...)
+}
+
+func (a *authority) sigCacheKey(rrset []dns.RR) string {
+	var b strings.Builder
+	for _, rr := range rrset {
+		b.WriteString(rr.Header().Name)
+		b.WriteByte('|')
+		b.WriteString(fmt.Sprint(rr.Header().Rrtype))
+		b.WriteByte('|')
+		b.WriteString(rr.String())
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func (a *authority) makeRRSIG(rrset []dns.RR, key *dns.DNSKEY) *dns.RRSIG {
@@ -275,11 +318,17 @@ func (a *authority) makeRRSIG(rrset []dns.RR, key *dns.DNSKEY) *dns.RRSIG {
 // makeNSEC builds an NSEC record for the provided owner. The owner must exist in the zone index.
 func (a *authority) makeNSEC(owner string) dns.RR {
 	owner = strings.ToLower(ensureDot(owner))
-	if a.zidx == nil || !a.zidx.hasName(owner) {
+	if a.zidx == nil {
 		return nil
 	}
 	next := a.zidx.nextName(owner)
 	typesHere := a.zidx.typeBitmap(owner)
+	if len(typesHere) == 0 {
+		typesHere = a.runtimeTypeBitmap(owner)
+	}
+	if len(typesHere) == 0 {
+		return nil
+	}
 	zname := strings.ToLower(ensureDot(a.zone.Name))
 	bm := make([]uint16, 0, len(typesHere)+2)
 	if owner == zname {
@@ -319,6 +368,24 @@ func (a *authority) makeNSEC3(owner string) *dns.NSEC3 {
 	}
 
 	queryHash := a.zidx.nsec3Hash(owner, a.keys.nsec3Iterations, a.keys.nsec3Salt)
+	if !a.zidx.hasName(owner) && len(a.runtimeTypeBitmap(owner)) > 0 {
+		nextHash := a.zidx.nsec3NextHash(queryHash)
+		flags := uint8(0)
+		if a.keys.nsec3OptOut {
+			flags = 1
+		}
+		return &dns.NSEC3{
+			Hdr:        hdr(queryHash+"."+ensureDot(a.zone.Name), dns.TypeNSEC3, a.zone.TTLAnswer),
+			Hash:       dns.SHA1,
+			Flags:      flags,
+			Iterations: a.keys.nsec3Iterations,
+			SaltLength: uint8(len(a.keys.nsec3Salt) / 2),
+			Salt:       a.keys.nsec3Salt,
+			HashLength: 20,
+			NextDomain: nextHash,
+			TypeBitMap: a.nsec3TypeBitmapForOwner(owner),
+		}
+	}
 	coverHash := a.zidx.nsec3CoveringHash(queryHash)
 	coverOwner := a.zidx.nsec3OwnerName(coverHash)
 	if coverHash == "" || coverOwner == "" {
@@ -340,7 +407,7 @@ func (a *authority) makeNSEC3(owner string) *dns.NSEC3 {
 		Salt:       a.keys.nsec3Salt,
 		HashLength: 20,
 		NextDomain: nextHash,
-		TypeBitMap: a.nsec3TypeBitmap(coverOwner),
+		TypeBitMap: a.nsec3TypeBitmapForOwner(coverOwner),
 	}
 }
 
@@ -362,8 +429,11 @@ func (a *authority) makeNSEC3PARAM() *dns.NSEC3PARAM {
 	}
 }
 
-func (a *authority) nsec3TypeBitmap(owner string) []uint16 {
+func (a *authority) nsec3TypeBitmapForOwner(owner string) []uint16 {
 	typesHere := a.zidx.typeBitmap(owner)
+	if len(typesHere) == 0 {
+		typesHere = a.runtimeTypeBitmap(owner)
+	}
 	zname := strings.ToLower(ensureDot(a.zone.Name))
 	seen := make(map[uint16]bool, len(typesHere)+2)
 	var bm []uint16

@@ -102,3 +102,195 @@ func TestValidateConfigListenFields(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateLightup(t *testing.T) {
+	baseZone := func() Zone {
+		return Zone{
+			Name:      "example.org.",
+			NS:        []string{"ns1.example.org."},
+			Admin:     "hostmaster.example.org.",
+			TTLSOA:    60,
+			TTLAnswer: 20,
+			Refresh:   60,
+			Retry:     30,
+			Expire:    600,
+			Minttl:    60,
+		}
+	}
+
+	tests := []struct {
+		name    string
+		lightup *LightupConfig
+		wantErr string
+	}{
+		{
+			name: "Valid",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "2a02:8012:bc57::/48",
+				Exclude: []string{"2a02:8012:bc57:1::/64", "2a02:8012:bc57:2::/64"},
+			},
+		},
+		{
+			name: "ValidFamiliesShape",
+			lightup: &LightupConfig{
+				Enabled:  true,
+				Reverse:  true,
+				Strategy: "hash",
+				Families: []LightupFamily{{
+					Family:      "ipv6",
+					Class:       "public",
+					Prefix:      "2a02:8012:bc57::/48",
+					RespondAAAA: true,
+					RespondPTR:  true,
+					Exclude:     []string{"2a02:8012:bc57:1::/64"},
+				}},
+			},
+		},
+		{
+			name: "MissingPrefix",
+			lightup: &LightupConfig{
+				Enabled: true,
+			},
+			wantErr: "prefix is required",
+		},
+		{
+			name: "InvalidPrefix",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "not-a-cidr",
+			},
+			wantErr: "invalid CIDR",
+		},
+		{
+			name: "IPv4PrefixRejected",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "192.0.2.0/24",
+			},
+			wantErr: "is not IPv6",
+		},
+		{
+			name: "InvalidExclude",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "2a02:8012:bc57::/48",
+				Exclude: []string{"bad"},
+			},
+			wantErr: "exclude[0]",
+		},
+		{
+			name: "ExcludeOutsidePrefix",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "2a02:8012:bc57::/48",
+				Exclude: []string{"2a02:8012:bc58::/64"},
+			},
+			wantErr: "outside prefix",
+		},
+		{
+			name: "ExcludeBroaderThanPrefix",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "2a02:8012:bc57::/48",
+				Exclude: []string{"2a02:8012::/32"},
+			},
+			wantErr: "outside prefix",
+		},
+		{
+			name: "OverlappingExcludes",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "2a02:8012:bc57::/48",
+				Exclude: []string{"2a02:8012:bc57:1::/64", "2a02:8012:bc57:1::/80"},
+			},
+			wantErr: "overlaps",
+		},
+		{
+			name: "MixedLegacyAndFamiliesRejected",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Prefix:  "2a02:8012:bc57::/48",
+				Families: []LightupFamily{{
+					Family: "ipv6",
+					Prefix: "2a02:8012:bc57::/48",
+				}},
+			},
+			wantErr: "cannot be combined",
+		},
+		{
+			name: "MultipleFamiliesRejected",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Families: []LightupFamily{
+					{Family: "ipv6", Prefix: "2a02:8012:bc57::/48"},
+					{Family: "ipv6", Prefix: "fd00::/48"},
+				},
+			},
+			wantErr: "only one family",
+		},
+		{
+			name: "InvalidFamilyTypeRejected",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Families: []LightupFamily{{
+					Family: "ipv4",
+					Prefix: "2a02:8012:bc57::/48",
+				}},
+			},
+			wantErr: "unsupported value",
+		},
+		{
+			name: "InvalidStrategyRejected",
+			lightup: &LightupConfig{
+				Enabled:  true,
+				Strategy: "random",
+				Prefix:   "2a02:8012:bc57::/48",
+			},
+			wantErr: "strategy",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			z := baseZone()
+			z.Lightup = tt.lightup
+			err := ValidateZone(&z)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateZone() error = %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidatePTRRecord(t *testing.T) {
+	z := Zone{
+		Name:      "2.0.192.in-addr.arpa.",
+		NS:        []string{"ns1.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    60,
+		TTLAnswer: 20,
+		Refresh:   60,
+		Retry:     30,
+		Expire:    600,
+		Minttl:    60,
+		PTR:       []PTRRecord{{Name: "@", PTR: "ptr.example.org."}},
+	}
+	if err := ValidateZone(&z); err != nil {
+		t.Fatalf("valid PTR zone rejected: %v", err)
+	}
+
+	z.PTR = []PTRRecord{{Name: "@", PTR: ""}}
+	if err := ValidateZone(&z); err == nil {
+		t.Fatalf("expected invalid PTR target to fail validation")
+	}
+}

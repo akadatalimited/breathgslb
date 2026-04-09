@@ -1,0 +1,70 @@
+- name: "lightitup.zerodns.co.uk."
+  ns: ["gslb.zerodns.co.uk."]
+  admin: "hostmaster.zerodns.co.uk."
+  ttl_soa: 60
+  ttl_answer: 20
+  refresh: 60
+  retry: 10
+  expire: 90
+  minttl: 60
+  serve: "local"
+
+  dnssec:
+    mode: generated
+    zsk_keyfile: "/etc/breathgslb/keys/lightitup.zerodns.co.uk.zsk"
+    ksk_keyfile: "/etc/breathgslb/keys/lightitup.zerodns.co.uk.ksk"
+    nsec3_iterations: 0
+
+  a_master:
+    - ip: "217.155.241.55"
+  rfc_master:
+    - "172.16.0.0/24"
+  a_master_private:
+    - ip: "172.16.0.1"
+  aaaa_master_private:
+    - ip: "2a02:8012:bc57:5353::2"
+  ula_master:
+    - "2a02:8012:bc57:5353::/64"
+  aaaa_master:
+    - ip: "2a02:8012:bc57:5353::1"
+
+  a_standby:
+    - ip: "13.41.102.86"
+  aaaa_standby:
+    - ip: "2a02:8012:bc57:5353::2"
+
+  aaaa_fallback:
+    - ip: "2a02:8012:bc57:5353::53"
+      reverse: true
+
+  lightup:
+    enabled: true
+    ttl: 60
+    reverse: true
+    strategy: "hash"
+    families:
+      - family: "ipv6"
+        class: "public"
+        prefix: "2a02:8012:bc57:5353::/64"
+        respond_aaaa: true
+        respond_ptr: true
+        exclude:
+          - "2a02:8012:bc57:5353::1/128"
+          - "2a02:8012:bc57:5353::53/128"
+
+  txt:
+    - text:
+        - "BreathGSLB lightitup demo zone"
+        - "working live lightitup template with synthetic reverse PTR support"
+      ttl: 300
+    - name: "_demo.lightitup.zerodns.co.uk."
+      text:
+        - "prefix=2a02:8012:bc57:5353::/64"
+        - "reverse-zone=3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa."
+      ttl: 300
+
+  health:
+    host_header: "lightitup.zerodns.co.uk"
+    sni: "lightitup.zerodns.co.uk"
+    path: "/health"
+    insecure_tls: false

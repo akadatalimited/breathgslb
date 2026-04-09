@@ -51,11 +51,13 @@ SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || ech
 
 # Documentation paths
 DOC_PDF := doc/breathgslb.pdf
+DEMO_SRC := demo/lightitup
+DEMO_DEST ?= $(CFGDIR)
 
 # -------------------- standard targets --------------------
 .PHONY: all build vendor clean fmt vet test help web \
         release release-linux release-musl release-macos release-freebsd release-bsd release-windows \
-        package docs licensegen install install-man install-systemd install-openrc uninstall
+        package docs licensegen install install-man install-systemd install-openrc uninstall demodata sync-demodata
 
 all: build
 
@@ -73,6 +75,8 @@ help:
 	@echo "  release-bsd      build release binaries for OpenBSD and NetBSD"
 	@echo "  release-windows  build release binaries for Windows"
 	@echo "  package          archive release binaries and generate checksums"
+	@echo "  demodata         install demo config under $(DEMO_DEST)"
+	@echo "  sync-demodata    sync /etc/breathgslb back into $(DEMO_SRC)"
 
 build:
 	@echo "==> building ($(BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
@@ -215,3 +219,20 @@ uninstall:
 	fi
 	rm -f $(DESTDIR)$(SYSD_PREFIX)/$(BINARY).service
 	rm -f $(DESTDIR)$(ORC_PREFIX)/$(BINARY) || true
+
+demodata:
+	install -d $(DESTDIR)$(DEMO_DEST)
+	install -d $(DESTDIR)$(DEMO_DEST)/zones
+	install -d $(DESTDIR)$(DEMO_DEST)/reverse
+	install -d $(DESTDIR)$(DEMO_DEST)/keys
+	install -d $(DESTDIR)$(DEMO_DEST)/tsig
+	install -m 0644 $(DEMO_SRC)/config.yaml $(DESTDIR)$(DEMO_DEST)/config.yaml
+	install -m 0644 $(DEMO_SRC)/README.md $(DESTDIR)$(DEMO_DEST)/README.lightitup.md
+	install -m 0644 $(DEMO_SRC)/zones/*.fwd.yaml $(DESTDIR)$(DEMO_DEST)/zones/
+	install -m 0644 $(DEMO_SRC)/reverse/*.rev.yaml $(DESTDIR)$(DEMO_DEST)/reverse/
+	@echo "==> installed demo data to $(DESTDIR)$(DEMO_DEST)"
+	@echo "Run with:"
+	@echo "  $(BINARY) -config $(DEMO_DEST)/config.yaml"
+
+sync-demodata:
+	sh scripts/sync-demodata.sh /etc/breathgslb $(DEMO_SRC)

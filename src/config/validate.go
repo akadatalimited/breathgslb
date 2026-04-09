@@ -165,6 +165,11 @@ func ValidateZone(z *Zone) error {
 			return fmt.Errorf("naptr[%d]: %w", i, err)
 		}
 	}
+	for i := range z.PTR {
+		if err := validatePTRRecord(&z.PTR[i]); err != nil {
+			return fmt.Errorf("ptr[%d]: %w", i, err)
+		}
+	}
 
 	// Geo answer overrides
 	if z.GeoAnswers != nil {
@@ -172,8 +177,103 @@ func ValidateZone(z *Zone) error {
 			return err
 		}
 	}
+	if z.Lightup != nil {
+		if err := validateLightup(z.Lightup); err != nil {
+			return fmt.Errorf("lightup: %w", err)
+		}
+	}
 
 	return nil
+}
+
+func validateLightup(l *LightupConfig) error {
+	if l == nil {
+		return nil
+	}
+	if !l.Enabled &&
+		strings.TrimSpace(l.Domain) == "" &&
+		l.TTL == 0 &&
+		!l.Forward &&
+		!l.Reverse &&
+		strings.TrimSpace(l.Strategy) == "" &&
+		strings.TrimSpace(l.Prefix) == "" &&
+		len(l.Exclude) == 0 &&
+		len(l.Families) == 0 &&
+		strings.TrimSpace(l.ForwardTemplate) == "" &&
+		strings.TrimSpace(l.PTRTemplate) == "" &&
+		len(l.NSAAAA) == 0 {
+		return nil
+	}
+	if l.Domain != "" {
+		if err := validateDomain(l.Domain); err != nil {
+			return fmt.Errorf("domain: %w", err)
+		}
+	}
+	if l.Strategy != "" && l.Strategy != "hash" {
+		return fmt.Errorf("strategy: unsupported value %q", l.Strategy)
+	}
+	for i, raw := range l.NSAAAA {
+		ip := net.ParseIP(strings.TrimSpace(raw))
+		if ip == nil || ip.To16() == nil || ip.To4() != nil {
+			return fmt.Errorf("ns_aaaa[%d]: %q is not IPv6", i, raw)
+		}
+	}
+	if len(l.Families) > 0 && (strings.TrimSpace(l.Prefix) != "" || len(l.Exclude) > 0) {
+		return fmt.Errorf("legacy prefix/exclude cannot be combined with families")
+	}
+	if len(l.Families) > 1 {
+		return fmt.Errorf("only one family is supported")
+	}
+	if len(l.Families) == 1 {
+		fam := l.Families[0]
+		if fam.Family != "" && fam.Family != "ipv6" {
+			return fmt.Errorf("families[0].family: unsupported value %q", fam.Family)
+		}
+		if fam.Class != "" && fam.Class != "public" && fam.Class != "ula" {
+			return fmt.Errorf("families[0].class: unsupported value %q", fam.Class)
+		}
+		return validateLightupPrefixAndExcludes("families[0].prefix", fam.Prefix, fam.Exclude, "families[0].exclude")
+	}
+	return validateLightupPrefixAndExcludes("prefix", l.Prefix, l.Exclude, "exclude")
+}
+
+func validateLightupPrefixAndExcludes(prefixField, prefix string, exclude []string, excludeField string) error {
+	if strings.TrimSpace(prefix) == "" {
+		return fmt.Errorf("%s is required", prefixField)
+	}
+	_, prefixNet, err := net.ParseCIDR(strings.TrimSpace(prefix))
+	if err != nil {
+		return fmt.Errorf("%s: invalid CIDR %q", prefixField, prefix)
+	}
+	if prefixNet.IP.To4() != nil {
+		return fmt.Errorf("%s: %q is not IPv6", prefixField, prefix)
+	}
+	prefixOnes, _ := prefixNet.Mask.Size()
+	seen := make([]*net.IPNet, 0, len(exclude))
+	for i, raw := range exclude {
+		_, exNet, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err != nil {
+			return fmt.Errorf("%s[%d]: invalid CIDR %q", excludeField, i, raw)
+		}
+		if exNet.IP.To4() != nil {
+			return fmt.Errorf("%s[%d]: %q is not IPv6", excludeField, i, raw)
+		}
+		exOnes, _ := exNet.Mask.Size()
+		if exOnes < prefixOnes || !prefixNet.Contains(exNet.IP) {
+			return fmt.Errorf("%s[%d]: %q is outside prefix %q", excludeField, i, raw, prefix)
+		}
+		for j, prev := range seen {
+			if cidrOverlap(prev, exNet) {
+				return fmt.Errorf("%s[%d]: %q overlaps %s[%d] %q", excludeField, i, raw, excludeField, j, exclude[j])
+			}
+		}
+		seen = append(seen, exNet)
+	}
+	return nil
+}
+
+func cidrOverlap(a, b *net.IPNet) bool {
+	return a.Contains(b.IP) || b.Contains(a.IP)
 }
 
 func validatePersistenceMode(m string) error {
@@ -339,6 +439,18 @@ func validateNAPTRRecord(r *NAPTRRecord) error {
 	}
 	if err := validateDomain(r.Replacement); err != nil {
 		return fmt.Errorf("replacement: %w", err)
+	}
+	return nil
+}
+
+func validatePTRRecord(r *PTRRecord) error {
+	if r.Name != "" && r.Name != "." && r.Name != "@" {
+		if err := validateDomain(r.Name); err != nil {
+			return fmt.Errorf("name: %w", err)
+		}
+	}
+	if err := validateDomain(r.PTR); err != nil {
+		return fmt.Errorf("ptr: %w", err)
 	}
 	return nil
 }

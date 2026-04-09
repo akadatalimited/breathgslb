@@ -124,6 +124,9 @@ type authority struct {
 	persistAAAA sync.Map
 	rrA         atomic.Uint64
 	rrAAAA      atomic.Uint64
+	lightup     []lightupRuntimeSpec
+	sigMu       sync.Mutex
+	sigCache    map[string]sigCacheEntry
 
 	// secondary zone data
 	mu      sync.RWMutex
@@ -138,6 +141,16 @@ type authority struct {
 	}
 }
 
+type lightupRuntimeSpec struct {
+	zoneName    string
+	ptrTemplate string
+	ttl         uint32
+	prefix      *net.IPNet
+	exclude     []*net.IPNet
+	respondPTR  bool
+	respondAAAA bool
+}
+
 type persistEntry struct {
 	ip  string
 	exp time.Time
@@ -148,6 +161,11 @@ type ixfrDelta struct {
 	del []dns.RR
 	new *dns.SOA
 	add []dns.RR
+}
+
+type sigCacheEntry struct {
+	sigs []dns.RR
+	exp  uint32
 }
 
 // router is a dynamic handler wrapper we can hot-swap on HUP.
