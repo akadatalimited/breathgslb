@@ -224,7 +224,7 @@ func TestValidateLightup(t *testing.T) {
 				Enabled: true,
 				Families: []LightupFamily{
 					{Family: "ipv6", Prefix: "2a02:8012:bc57::/48"},
-					{Family: "ipv6", Prefix: "fd00::/48"},
+					{Family: "ipv4", Class: "private", Prefix: "172.16.0.0/24", RespondA: true},
 				},
 			},
 		},
@@ -233,11 +233,63 @@ func TestValidateLightup(t *testing.T) {
 			lightup: &LightupConfig{
 				Enabled: true,
 				Families: []LightupFamily{{
-					Family: "ipv4",
+					Family: "bogus",
 					Prefix: "2a02:8012:bc57::/48",
 				}},
 			},
 			wantErr: "unsupported value",
+		},
+		{
+			name: "IPv4FamilyAllowsPrivateClass",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Families: []LightupFamily{{
+					Family:   "ipv4",
+					Class:    "private",
+					Prefix:   "172.16.0.0/24",
+					RespondA: true,
+					Exclude:  []string{"172.16.0.1/32", "172.16.0.2/32"},
+				}},
+			},
+		},
+		{
+			name: "IPv4FamilyRejectsIPv6Prefix",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Families: []LightupFamily{{
+					Family:   "ipv4",
+					Class:    "private",
+					Prefix:   "fd00::/64",
+					RespondA: true,
+				}},
+			},
+			wantErr: "is not IPv4",
+		},
+		{
+			name: "IPv4FamilyRejectsIPv6Exclude",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Families: []LightupFamily{{
+					Family:   "ipv4",
+					Class:    "private",
+					Prefix:   "172.16.0.0/24",
+					RespondA: true,
+					Exclude:  []string{"fd00::1/128"},
+				}},
+			},
+			wantErr: "is not IPv4",
+		},
+		{
+			name: "IPv6FamilyRejectsRespondA",
+			lightup: &LightupConfig{
+				Enabled: true,
+				Families: []LightupFamily{{
+					Family:   "ipv6",
+					Prefix:   "2a02:8012:bc57::/48",
+					RespondA: true,
+				}},
+			},
+			wantErr: "respond_a",
 		},
 		{
 			name: "InvalidStrategyRejected",

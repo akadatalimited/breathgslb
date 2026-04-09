@@ -39,6 +39,7 @@ func compileLightupSpec(z Zone) []lightupRuntimeSpec {
 			return nil
 		}
 		spec := lightupRuntimeSpec{
+			family:      fam.family,
 			zoneName:    zoneName,
 			class:       fam.class,
 			forwardTmpl: strings.TrimSpace(z.Lightup.ForwardTemplate),
@@ -46,6 +47,7 @@ func compileLightupSpec(z Zone) []lightupRuntimeSpec {
 			ttl:         z.Lightup.TTL,
 			prefix:      prefixNet,
 			respondPTR:  fam.respondPTR,
+			respondA:    fam.respondA,
 			respondAAAA: fam.respondAAAA,
 		}
 		for _, raw := range fam.exclude {
@@ -61,9 +63,11 @@ func compileLightupSpec(z Zone) []lightupRuntimeSpec {
 }
 
 type lightupFamilyConfig struct {
+	family      string
 	class       string
 	prefix      string
 	exclude     []string
+	respondA    bool
 	respondAAAA bool
 	respondPTR  bool
 }
@@ -76,21 +80,34 @@ func effectiveLightupFamilies(l *LightupConfig) []lightupFamilyConfig {
 	if len(l.Families) > 0 {
 		for _, fam := range l.Families {
 			cfg := lightupFamilyConfig{
+				family:      strings.ToLower(strings.TrimSpace(fam.Family)),
 				class:       strings.ToLower(strings.TrimSpace(fam.Class)),
 				prefix:      strings.TrimSpace(fam.Prefix),
 				exclude:     append([]string(nil), fam.Exclude...),
+				respondA:    fam.RespondA,
 				respondAAAA: fam.RespondAAAA,
 				respondPTR:  fam.RespondPTR,
+			}
+			if cfg.family == "" {
+				cfg.family = "ipv6"
 			}
 			if cfg.prefix == "" {
 				continue
 			}
-			if !cfg.respondAAAA && !cfg.respondPTR {
+			if !cfg.respondA && !cfg.respondAAAA && !cfg.respondPTR {
 				if l.Forward || l.Reverse {
-					cfg.respondAAAA = l.Forward
+					if cfg.family == "ipv4" {
+						cfg.respondA = l.Forward
+					} else {
+						cfg.respondAAAA = l.Forward
+					}
 					cfg.respondPTR = l.Reverse
 				} else {
-					cfg.respondAAAA = true
+					if cfg.family == "ipv4" {
+						cfg.respondA = true
+					} else {
+						cfg.respondAAAA = true
+					}
 					cfg.respondPTR = true
 				}
 			}
@@ -98,6 +115,7 @@ func effectiveLightupFamilies(l *LightupConfig) []lightupFamilyConfig {
 		}
 	} else {
 		cfg := lightupFamilyConfig{
+			family:      "ipv6",
 			prefix:      strings.TrimSpace(l.Prefix),
 			exclude:     append([]string(nil), l.Exclude...),
 			respondAAAA: l.Forward,
@@ -114,6 +132,35 @@ func effectiveLightupFamilies(l *LightupConfig) []lightupFamilyConfig {
 	return out
 }
 
+func (a *authority) lightupARecords(owner string, src net.IP) []dns.RR {
+	if spec, ip, matched := a.exactLightupA(owner); matched {
+		if ip == nil {
+			return nil
+		}
+		ttl := spec.ttl
+		if ttl == 0 {
+			ttl = a.zone.TTLAnswer
+		}
+		return buildAForOwner(owner, ttl, []string{ip.String()}, a.cfg.MaxRecords, a.cfg.EDNSBuf)
+	}
+	if a.lightupRequiresExactTemplate() {
+		return nil
+	}
+	spec, ok := a.bestLightupASpec(owner, src)
+	if !ok {
+		return nil
+	}
+	ip := lightupHashedAddressForName(spec, owner)
+	if ip == nil {
+		return nil
+	}
+	ttl := spec.ttl
+	if ttl == 0 {
+		ttl = a.zone.TTLAnswer
+	}
+	return buildAForOwner(owner, ttl, []string{ip.String()}, a.cfg.MaxRecords, a.cfg.EDNSBuf)
+}
+
 func (a *authority) lightupAAAARecords(owner string, src net.IP) []dns.RR {
 	if spec, ip, matched := a.exactLightupAAAA(owner); matched {
 		if ip == nil {
@@ -124,6 +171,9 @@ func (a *authority) lightupAAAARecords(owner string, src net.IP) []dns.RR {
 			ttl = a.zone.TTLAnswer
 		}
 		return buildAAAAForOwner(owner, ttl, []string{ip.String()}, a.cfg.MaxRecords, a.cfg.EDNSBuf)
+	}
+	if a.lightupRequiresExactTemplate() {
+		return nil
 	}
 	spec, ok := a.bestLightupAAAASpec(owner, src)
 	if !ok {
@@ -138,6 +188,38 @@ func (a *authority) lightupAAAARecords(owner string, src net.IP) []dns.RR {
 		ttl = a.zone.TTLAnswer
 	}
 	return buildAAAAForOwner(owner, ttl, []string{ip.String()}, a.cfg.MaxRecords, a.cfg.EDNSBuf)
+}
+
+func (a *authority) lightupRequiresExactTemplate() bool {
+	for _, spec := range a.lightup {
+		if (spec.respondA || spec.respondAAAA) && spec.forwardTmpl != "" && strings.Contains(spec.forwardTmpl, "{addr}") {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *authority) exactLightupA(owner string) (lightupRuntimeSpec, net.IP, bool) {
+	owner = strings.ToLower(ensureDot(owner))
+	matched := false
+	for _, spec := range a.lightup {
+		if !spec.respondA {
+			continue
+		}
+		ip, ok := lightupExactAddressForName(spec, owner)
+		if !ok {
+			continue
+		}
+		matched = true
+		if ip == nil {
+			continue
+		}
+		if spec.prefix == nil || !spec.prefix.Contains(ip) || lightupIPExcluded(ip, spec.exclude) {
+			continue
+		}
+		return spec, ip, true
+	}
+	return lightupRuntimeSpec{}, nil, matched
 }
 
 func (a *authority) exactLightupAAAA(owner string) (lightupRuntimeSpec, net.IP, bool) {
@@ -163,9 +245,36 @@ func (a *authority) exactLightupAAAA(owner string) (lightupRuntimeSpec, net.IP, 
 	return lightupRuntimeSpec{}, nil, matched
 }
 
+func (a *authority) bestLightupASpec(owner string, src net.IP) (lightupRuntimeSpec, bool) {
+	owner = strings.ToLower(ensureDot(owner))
+	preferredClass := lightupPreferredAClass(src)
+	var preferred []lightupRuntimeSpec
+	var fallback []lightupRuntimeSpec
+	for _, spec := range a.lightup {
+		if !spec.respondA || !strings.EqualFold(spec.zoneName, a.zone.Name) {
+			continue
+		}
+		if !a.lightupNameAllowed(owner, spec.zoneName) {
+			continue
+		}
+		if spec.class == preferredClass || (preferredClass == "public" && spec.class == "") {
+			preferred = append(preferred, spec)
+		} else {
+			fallback = append(fallback, spec)
+		}
+	}
+	if len(preferred) > 0 {
+		return preferred[0], true
+	}
+	if len(fallback) > 0 {
+		return fallback[0], true
+	}
+	return lightupRuntimeSpec{}, false
+}
+
 func (a *authority) bestLightupAAAASpec(owner string, src net.IP) (lightupRuntimeSpec, bool) {
 	owner = strings.ToLower(ensureDot(owner))
-	preferredClass := lightupPreferredClass(src)
+	preferredClass := lightupPreferredAAAAClass(src)
 	var preferred []lightupRuntimeSpec
 	var fallback []lightupRuntimeSpec
 	for _, spec := range a.lightup {
@@ -202,9 +311,16 @@ func (a *authority) lightupNameAllowed(owner, zoneName string) bool {
 	return owner != zoneName
 }
 
-func lightupPreferredClass(src net.IP) string {
+func lightupPreferredAAAAClass(src net.IP) string {
 	if isRFC1918OrULA(src) {
 		return "ula"
+	}
+	return "public"
+}
+
+func lightupPreferredAClass(src net.IP) string {
+	if isRFC1918OrULA(src) {
+		return "private"
 	}
 	return "public"
 }
@@ -233,18 +349,35 @@ func lightupHashedAddressForName(spec lightupRuntimeSpec, name string) net.IP {
 	if spec.prefix == nil {
 		return nil
 	}
-	base := spec.prefix.IP.Mask(spec.prefix.Mask).To16()
+	base := maskedLightupBase(spec.prefix)
 	if base == nil {
 		return nil
 	}
+	hash := lightupHash128(name, 0)
 	for attempt := 0; attempt < 256; attempt++ {
 		candidate := append(net.IP(nil), base...)
-		hash := lightupHash128(name, 0)
 		applyLightupHostBits(candidate, spec.prefix.Mask, hash[:])
 		addLightupHostOffset(candidate, spec.prefix.Mask, attempt)
 		if spec.prefix.Contains(candidate) && !lightupIPExcluded(candidate, spec.exclude) {
 			return candidate
 		}
+	}
+	return nil
+}
+
+func maskedLightupBase(prefix *net.IPNet) net.IP {
+	if prefix == nil {
+		return nil
+	}
+	base := prefix.IP.Mask(prefix.Mask)
+	if base == nil {
+		return nil
+	}
+	if v4 := base.To4(); v4 != nil {
+		return append(net.IP(nil), v4...)
+	}
+	if v6 := base.To16(); v6 != nil {
+		return append(net.IP(nil), v6...)
 	}
 	return nil
 }
@@ -264,7 +397,7 @@ func lightupExactAddressForName(spec lightupRuntimeSpec, owner string) (net.IP, 
 		return nil, false
 	}
 	embedded := owner[len(prefix) : len(owner)-len(suffix)]
-	ip, ok := parseLightupAddrLabel(embedded)
+	ip, ok := parseLightupAddrLabel(spec, embedded)
 	if !ok {
 		return nil, true
 	}
@@ -278,8 +411,23 @@ func lightupForwardTemplate(spec lightupRuntimeSpec) string {
 	return ensureDot("addr-{addr}." + strings.TrimSuffix(spec.zoneName, "."))
 }
 
-func parseLightupAddrLabel(label string) (net.IP, bool) {
+func parseLightupAddrLabel(spec lightupRuntimeSpec, label string) (net.IP, bool) {
 	parts := strings.Split(strings.TrimSpace(strings.ToLower(label)), "-")
+	if spec.family == "ipv4" {
+		if len(parts) != 4 {
+			return nil, false
+		}
+		for _, part := range parts {
+			if part == "" {
+				return nil, false
+			}
+		}
+		ip := net.ParseIP(strings.Join(parts, "."))
+		if ip == nil || ip.To4() == nil {
+			return nil, false
+		}
+		return ip.To4(), true
+	}
 	if len(parts) != 8 {
 		return nil, false
 	}
@@ -313,8 +461,9 @@ func lightupHash128(name string, counter byte) [16]byte {
 }
 
 func applyLightupHostBits(ip net.IP, mask net.IPMask, bits []byte) {
+	totalBits := len(ip) * 8
 	ones, _ := mask.Size()
-	for bit := ones; bit < 128; bit++ {
+	for bit := ones; bit < totalBits; bit++ {
 		srcBit := bit - ones
 		byteIdx := srcBit / 8
 		bitIdx := 7 - (srcBit % 8)
@@ -333,10 +482,11 @@ func addLightupHostOffset(ip net.IP, mask net.IPMask, offset int) {
 	if offset <= 0 {
 		return
 	}
+	totalBits := len(ip) * 8
 	ones, _ := mask.Size()
 	for ; offset > 0; offset-- {
 		carry := byte(1)
-		for bit := 127; bit >= ones && carry == 1; bit-- {
+		for bit := totalBits - 1; bit >= ones && carry == 1; bit-- {
 			dstByte := bit / 8
 			dstBit := 7 - (bit % 8)
 			maskBit := byte(1 << dstBit)
@@ -351,7 +501,7 @@ func addLightupHostOffset(ip net.IP, mask net.IPMask, offset int) {
 }
 
 func (a *authority) lightupPTRRecord(owner string) *dns.PTR {
-	ip, ok := parseIPv6ReverseOwner(owner)
+	ip, ok := parseLightupReverseOwner(owner)
 	if !ok {
 		return nil
 	}
@@ -408,6 +558,9 @@ func lightupPTRTarget(spec lightupRuntimeSpec, ip net.IP) string {
 }
 
 func lightupIPLabel(ip net.IP) string {
+	if v4 := ip.To4(); v4 != nil {
+		return fmt.Sprintf("%d-%d-%d-%d", v4[0], v4[1], v4[2], v4[3])
+	}
 	ip = ip.To16()
 	if ip == nil {
 		return ""
@@ -417,6 +570,13 @@ func lightupIPLabel(ip net.IP) string {
 		parts = append(parts, fmt.Sprintf("%02x%02x", ip[i], ip[i+1]))
 	}
 	return strings.Join(parts, "-")
+}
+
+func parseLightupReverseOwner(owner string) (net.IP, bool) {
+	if ip, ok := parseIPv6ReverseOwner(owner); ok {
+		return ip, true
+	}
+	return parseIPv4ReverseOwner(owner)
 }
 
 func parseIPv6ReverseOwner(owner string) (net.IP, bool) {
@@ -444,14 +604,36 @@ func parseIPv6ReverseOwner(owner string) (net.IP, bool) {
 	return net.IP(buf), true
 }
 
+func parseIPv4ReverseOwner(owner string) (net.IP, bool) {
+	owner = strings.ToLower(ensureDot(owner))
+	const suffix = ".in-addr.arpa."
+	if !strings.HasSuffix(owner, suffix) {
+		return nil, false
+	}
+	trimmed := strings.TrimSuffix(owner, suffix)
+	parts := strings.Split(trimmed, ".")
+	if len(parts) != 4 {
+		return nil, false
+	}
+	ip := net.ParseIP(parts[3] + "." + parts[2] + "." + parts[1] + "." + parts[0])
+	if ip == nil || ip.To4() == nil {
+		return nil, false
+	}
+	return ip.To4(), true
+}
+
 func (a *authority) runtimeNameTypes(name string) []uint16 {
+	var types []uint16
 	if rr := a.lightupAAAARecords(name, nil); len(rr) > 0 {
-		return []uint16{dns.TypeAAAA}
+		types = append(types, dns.TypeAAAA)
+	}
+	if rr := a.lightupARecords(name, nil); len(rr) > 0 {
+		types = append(types, dns.TypeA)
 	}
 	if rr := a.lightupPTRRecord(name); rr != nil {
-		return []uint16{dns.TypePTR}
+		types = append(types, dns.TypePTR)
 	}
-	return nil
+	return types
 }
 
 func (a *authority) runtimeTypeBitmap(name string) []uint16 {

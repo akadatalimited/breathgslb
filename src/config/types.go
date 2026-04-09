@@ -98,6 +98,7 @@ type LightupFamily struct {
 	Family      string   `yaml:"family,omitempty"`
 	Class       string   `yaml:"class,omitempty"`
 	Prefix      string   `yaml:"prefix,omitempty"`
+	RespondA    bool     `yaml:"respond_a,omitempty"`
 	RespondAAAA bool     `yaml:"respond_aaaa,omitempty"`
 	RespondPTR  bool     `yaml:"respond_ptr,omitempty"`
 	Exclude     []string `yaml:"exclude,omitempty"`

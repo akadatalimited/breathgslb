@@ -21,10 +21,9 @@ func forwardLightupConfig() *Config {
 		Expire:    3600,
 		Minttl:    60,
 		Lightup: &LightupConfig{
-			Enabled:         true,
-			Forward:         true,
-			Strategy:        "hash",
-			ForwardTemplate: "addr-{addr}.example.org.",
+			Enabled:  true,
+			Forward:  true,
+			Strategy: "hash",
 			Families: []LightupFamily{{
 				Family:      "ipv6",
 				Class:       "public",
@@ -34,6 +33,12 @@ func forwardLightupConfig() *Config {
 			}},
 		},
 	}}}
+}
+
+func forwardTemplateLightupConfig() *Config {
+	cfg := forwardLightupConfig()
+	cfg.Zones[0].Lightup.ForwardTemplate = "addr-{addr}.example.org."
+	return cfg
 }
 
 func forwardReverseLightupConfig() *Config {
@@ -79,6 +84,33 @@ func forwardReverseLightupConfig() *Config {
 			Minttl:    60,
 		},
 	}}
+}
+
+func forwardReverseDualStackLightupConfig() *Config {
+	cfg := forwardReverseLightupConfig()
+	cfg.Zones[0].Lightup.Families = append(cfg.Zones[0].Lightup.Families, LightupFamily{
+		Family:    "ipv4",
+		Class:     "private",
+		Prefix:    "172.16.0.0/24",
+		RespondA:  true,
+		RespondPTR: true,
+		Exclude: []string{
+			"172.16.0.1/32",
+			"172.16.0.2/32",
+		},
+	})
+	cfg.Zones = append(cfg.Zones, Zone{
+		Name:      "0.16.172.in-addr.arpa.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    300,
+		TTLAnswer: 300,
+		Refresh:   300,
+		Retry:     60,
+		Expire:    3600,
+		Minttl:    60,
+	})
+	return cfg
 }
 
 func TestLightupForwardDeterministicAndDistinct(t *testing.T) {
@@ -356,7 +388,7 @@ func TestLightupForwardTemplateDrivesPTRNameWhenNoPTRTemplateSet(t *testing.T) {
 }
 
 func TestLightupForwardExactExcludedAddressRejected(t *testing.T) {
-	cfg := forwardLightupConfig()
+	cfg := forwardTemplateLightupConfig()
 	config.SetupDefaults(cfg)
 	addr, _ := startRecordServer(t, cfg, nil)
 
@@ -376,7 +408,7 @@ func TestLightupForwardExactExcludedAddressRejected(t *testing.T) {
 }
 
 func TestLightupForwardExactOutsidePrefixRejected(t *testing.T) {
-	cfg := forwardLightupConfig()
+	cfg := forwardTemplateLightupConfig()
 	config.SetupDefaults(cfg)
 	addr, _ := startRecordServer(t, cfg, nil)
 
@@ -396,7 +428,7 @@ func TestLightupForwardExactOutsidePrefixRejected(t *testing.T) {
 }
 
 func TestLightupForwardExactExplicitAAAABeatsTemplate(t *testing.T) {
-	cfg := forwardLightupConfig()
+	cfg := forwardTemplateLightupConfig()
 	cfg.Zones[0].Serve = "secondary"
 	cfg.Zones[0].Masters = nil
 	config.SetupDefaults(cfg)
@@ -422,6 +454,102 @@ func TestLightupForwardExactExplicitAAAABeatsTemplate(t *testing.T) {
 	}
 	if got := r.Answer[0].(*dns.AAAA).AAAA.String(); got != "2001:db8::beef" {
 		t.Fatalf("expected explicit AAAA to win, got %s", got)
+	}
+}
+
+func TestLightupForwardTemplateRejectsArbitraryNames(t *testing.T) {
+	cfg := forwardTemplateLightupConfig()
+	config.SetupDefaults(cfg)
+	addr, _ := startRecordServer(t, cfg, nil)
+
+	c := &dns.Client{Net: "tcp"}
+	for _, qname := range []string{
+		"trash.example.org.",
+		"totallyinvalidname.example.org.",
+	} {
+		m := new(dns.Msg)
+		m.SetQuestion(qname, dns.TypeAAAA)
+		r, _, err := c.Exchange(m, addr)
+		if err != nil {
+			t.Fatalf("AAAA query %s: %v", qname, err)
+		}
+		if r.Rcode != dns.RcodeNameError {
+			t.Fatalf("expected NXDOMAIN for %s, got rcode=%d answer=%v", qname, r.Rcode, r.Answer)
+		}
+		if len(r.Answer) != 0 {
+			t.Fatalf("expected no AAAA answer for %s, got %v", qname, r.Answer)
+		}
+	}
+}
+
+func TestLightupPrivateIPv4ExactRoundTripSymmetry(t *testing.T) {
+	cfg := forwardReverseDualStackLightupConfig()
+	cfg.Zones[0].Lightup.ForwardTemplate = "templated-{addr}.example.org."
+	addr, _ := startZonesServer(t, cfg)
+
+	targetIP := "172.16.0.42"
+	c := &dns.Client{Net: "tcp"}
+
+	ptrQ := new(dns.Msg)
+	ptrQ.SetQuestion(reverseOwnerForIP(t, targetIP), dns.TypePTR)
+	ptrResp, _, err := c.Exchange(ptrQ, addr)
+	if err != nil {
+		t.Fatalf("PTR query: %v", err)
+	}
+	if len(ptrResp.Answer) != 1 {
+		t.Fatalf("expected one PTR answer, got %v", ptrResp.Answer)
+	}
+	ptrName := ptrResp.Answer[0].(*dns.PTR).Ptr
+	wantPTR := "templated-172-16-0-42.example.org."
+	if ptrName != wantPTR {
+		t.Fatalf("expected PTR target %s, got %s", wantPTR, ptrName)
+	}
+
+	aQ := new(dns.Msg)
+	aQ.SetQuestion(ptrName, dns.TypeA)
+	aResp, _, err := c.Exchange(aQ, addr)
+	if err != nil {
+		t.Fatalf("A query: %v", err)
+	}
+	if len(aResp.Answer) != 1 {
+		t.Fatalf("expected one A answer, got %v", aResp.Answer)
+	}
+	if got := aResp.Answer[0].(*dns.A).A.String(); got != targetIP {
+		t.Fatalf("expected round-trip A %s, got %s", targetIP, got)
+	}
+}
+
+func TestLightupPrivateIPv4ExcludedAddressRejected(t *testing.T) {
+	cfg := forwardReverseDualStackLightupConfig()
+	cfg.Zones[0].Lightup.ForwardTemplate = "templated-{addr}.example.org."
+	addr, _ := startRecordServer(t, cfg, nil)
+
+	c := &dns.Client{Net: "tcp"}
+	m := new(dns.Msg)
+	m.SetQuestion("templated-172-16-0-1.example.org.", dns.TypeA)
+	r, _, err := c.Exchange(m, addr)
+	if err != nil {
+		t.Fatalf("A query: %v", err)
+	}
+	if r.Rcode != dns.RcodeNameError {
+		t.Fatalf("expected NXDOMAIN for excluded exact IPv4 address, got %d answer=%v", r.Rcode, r.Answer)
+	}
+}
+
+func TestLightupPrivateIPv4TemplateRejectsArbitraryNames(t *testing.T) {
+	cfg := forwardReverseDualStackLightupConfig()
+	cfg.Zones[0].Lightup.ForwardTemplate = "templated-{addr}.example.org."
+	addr, _ := startRecordServer(t, cfg, nil)
+
+	c := &dns.Client{Net: "tcp"}
+	m := new(dns.Msg)
+	m.SetQuestion("trash.example.org.", dns.TypeA)
+	r, _, err := c.Exchange(m, addr)
+	if err != nil {
+		t.Fatalf("A query: %v", err)
+	}
+	if r.Rcode != dns.RcodeNameError {
+		t.Fatalf("expected NXDOMAIN for arbitrary IPv4 template miss, got %d answer=%v", r.Rcode, r.Answer)
 	}
 }
 

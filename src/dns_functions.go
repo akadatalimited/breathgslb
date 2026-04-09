@@ -86,6 +86,9 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 				}
 			}
 		}
+		if len(m.Answer) == 0 && q.Qtype == dns.TypeA {
+			m.Answer = append(m.Answer, a.lightupARecords(name, cIP)...)
+		}
 		if len(m.Answer) == 0 && q.Qtype == dns.TypeAAAA {
 			m.Answer = append(m.Answer, a.lightupAAAARecords(name, cIP)...)
 		}
@@ -524,7 +527,7 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 		}
 	}
 	if owner != zone {
-		return a.lightupAAAARecords(owner, src)
+		return a.lightupARecords(owner, src)
 	}
 	// local view first if enabled
 	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
@@ -724,6 +727,10 @@ func (a *authority) persistRR(rrs []dns.RR, src net.IP, ipv6 bool) []dns.RR {
 }
 
 func (a *authority) buildA(addrs []string) []dns.RR {
+	return buildAForOwner(a.zone.Name, a.zone.TTLAnswer, addrs, a.cfg.MaxRecords, a.cfg.EDNSBuf)
+}
+
+func buildAForOwner(owner string, ttl uint32, addrs []string, maxRecords, ednsBuf int) []dns.RR {
 	var (
 		rrs []dns.RR
 		m   dns.Msg
@@ -733,13 +740,13 @@ func (a *authority) buildA(addrs []string) []dns.RR {
 		if p == nil || p.To4() == nil {
 			continue
 		}
-		rr := &dns.A{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeA, a.zone.TTLAnswer), A: p.To4()}
+		rr := &dns.A{Hdr: hdr(ensureDot(owner), dns.TypeA, ttl), A: p.To4()}
 		candidate := append(rrs, rr)
-		if a.cfg.MaxRecords > 0 && len(candidate) > a.cfg.MaxRecords {
+		if maxRecords > 0 && len(candidate) > maxRecords {
 			break
 		}
 		m.Answer = candidate
-		if m.Len() > a.cfg.EDNSBuf {
+		if ednsBuf > 0 && m.Len() > ednsBuf {
 			break
 		}
 		rrs = candidate

@@ -142,6 +142,7 @@ type authority struct {
 }
 
 type lightupRuntimeSpec struct {
+	family      string
 	zoneName    string
 	class       string
 	forwardTmpl string
@@ -150,6 +151,7 @@ type lightupRuntimeSpec struct {
 	prefix      *net.IPNet
 	exclude     []*net.IPNet
 	respondPTR  bool
+	respondA    bool
 	respondAAAA bool
 }
 

@@ -53,7 +53,7 @@
     forward: true
     reverse: true
     strategy: "hash"
-    forward_template: "forward.demo.-{addr}.lightitup.zerodns.co.uk."
+    forward_template: "templated-{addr}.lightitup.zerodns.co.uk."
     families:
       - family: "ipv6"
         class: "public"
@@ -63,6 +63,14 @@
         exclude:
           - "2a02:8012:bc57:5353::1/128"
           - "2a02:8012:bc57:5353::53/128"
+      - family: "ipv4"
+        class: "private"
+        prefix: "172.16.0.0/24"
+        respond_a: true
+        respond_ptr: true
+        exclude:
+          - "172.16.0.1/32"
+          - "172.16.0.2/32"
 
   txt:
     - text:
@@ -72,7 +80,9 @@
     - name: "_demo.lightitup.zerodns.co.uk."
       text:
         - "prefix=2a02:8012:bc57:5353::/64"
+        - "private-prefix=172.16.0.0/24"
         - "reverse-zone=3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa."
+        - "reverse-zone-v4=0.16.172.in-addr.arpa."
         - "secondary-ns=gslb2.zerodns.co.uk."
       ttl: 300
 

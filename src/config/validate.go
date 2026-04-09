@@ -223,13 +223,27 @@ func validateLightup(l *LightupConfig) error {
 	}
 	if len(l.Families) > 0 {
 		for i, fam := range l.Families {
-			if fam.Family != "" && fam.Family != "ipv6" {
+			if fam.Family != "" && fam.Family != "ipv6" && fam.Family != "ipv4" {
 				return fmt.Errorf("families[%d].family: unsupported value %q", i, fam.Family)
 			}
-			if fam.Class != "" && fam.Class != "public" && fam.Class != "ula" {
-				return fmt.Errorf("families[%d].class: unsupported value %q", i, fam.Class)
+			switch fam.Family {
+			case "ipv4":
+				if fam.Class != "" && fam.Class != "public" && fam.Class != "private" {
+					return fmt.Errorf("families[%d].class: unsupported value %q", i, fam.Class)
+				}
+			default:
+				if fam.Class != "" && fam.Class != "public" && fam.Class != "ula" {
+					return fmt.Errorf("families[%d].class: unsupported value %q", i, fam.Class)
+				}
+			}
+			if fam.RespondA && fam.Family == "ipv6" {
+				return fmt.Errorf("families[%d].respond_a: only valid for ipv4 families", i)
+			}
+			if fam.RespondAAAA && fam.Family == "ipv4" {
+				return fmt.Errorf("families[%d].respond_aaaa: only valid for ipv6 families", i)
 			}
 			if err := validateLightupPrefixAndExcludes(
+				fam.Family,
 				fmt.Sprintf("families[%d].prefix", i),
 				fam.Prefix,
 				fam.Exclude,
@@ -240,10 +254,10 @@ func validateLightup(l *LightupConfig) error {
 		}
 		return nil
 	}
-	return validateLightupPrefixAndExcludes("prefix", l.Prefix, l.Exclude, "exclude")
+	return validateLightupPrefixAndExcludes("ipv6", "prefix", l.Prefix, l.Exclude, "exclude")
 }
 
-func validateLightupPrefixAndExcludes(prefixField, prefix string, exclude []string, excludeField string) error {
+func validateLightupPrefixAndExcludes(family, prefixField, prefix string, exclude []string, excludeField string) error {
 	if strings.TrimSpace(prefix) == "" {
 		return fmt.Errorf("%s is required", prefixField)
 	}
@@ -251,7 +265,12 @@ func validateLightupPrefixAndExcludes(prefixField, prefix string, exclude []stri
 	if err != nil {
 		return fmt.Errorf("%s: invalid CIDR %q", prefixField, prefix)
 	}
-	if prefixNet.IP.To4() != nil {
+	wantIPv4 := strings.EqualFold(strings.TrimSpace(family), "ipv4")
+	if wantIPv4 {
+		if prefixNet.IP.To4() == nil {
+			return fmt.Errorf("%s: %q is not IPv4", prefixField, prefix)
+		}
+	} else if prefixNet.IP.To4() != nil {
 		return fmt.Errorf("%s: %q is not IPv6", prefixField, prefix)
 	}
 	prefixOnes, _ := prefixNet.Mask.Size()
@@ -261,7 +280,11 @@ func validateLightupPrefixAndExcludes(prefixField, prefix string, exclude []stri
 		if err != nil {
 			return fmt.Errorf("%s[%d]: invalid CIDR %q", excludeField, i, raw)
 		}
-		if exNet.IP.To4() != nil {
+		if wantIPv4 {
+			if exNet.IP.To4() == nil {
+				return fmt.Errorf("%s[%d]: %q is not IPv4", excludeField, i, raw)
+			}
+		} else if exNet.IP.To4() != nil {
 			return fmt.Errorf("%s[%d]: %q is not IPv6", excludeField, i, raw)
 		}
 		exOnes, _ := exNet.Mask.Size()

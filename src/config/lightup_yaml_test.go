@@ -35,6 +35,11 @@ zones:
           prefix: "fd00:1234:5678::/48"
           respond_aaaa: true
           respond_ptr: true
+        - family: "ipv4"
+          class: "private"
+          prefix: "172.16.0.0/24"
+          respond_a: true
+          respond_ptr: true
 `
 
 	f, err := os.CreateTemp("", "cfg-lightup-*.yaml")
@@ -59,8 +64,8 @@ zones:
 	if c.Zones[0].Lightup == nil {
 		t.Fatalf("expected lightup config to be loaded")
 	}
-	if len(c.Zones[0].Lightup.Families) != 2 {
-		t.Fatalf("expected 2 families, got %#v", c.Zones[0].Lightup.Families)
+	if len(c.Zones[0].Lightup.Families) != 3 {
+		t.Fatalf("expected 3 families, got %#v", c.Zones[0].Lightup.Families)
 	}
 	pub := c.Zones[0].Lightup.Families[0]
 	if pub.Prefix != "2a02:8012:bc57::/48" {
@@ -72,5 +77,9 @@ zones:
 	ula := c.Zones[0].Lightup.Families[1]
 	if ula.Prefix != "fd00:1234:5678::/48" {
 		t.Fatalf("unexpected ULA prefix %q", ula.Prefix)
+	}
+	priv := c.Zones[0].Lightup.Families[2]
+	if priv.Prefix != "172.16.0.0/24" || !priv.RespondA || !priv.RespondPTR {
+		t.Fatalf("unexpected private family %#v", priv)
 	}
 }

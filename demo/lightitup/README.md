@@ -6,6 +6,7 @@ authoritative node profiles:
 - `gslb.zerodns.co.uk.` -> `2a02:8012:bc57:53::1`
 - `gslb2.zerodns.co.uk.` -> `2a02:8012:bc57:53a::1`
 - light-up test space -> `2a02:8012:bc57:5353::/64`
+- private test space -> `172.16.0.0/24`
 
 It installs directly into `/etc/breathgslb` via `sudo make demodata`.
 
@@ -30,14 +31,26 @@ stable key paths under `/etc/breathgslb/keys/` and default to plain NSEC with
 `nsec3_iterations: 0`. The secondary keeps matching DNSSEC and `lightup`
 configuration locally while AXFR remains the source of zone content.
 
-## Reverse Zone
+## Reverse Zones
 
 For `2a02:8012:bc57:5353::/64` the delegated reverse zone is:
 
 `3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.`
 
+For `172.16.0.0/24` the delegated reverse zone is:
+
+`0.16.172.in-addr.arpa.`
+
 Use the full nibble-form owner for IPv6 PTR lookups. A shortened owner such as
 `1.1.1.3.5.3.5...ip6.arpa.` correctly returns `NXDOMAIN`.
+
+The private IPv4 family reserves:
+
+- `172.16.0.1` for `route.lightitup.zerodns.co.uk.`
+- `172.16.0.2` for `homer.lightitup.zerodns.co.uk.`
+
+All other `172.16.0.0/24` addresses synthesize through the configured lightup
+template.
 
 ## Suggested Checks
 
@@ -49,6 +62,8 @@ breathgslb -config /etc/breathgslb/config.gslb2.yaml
 dig @2a02:8012:bc57:53::1 NS lightitup.zerodns.co.uk.
 dig @2a02:8012:bc57:53a::1 NS lightitup.zerodns.co.uk.
 dig @2a02:8012:bc57:53::1 PTR 1.1.1.3.0.0.0.0.0.0.0.0.0.0.0.0.3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.
+dig @2a02:8012:bc57:53::1 PTR 42.0.16.172.in-addr.arpa.
+dig @2a02:8012:bc57:53::1 A templated-172-16-0-42.lightitup.zerodns.co.uk.
 dig +dnssec @2a02:8012:bc57:53a::1 DNSKEY lightitup.zerodns.co.uk.
 ```
 

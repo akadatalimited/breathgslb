@@ -130,10 +130,10 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load(%q) error = %v", cfgPath, err)
 		}
-		if len(c.Zones) != 2 {
-			t.Fatalf("%s: expected 2 demo zones, got %d", tc.name, len(c.Zones))
+		if len(c.Zones) != 3 {
+			t.Fatalf("%s: expected 3 demo zones, got %d", tc.name, len(c.Zones))
 		}
-		var sawForward, sawReverse bool
+		var sawForward, sawReverseV6, sawReverseV4 bool
 		for _, z := range c.Zones {
 			if want, ok := tc.expectedServe[z.Name]; ok && z.Serve != want {
 				t.Fatalf("%s: zone %s serve=%q want %q", tc.name, z.Name, z.Serve, want)
@@ -142,14 +142,19 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 			case "lightitup.zerodns.co.uk.":
 				sawForward = true
 			case "3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.":
-				sawReverse = true
+				sawReverseV6 = true
 				if tc.name == "primary" && len(z.PTR) < 4 {
 					t.Fatalf("expected populated reverse demo zone, got %#v", z.PTR)
 				}
+			case "0.16.172.in-addr.arpa.":
+				sawReverseV4 = true
+				if tc.name == "primary" && len(z.PTR) < 2 {
+					t.Fatalf("expected populated IPv4 reverse demo zone, got %#v", z.PTR)
+				}
 			}
 		}
-		if !sawForward || !sawReverse {
-			t.Fatalf("%s: expected forward and reverse demo zones, got %#v", tc.name, c.Zones)
+		if !sawForward || !sawReverseV6 || !sawReverseV4 {
+			t.Fatalf("%s: expected forward, IPv6 reverse, and IPv4 reverse demo zones, got %#v", tc.name, c.Zones)
 		}
 	}
 }

@@ -26,8 +26,10 @@
   lightup:
     enabled: true
     ttl: 60
+    forward: true
     reverse: true
     strategy: "hash"
+    forward_template: "templated-{addr}.lightitup.zerodns.co.uk."
     families:
       - family: "ipv6"
         class: "public"
@@ -37,3 +39,11 @@
         exclude:
           - "2a02:8012:bc57:5353::1/128"
           - "2a02:8012:bc57:5353::53/128"
+      - family: "ipv4"
+        class: "private"
+        prefix: "172.16.0.0/24"
+        respond_a: true
+        respond_ptr: true
+        exclude:
+          - "172.16.0.1/32"
+          - "172.16.0.2/32"
