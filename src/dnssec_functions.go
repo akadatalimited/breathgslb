@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -319,15 +320,16 @@ func (a *authority) makeRRSIG(rrset []dns.RR, key *dns.DNSKEY) *dns.RRSIG {
 
 // makeNSEC builds an NSEC record for the provided owner. The owner must exist in the zone index.
 func (a *authority) makeNSEC(owner string) dns.RR {
+	return a.makeNSECForQuery(owner, nil, nil)
+}
+
+func (a *authority) makeNSECForQuery(owner string, src net.IP, r *dns.Msg) dns.RR {
 	owner = strings.ToLower(ensureDot(owner))
 	if a.zidx == nil {
 		return nil
 	}
 	next := a.zidx.nextName(owner)
-	typesHere := a.zidx.typeBitmap(owner)
-	if len(typesHere) == 0 {
-		typesHere = a.runtimeTypeBitmap(owner)
-	}
+	typesHere := a.effectiveTypeBitmap(owner, src, r)
 	if len(typesHere) == 0 {
 		return nil
 	}
@@ -365,12 +367,16 @@ func (a *authority) makeNSEC(owner string) dns.RR {
 }
 
 func (a *authority) makeNSEC3(owner string) *dns.NSEC3 {
+	return a.makeNSEC3ForQuery(owner, nil, nil)
+}
+
+func (a *authority) makeNSEC3ForQuery(owner string, src net.IP, r *dns.Msg) *dns.NSEC3 {
 	if a.keys == nil || a.keys.nsec3Iterations == 0 || a.zidx == nil || len(a.zidx.nsec3Names) == 0 {
 		return nil
 	}
 
 	queryHash := a.zidx.nsec3Hash(owner, a.keys.nsec3Iterations, a.keys.nsec3Salt)
-	if !a.zidx.hasName(owner) && len(a.runtimeTypeBitmap(owner)) > 0 {
+	if !a.zidx.hasName(owner) && len(a.effectiveTypeBitmap(owner, src, r)) > 0 {
 		nextHash := a.zidx.nsec3NextHash(queryHash)
 		flags := uint8(0)
 		if a.keys.nsec3OptOut {
@@ -385,7 +391,7 @@ func (a *authority) makeNSEC3(owner string) *dns.NSEC3 {
 			Salt:       a.keys.nsec3Salt,
 			HashLength: 20,
 			NextDomain: nextHash,
-			TypeBitMap: a.nsec3TypeBitmapForOwner(owner),
+			TypeBitMap: a.nsec3TypeBitmapForOwner(owner, src, r),
 		}
 	}
 	coverHash := a.zidx.nsec3CoveringHash(queryHash)
@@ -409,7 +415,7 @@ func (a *authority) makeNSEC3(owner string) *dns.NSEC3 {
 		Salt:       a.keys.nsec3Salt,
 		HashLength: 20,
 		NextDomain: nextHash,
-		TypeBitMap: a.nsec3TypeBitmapForOwner(coverOwner),
+		TypeBitMap: a.nsec3TypeBitmapForOwner(coverOwner, src, r),
 	}
 }
 
@@ -431,11 +437,8 @@ func (a *authority) makeNSEC3PARAM() *dns.NSEC3PARAM {
 	}
 }
 
-func (a *authority) nsec3TypeBitmapForOwner(owner string) []uint16 {
-	typesHere := a.zidx.typeBitmap(owner)
-	if len(typesHere) == 0 {
-		typesHere = a.runtimeTypeBitmap(owner)
-	}
+func (a *authority) nsec3TypeBitmapForOwner(owner string, src net.IP, r *dns.Msg) []uint16 {
+	typesHere := a.effectiveTypeBitmap(owner, src, r)
 	zname := strings.ToLower(ensureDot(a.zone.Name))
 	seen := make(map[uint16]bool, len(typesHere)+2)
 	var bm []uint16
@@ -461,6 +464,47 @@ func (a *authority) nsec3TypeBitmapForOwner(owner string) []uint16 {
 	}
 	sort.Slice(bm, func(i, j int) bool { return bm[i] < bm[j] })
 	return bm
+}
+
+func (a *authority) effectiveTypeBitmap(owner string, src net.IP, r *dns.Msg) []uint16 {
+	owner = strings.ToLower(ensureDot(owner))
+	seen := map[uint16]bool{}
+	var out []uint16
+	add := func(typ uint16) {
+		if !seen[typ] {
+			seen[typ] = true
+			out = append(out, typ)
+		}
+	}
+
+	if a.zidx != nil {
+		for _, typ := range a.zidx.typeBitmap(owner) {
+			add(typ)
+		}
+	}
+	for _, typ := range a.runtimeTypeBitmap(owner) {
+		add(typ)
+	}
+	if src == nil || r == nil {
+		sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+		return out
+	}
+
+	if len(a.addrA(owner, src, r)) > 0 {
+		add(dns.TypeA)
+	} else if seen[dns.TypeA] {
+		out = removeRRType(out, dns.TypeA)
+		delete(seen, dns.TypeA)
+	}
+	if len(a.addrAAAA(owner, src, r)) > 0 {
+		add(dns.TypeAAAA)
+	} else if seen[dns.TypeAAAA] {
+		out = removeRRType(out, dns.TypeAAAA)
+		delete(seen, dns.TypeAAAA)
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 func (a *authority) nsec3DenialProofs(name string) []dns.RR {

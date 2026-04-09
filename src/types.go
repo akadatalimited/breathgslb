@@ -143,6 +143,8 @@ type authority struct {
 
 type lightupRuntimeSpec struct {
 	zoneName    string
+	class       string
+	forwardTmpl string
 	ptrTemplate string
 	ttl         uint32
 	prefix      *net.IPNet

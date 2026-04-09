@@ -221,18 +221,24 @@ func validateLightup(l *LightupConfig) error {
 	if len(l.Families) > 0 && (strings.TrimSpace(l.Prefix) != "" || len(l.Exclude) > 0) {
 		return fmt.Errorf("legacy prefix/exclude cannot be combined with families")
 	}
-	if len(l.Families) > 1 {
-		return fmt.Errorf("only one family is supported")
-	}
-	if len(l.Families) == 1 {
-		fam := l.Families[0]
-		if fam.Family != "" && fam.Family != "ipv6" {
-			return fmt.Errorf("families[0].family: unsupported value %q", fam.Family)
+	if len(l.Families) > 0 {
+		for i, fam := range l.Families {
+			if fam.Family != "" && fam.Family != "ipv6" {
+				return fmt.Errorf("families[%d].family: unsupported value %q", i, fam.Family)
+			}
+			if fam.Class != "" && fam.Class != "public" && fam.Class != "ula" {
+				return fmt.Errorf("families[%d].class: unsupported value %q", i, fam.Class)
+			}
+			if err := validateLightupPrefixAndExcludes(
+				fmt.Sprintf("families[%d].prefix", i),
+				fam.Prefix,
+				fam.Exclude,
+				fmt.Sprintf("families[%d].exclude", i),
+			); err != nil {
+				return err
+			}
 		}
-		if fam.Class != "" && fam.Class != "public" && fam.Class != "ula" {
-			return fmt.Errorf("families[0].class: unsupported value %q", fam.Class)
-		}
-		return validateLightupPrefixAndExcludes("families[0].prefix", fam.Prefix, fam.Exclude, "families[0].exclude")
+		return nil
 	}
 	return validateLightupPrefixAndExcludes("prefix", l.Prefix, l.Exclude, "exclude")
 }

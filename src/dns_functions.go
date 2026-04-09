@@ -69,6 +69,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	if strings.ToLower(a.zone.Serve) == "secondary" {
+		cIP := clientIP(w, r)
 		a.mu.RLock()
 		if q.Qtype == dns.TypeSOA && name == z {
 			if a.soaRR != nil {
@@ -84,6 +85,9 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 					m.Answer = append(m.Answer, rr)
 				}
 			}
+		}
+		if len(m.Answer) == 0 && q.Qtype == dns.TypeAAAA {
+			m.Answer = append(m.Answer, a.lightupAAAARecords(name, cIP)...)
 		}
 		if len(m.Answer) == 0 && q.Qtype == dns.TypePTR {
 			if rr := a.lightupPTRRecord(name); rr != nil {
@@ -105,10 +109,15 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 				m.Ns = append(m.Ns, &rr)
 			}
 			if wantDNSSEC(r) && a.secondaryDNSSECAvailable() {
-				m.Ns = append(m.Ns, a.secondaryDenialProofs(name, missing)...)
+				m.Ns = append(m.Ns, a.secondaryDenialProofs(name, missing, cIP, r)...)
 			}
 		} else if wantDNSSEC(r) && q.Qtype != dns.TypeANY {
-			m.Answer = append(m.Answer, a.secondaryRRSIGs(name, q.Qtype)...)
+			sigs := a.secondaryRRSIGs(name, q.Qtype)
+			if len(sigs) > 0 {
+				m.Answer = append(m.Answer, sigs...)
+			} else if a.keys != nil && a.keys.enabled {
+				m.Answer = a.signAll(m.Answer)
+			}
 		}
 		a.mu.RUnlock()
 		_ = w.WriteMsg(m)
@@ -231,11 +240,11 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 				}
 			} else {
 				if a.keys.nsec3Iterations > 0 {
-					if nsec3 := a.makeNSEC3(name); nsec3 != nil {
+					if nsec3 := a.makeNSEC3ForQuery(name, cIP, r); nsec3 != nil {
 						m.Ns = append(m.Ns, nsec3)
 					}
 				} else {
-					if nsec := a.makeNSEC(name); nsec != nil {
+					if nsec := a.makeNSECForQuery(name, cIP, r); nsec != nil {
 						m.Ns = append(m.Ns, nsec)
 					}
 				}
@@ -515,7 +524,7 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 		}
 	}
 	if owner != zone {
-		return nil
+		return a.lightupAAAARecords(owner, src)
 	}
 	// local view first if enabled
 	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
@@ -582,7 +591,7 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 		}
 	}
 	if owner != zone {
-		return nil
+		return a.lightupAAAARecords(owner, src)
 	}
 	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
 		if rr := a.localAnswers(true /*v6*/, src); rr != nil {
@@ -635,6 +644,9 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 				return rrs
 			}
 		}
+	}
+	if len(addrs) == 0 {
+		return a.lightupAAAARecords(owner, src)
 	}
 	return a.persistRR(a.buildAAAA(addrs), src, true)
 }
@@ -736,6 +748,10 @@ func (a *authority) buildA(addrs []string) []dns.RR {
 }
 
 func (a *authority) buildAAAA(addrs []string) []dns.RR {
+	return buildAAAAForOwner(a.zone.Name, a.zone.TTLAnswer, addrs, a.cfg.MaxRecords, a.cfg.EDNSBuf)
+}
+
+func buildAAAAForOwner(owner string, ttl uint32, addrs []string, maxRecords, ednsBuf int) []dns.RR {
 	var (
 		rrs []dns.RR
 		m   dns.Msg
@@ -745,13 +761,13 @@ func (a *authority) buildAAAA(addrs []string) []dns.RR {
 		if p == nil || p.To4() != nil {
 			continue
 		}
-		rr := &dns.AAAA{Hdr: hdr(ensureDot(a.zone.Name), dns.TypeAAAA, a.zone.TTLAnswer), AAAA: p}
+		rr := &dns.AAAA{Hdr: hdr(ensureDot(owner), dns.TypeAAAA, ttl), AAAA: p}
 		candidate := append(rrs, rr)
-		if a.cfg.MaxRecords > 0 && len(candidate) > a.cfg.MaxRecords {
+		if maxRecords > 0 && len(candidate) > maxRecords {
 			break
 		}
 		m.Answer = candidate
-		if m.Len() > a.cfg.EDNSBuf {
+		if ednsBuf > 0 && m.Len() > ednsBuf {
 			break
 		}
 		rrs = candidate
@@ -923,7 +939,7 @@ func (a *authority) secondaryRRSIGs(owner string, covered uint16) []dns.RR {
 	return out
 }
 
-func (a *authority) secondaryDenialProofs(name string, missing bool) []dns.RR {
+func (a *authority) secondaryDenialProofs(name string, missing bool, src net.IP, r *dns.Msg) []dns.RR {
 	if a.zidx == nil {
 		return nil
 	}
@@ -932,7 +948,7 @@ func (a *authority) secondaryDenialProofs(name string, missing bool) []dns.RR {
 		var proofs []dns.RR
 		if missing {
 			proofs = a.nsec3DenialProofs(name)
-		} else if nsec3 := a.makeNSEC3(name); nsec3 != nil {
+		} else if nsec3 := a.makeNSEC3ForQuery(name, src, r); nsec3 != nil {
 			proofs = append(proofs, nsec3)
 		}
 		for _, rr := range proofs {
@@ -966,7 +982,7 @@ func (a *authority) secondaryDenialProofs(name string, missing bool) []dns.RR {
 		}
 		return out
 	}
-	if nsec := a.makeNSEC(name); nsec != nil {
+	if nsec := a.makeNSECForQuery(name, src, r); nsec != nil {
 		out = append(out, nsec)
 		out = append(out, a.secondaryRRSIGs(nsec.Header().Name, dns.TypeNSEC)...)
 	}

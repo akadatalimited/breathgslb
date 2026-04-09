@@ -219,7 +219,7 @@ func TestValidateLightup(t *testing.T) {
 			wantErr: "cannot be combined",
 		},
 		{
-			name: "MultipleFamiliesRejected",
+			name: "MultipleFamiliesAllowed",
 			lightup: &LightupConfig{
 				Enabled: true,
 				Families: []LightupFamily{
@@ -227,7 +227,6 @@ func TestValidateLightup(t *testing.T) {
 					{Family: "ipv6", Prefix: "fd00::/48"},
 				},
 			},
-			wantErr: "only one family",
 		},
 		{
 			name: "InvalidFamilyTypeRejected",

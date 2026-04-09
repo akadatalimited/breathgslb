@@ -19,15 +19,22 @@ zones:
     minttl: 60
     lightup:
       enabled: true
+      forward: true
       reverse: true
       strategy: "hash"
       families:
         - family: "ipv6"
           class: "public"
           prefix: "2a02:8012:bc57::/48"
+          respond_aaaa: true
           respond_ptr: true
           exclude:
             - "2a02:8012:bc57:1::/64"
+        - family: "ipv6"
+          class: "ula"
+          prefix: "fd00:1234:5678::/48"
+          respond_aaaa: true
+          respond_ptr: true
 `
 
 	f, err := os.CreateTemp("", "cfg-lightup-*.yaml")
@@ -52,14 +59,18 @@ zones:
 	if c.Zones[0].Lightup == nil {
 		t.Fatalf("expected lightup config to be loaded")
 	}
-	if len(c.Zones[0].Lightup.Families) != 1 {
-		t.Fatalf("expected 1 family, got %#v", c.Zones[0].Lightup.Families)
+	if len(c.Zones[0].Lightup.Families) != 2 {
+		t.Fatalf("expected 2 families, got %#v", c.Zones[0].Lightup.Families)
 	}
-	fam := c.Zones[0].Lightup.Families[0]
-	if fam.Prefix != "2a02:8012:bc57::/48" {
-		t.Fatalf("unexpected prefix %q", fam.Prefix)
+	pub := c.Zones[0].Lightup.Families[0]
+	if pub.Prefix != "2a02:8012:bc57::/48" {
+		t.Fatalf("unexpected public prefix %q", pub.Prefix)
 	}
-	if len(fam.Exclude) != 1 || fam.Exclude[0] != "2a02:8012:bc57:1::/64" {
-		t.Fatalf("unexpected excludes %#v", fam.Exclude)
+	if len(pub.Exclude) != 1 || pub.Exclude[0] != "2a02:8012:bc57:1::/64" {
+		t.Fatalf("unexpected public excludes %#v", pub.Exclude)
+	}
+	ula := c.Zones[0].Lightup.Families[1]
+	if ula.Prefix != "fd00:1234:5678::/48" {
+		t.Fatalf("unexpected ULA prefix %q", ula.Prefix)
 	}
 }
