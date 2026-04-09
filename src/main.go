@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/akadatalimited/breathgslb/src/config"
 	"github.com/akadatalimited/breathgslb/src/dnsserver"
@@ -23,6 +24,8 @@ func main() {
 	apiKey := flag.String("api-key", "", "override API key path")
 	_ = flag.String("supervisor", "", "reserved for supervisor integrations")
 	flag.Parse()
+
+	serialDir = filepath.Join(filepath.Dir(filepath.Clean(*cfgPath)), "serials")
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {

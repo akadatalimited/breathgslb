@@ -1,5 +1,5 @@
 - name: "lightitup.zerodns.co.uk."
-  ns: ["gslb.zerodns.co.uk."]
+  ns: ["gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."]
   admin: "hostmaster.zerodns.co.uk."
   ttl_soa: 60
   ttl_answer: 20
@@ -7,7 +7,7 @@
   retry: 10
   expire: 90
   minttl: 60
-  serve: "local"
+  serve: "primary"
 
   dnssec:
     mode: generated
@@ -15,23 +15,33 @@
     ksk_keyfile: "/etc/breathgslb/keys/lightitup.zerodns.co.uk.ksk"
     nsec3_iterations: 0
 
-  a_master:
-    - ip: "217.155.241.55"
-  rfc_master:
-    - "172.16.0.0/24"
-  a_master_private:
-    - ip: "172.16.0.1"
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "lightitup-xfr."
+        secret: ""
+        allow_xfr_from:
+          - "127.0.0.1"
+          - "::1"
+          - "2a02:8012:bc57:53a::1"
+
   aaaa_master_private:
     - ip: "2a02:8012:bc57:5353::2"
   ula_master:
     - "2a02:8012:bc57:5353::/64"
   aaaa_master:
     - ip: "2a02:8012:bc57:5353::1"
+  a_master:
+    - ip: "217.155.241.55"
+  rfc_master:
+    - "172.16.0.0/24"
+  a_master_private:
+    - ip: "172.16.0.1"
 
-  a_standby:
-    - ip: "13.41.102.86"
   aaaa_standby:
     - ip: "2a02:8012:bc57:5353::2"
+  a_standby:
+    - ip: "13.41.102.86"
 
   aaaa_fallback:
     - ip: "2a02:8012:bc57:5353::53"
@@ -61,6 +71,7 @@
       text:
         - "prefix=2a02:8012:bc57:5353::/64"
         - "reverse-zone=3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa."
+        - "secondary-ns=gslb2.zerodns.co.uk."
       ttl: 300
 
   health:

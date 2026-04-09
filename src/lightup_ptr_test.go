@@ -110,12 +110,12 @@ func TestLightupPTRPrimarySecondaryConsistency(t *testing.T) {
 
 	secondaryCfg := lightupPTRZoneConfig()
 	secondaryCfg.Zones[1] = Zone{
-		Name:    "3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.",
-		Serve:   "secondary",
-		Masters: []string{primaryAddr},
+		Name:  "3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.",
+		Serve: "secondary",
 	}
 	secondaryAddr, auths := startZonesServer(t, secondaryCfg)
 	secondary := auths["3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa."]
+	secondary.zone.Masters = []string{primaryAddr}
 	if err := secondary.transferFromMasters(); err != nil {
 		t.Fatalf("initial transfer: %v", err)
 	}

@@ -156,6 +156,18 @@ func GenerateTSIGKeys(cfg *Config) {
 		}
 		for ki := range z.TSIG.Keys {
 			k := &z.TSIG.Keys[ki]
+			if k.Secret == "" {
+				if keyDir != "" {
+					if existing, err := loadTSIGKey(keyDir, k.Name); err == nil {
+						if k.Algorithm == "" && existing.Algorithm != "" {
+							k.Algorithm = existing.Algorithm
+						}
+						if existing.Secret != "" {
+							k.Secret = existing.Secret
+						}
+					}
+				}
+			}
 			if k.Algorithm == "" {
 				k.Algorithm = defAlg
 			}
@@ -194,4 +206,27 @@ func saveTSIGKey(dir string, k TSIGKey) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		fmt.Printf("tsig: write %s: %v\n", path, err)
 	}
+}
+
+func loadTSIGKey(dir, name string) (TSIGKey, error) {
+	path := filepath.Join(dir, strings.TrimSuffix(name, ".")+".key")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return TSIGKey{}, err
+	}
+	key := TSIGKey{Name: name}
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		switch {
+		case strings.HasPrefix(line, "algorithm "):
+			key.Algorithm = strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(line, "algorithm ")), ";")
+		case strings.HasPrefix(line, "secret "):
+			secret := strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(line, "secret ")), ";")
+			key.Secret = strings.Trim(secret, "\"")
+		}
+	}
+	if key.Secret == "" {
+		return TSIGKey{}, fmt.Errorf("%s: secret not found", path)
+	}
+	return key, nil
 }

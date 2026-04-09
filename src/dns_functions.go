@@ -351,18 +351,18 @@ func (a *authority) axfrRecords() []dns.RR {
 	for _, ns := range a.zone.NS {
 		rrs = append(rrs, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 	}
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AMaster))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AStandby))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AFallback))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AMasterPrivate))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AStandbyPrivate))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AFallbackPrivate))...)
 	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAMaster))...)
 	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAStandby))...)
 	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAFallback))...)
 	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAMasterPrivate))...)
 	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAStandbyPrivate))...)
 	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAFallbackPrivate))...)
+	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AMaster))...)
+	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AStandby))...)
+	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AFallback))...)
+	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AMasterPrivate))...)
+	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AStandbyPrivate))...)
+	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AFallbackPrivate))...)
 	for _, t := range a.zone.TXT {
 		name := ownerName(a.zone.Name, t.Name)
 		ttl := t.TTL

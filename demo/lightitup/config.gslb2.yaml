@@ -1,0 +1,18 @@
+# gslb2.zerodns.co.uk. secondary / replica node
+listen_addrs:
+  - "[2a02:8012:bc57:53a::1]:53"
+zones_dir: "/etc/breathgslb/zones-secondary"
+reverse_dir: "/etc/breathgslb/reverse-secondary"
+
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+jitter_ms: 200
+cooldown_sec: 25
+edns_buf: 1232
+log_queries: true
+log_syslog: false
+
+tsig:
+  path: "/etc/breathgslb/tsig"

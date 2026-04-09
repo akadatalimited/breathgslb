@@ -15,6 +15,9 @@ func startZonesServer(t *testing.T, cfg *Config) (string, map[string]*authority)
 	if err := config.GenerateReverseZones(cfg); err != nil {
 		t.Fatalf("GenerateReverseZones: %v", err)
 	}
+	oldDisable := cfg.DisableBackgroundLoops
+	cfg.DisableBackgroundLoops = true
+	t.Cleanup(func() { cfg.DisableBackgroundLoops = oldDisable })
 	mux, auths := buildMux(cfg, nil, nil, nil)
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
@@ -60,12 +63,12 @@ func TestPTRPrimarySecondaryConsistency(t *testing.T) {
 	primaryAddr, _ := startZonesServer(t, primaryCfg)
 
 	secondaryCfg := &Config{Zones: []Zone{{
-		Name:    "2.0.192.in-addr.arpa.",
-		Serve:   "secondary",
-		Masters: []string{primaryAddr},
+		Name:  "2.0.192.in-addr.arpa.",
+		Serve: "secondary",
 	}}}
 	secondaryAddr, auths := startZonesServer(t, secondaryCfg)
 	secondary := auths["2.0.192.in-addr.arpa."]
+	secondary.zone.Masters = []string{primaryAddr}
 	if err := secondary.transferFromMasters(); err != nil {
 		t.Fatalf("initial transfer: %v", err)
 	}

@@ -224,15 +224,23 @@ demodata:
 	install -d $(DESTDIR)$(DEMO_DEST)
 	install -d $(DESTDIR)$(DEMO_DEST)/zones
 	install -d $(DESTDIR)$(DEMO_DEST)/reverse
+	install -d $(DESTDIR)$(DEMO_DEST)/zones-secondary
+	install -d $(DESTDIR)$(DEMO_DEST)/reverse-secondary
 	install -d $(DESTDIR)$(DEMO_DEST)/keys
+	install -d $(DESTDIR)$(DEMO_DEST)/serials
 	install -d $(DESTDIR)$(DEMO_DEST)/tsig
 	install -m 0644 $(DEMO_SRC)/config.yaml $(DESTDIR)$(DEMO_DEST)/config.yaml
+	install -m 0644 $(DEMO_SRC)/config.gslb2.yaml $(DESTDIR)$(DEMO_DEST)/config.gslb2.yaml
 	install -m 0644 $(DEMO_SRC)/README.md $(DESTDIR)$(DEMO_DEST)/README.lightitup.md
 	install -m 0644 $(DEMO_SRC)/zones/*.fwd.yaml $(DESTDIR)$(DEMO_DEST)/zones/
 	install -m 0644 $(DEMO_SRC)/reverse/*.rev.yaml $(DESTDIR)$(DEMO_DEST)/reverse/
+	install -m 0644 $(DEMO_SRC)/zones-secondary/*.fwd.yaml $(DESTDIR)$(DEMO_DEST)/zones-secondary/
+	install -m 0644 $(DEMO_SRC)/reverse-secondary/*.rev.yaml $(DESTDIR)$(DEMO_DEST)/reverse-secondary/
 	@echo "==> installed demo data to $(DESTDIR)$(DEMO_DEST)"
 	@echo "Run with:"
 	@echo "  $(BINARY) -config $(DEMO_DEST)/config.yaml"
+	@echo "Secondary replica config:"
+	@echo "  $(BINARY) -config $(DEMO_DEST)/config.gslb2.yaml"
 
 sync-demodata:
 	sh scripts/sync-demodata.sh /etc/breathgslb $(DEMO_SRC)

@@ -1,5 +1,5 @@
 - name: "3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa."
-  ns: ["gslb.zerodns.co.uk."]
+  ns: ["gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."]
   admin: "hostmaster.zerodns.co.uk."
   ttl_soa: 300
   ttl_answer: 300
@@ -13,6 +13,16 @@
     zsk_keyfile: "/etc/breathgslb/keys/3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.zsk"
     ksk_keyfile: "/etc/breathgslb/keys/3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.ksk"
     nsec3_iterations: 0
+
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "lightitup-xfr."
+        secret: ""
+        allow_xfr_from:
+          - "127.0.0.1"
+          - "::1"
+          - "2a02:8012:bc57:53a::1"
 
   # Demo PTRs under 2a02:8012:bc57:5353::/64.
   ptr:

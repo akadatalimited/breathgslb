@@ -15,6 +15,9 @@ import (
 func startRecordServer(t *testing.T, cfg *Config, gr *geoResolver) (string, *authority) {
 	t.Helper()
 	ensureIPv4(t)
+	oldDisable := cfg.DisableBackgroundLoops
+	cfg.DisableBackgroundLoops = true
+	t.Cleanup(func() { cfg.DisableBackgroundLoops = oldDisable })
 	mux, auths := buildMux(cfg, gr, nil, nil)
 	auth := auths[ensureDot(cfg.Zones[0].Name)]
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})

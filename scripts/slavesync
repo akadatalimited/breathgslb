@@ -1,0 +1,73 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  echo "usage: $0 [--check] <primary-root> <secondary-root>" >&2
+  exit 2
+}
+
+CHECK=0
+if [ "${1:-}" = "--check" ]; then
+  CHECK=1
+  shift
+fi
+
+[ "$#" -eq 2 ] || usage
+
+SRC_ROOT="$1"
+DST_ROOT="$2"
+
+sync_dir() {
+  name="$1"
+  src="$SRC_ROOT/$name"
+  dst="$DST_ROOT/$name"
+  [ -d "$src" ] || return 0
+  install -d "$dst"
+  rm -f "$dst"/*
+  found=0
+  for f in "$src"/*; do
+    [ -e "$f" ] || continue
+    install -m 0600 "$f" "$dst/$(basename "$f")"
+    found=1
+  done
+  if [ "$found" -eq 0 ]; then
+    echo "warning: $src is empty" >&2
+  fi
+}
+
+check_dir() {
+  name="$1"
+  src="$SRC_ROOT/$name"
+  dst="$DST_ROOT/$name"
+  [ -d "$src" ] || return 0
+  [ -d "$dst" ] || {
+    echo "missing $dst" >&2
+    return 1
+  }
+  for f in "$src"/*; do
+    [ -e "$f" ] || continue
+    target="$dst/$(basename "$f")"
+    [ -f "$target" ] || {
+      echo "missing $target" >&2
+      return 1
+    }
+    cmp -s "$f" "$target" || {
+      echo "out of sync: $target" >&2
+      return 1
+    }
+  done
+  return 0
+}
+
+if [ "$CHECK" -eq 1 ]; then
+  check_dir keys
+  check_dir tsig
+  check_dir serials
+  echo "replica state is in sync"
+  exit 0
+fi
+
+sync_dir keys
+sync_dir tsig
+sync_dir serials
+echo "synced keys, tsig, and serials from $SRC_ROOT to $DST_ROOT"

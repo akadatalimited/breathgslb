@@ -128,6 +128,34 @@ func TestTSIGMissingSeedEnv(t *testing.T) {
 	}
 }
 
+func TestTSIGLoadsExistingKeyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	first := &Config{
+		TSIG: &TSIGGlobalConfig{Path: tmpDir},
+		Zones: []Zone{{
+			Name: "example.org.",
+			TSIG: &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: ""}}},
+		}},
+	}
+	config.GenerateTSIGKeys(first)
+	secret := first.Zones[0].TSIG.Keys[0].Secret
+	if secret == "" {
+		t.Fatalf("expected generated secret")
+	}
+
+	second := &Config{
+		TSIG: &TSIGGlobalConfig{Path: tmpDir},
+		Zones: []Zone{{
+			Name: "example.org.",
+			TSIG: &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: ""}}},
+		}},
+	}
+	config.GenerateTSIGKeys(second)
+	if got := second.Zones[0].TSIG.Keys[0].Secret; got != secret {
+		t.Fatalf("expected secret loaded from file, got %q want %q", got, secret)
+	}
+}
+
 func TestTSIGInvalidAlgorithm(t *testing.T) {
 	ensureIPv4(t)
 	tmpDir := t.TempDir()

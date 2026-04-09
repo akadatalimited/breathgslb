@@ -201,10 +201,12 @@ func (a *authority) dnskeyRRSet() []dns.RR {
 	}
 	var out []dns.RR
 	if a.keys.zsk != nil {
-		out = append(out, a.keys.zsk)
+		rr := *a.keys.zsk
+		out = append(out, &rr)
 	}
 	if a.keys.ksk != nil && a.keys.ksk != a.keys.zsk {
-		out = append(out, a.keys.ksk)
+		rr := *a.keys.ksk
+		out = append(out, &rr)
 	}
 	for i := range out {
 		out[i].Header().Name = ensureDot(a.zone.Name)

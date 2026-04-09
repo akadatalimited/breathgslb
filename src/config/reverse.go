@@ -107,40 +107,40 @@ func appendReverseZones(cfg *Config) ([]Zone, error) {
 			}
 			return nil
 		}
-		if err := add(src.AMaster); err != nil {
-			return nil, err
-		}
 		if err := add(src.AAAAMaster); err != nil {
-			return nil, err
-		}
-		if err := add(src.AStandby); err != nil {
 			return nil, err
 		}
 		if err := add(src.AAAAStandby); err != nil {
 			return nil, err
 		}
-		if err := add(src.AFallback); err != nil {
-			return nil, err
-		}
 		if err := add(src.AAAAFallback); err != nil {
-			return nil, err
-		}
-		if err := add(src.AMasterPrivate); err != nil {
 			return nil, err
 		}
 		if err := add(src.AAAAMasterPrivate); err != nil {
 			return nil, err
 		}
-		if err := add(src.AStandbyPrivate); err != nil {
-			return nil, err
-		}
 		if err := add(src.AAAAStandbyPrivate); err != nil {
 			return nil, err
 		}
-		if err := add(src.AFallbackPrivate); err != nil {
+		if err := add(src.AAAAFallbackPrivate); err != nil {
 			return nil, err
 		}
-		if err := add(src.AAAAFallbackPrivate); err != nil {
+		if err := add(src.AMaster); err != nil {
+			return nil, err
+		}
+		if err := add(src.AStandby); err != nil {
+			return nil, err
+		}
+		if err := add(src.AFallback); err != nil {
+			return nil, err
+		}
+		if err := add(src.AMasterPrivate); err != nil {
+			return nil, err
+		}
+		if err := add(src.AStandbyPrivate); err != nil {
+			return nil, err
+		}
+		if err := add(src.AFallbackPrivate); err != nil {
 			return nil, err
 		}
 	}

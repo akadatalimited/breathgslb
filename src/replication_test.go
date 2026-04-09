@@ -17,6 +17,9 @@ import (
 func startTestServer(t *testing.T, cfg *Config, secrets map[string]string, prev map[string]*authority) (*dns.Server, string, *authority) {
 	t.Helper()
 	ensureIPv4(t)
+	oldDisable := cfg.DisableBackgroundLoops
+	cfg.DisableBackgroundLoops = true
+	t.Cleanup(func() { cfg.DisableBackgroundLoops = oldDisable })
 	mux, auths := buildMux(cfg, nil, nil, prev)
 	auth := auths[ensureDot(cfg.Zones[0].Name)]
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
@@ -334,26 +337,28 @@ func TestAXFRIncludesDNSSECRRs(t *testing.T) {
 func TestSecondaryServesTransferredDNSSECData(t *testing.T) {
 	ensureIPv4(t)
 	primaryCfg := &Config{Zones: []Zone{{
-		Name:      "example.org.",
-		NS:        []string{"ns.example.org."},
-		Admin:     "hostmaster.example.org.",
-		TTLSOA:    3600,
-		TTLAnswer: 300,
-		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
-		DNSSEC:    &DNSSECZoneConfig{Mode: DNSSECModeManual},
+		Name:       "example.org.",
+		NS:         []string{"ns.example.org."},
+		Admin:      "hostmaster.example.org.",
+		TTLSOA:     3600,
+		TTLAnswer:  300,
+		AAAAMaster: []IPAddr{{IP: "2001:db8::1"}},
+		AMaster:    []IPAddr{{IP: "192.0.2.1"}},
+		DNSSEC:     &DNSSECZoneConfig{Mode: DNSSECModeManual},
 	}}}
 	_, primaryAddr, primaryAuth := startTestServer(t, primaryCfg, nil, nil)
 	primaryAuth.setMasterUp(true, true)
 	primaryAuth.keys = generateTestKeys(t, primaryCfg.Zones[0].Name)
 	primaryAuth.zidx = buildIndex(primaryCfg.Zones[0])
+	primaryAuth.cancel()
 
 	secondaryCfg := &Config{Zones: []Zone{{
-		Name:    "example.org.",
-		Serve:   "secondary",
-		Masters: []string{primaryAddr},
-		DNSSEC:  &DNSSECZoneConfig{Mode: DNSSECModeManual},
+		Name:   "example.org.",
+		Serve:  "secondary",
+		DNSSEC: &DNSSECZoneConfig{Mode: DNSSECModeManual},
 	}}}
 	_, secondaryAddr, secondaryAuth := startTestServer(t, secondaryCfg, nil, nil)
+	secondaryAuth.zone.Masters = []string{primaryAddr}
 	if err := secondaryAuth.transferFromMasters(); err != nil {
 		t.Fatalf("initial transfer: %v", err)
 	}
@@ -365,7 +370,7 @@ func TestSecondaryServesTransferredDNSSECData(t *testing.T) {
 	o.SetDo()
 
 	m := new(dns.Msg)
-	m.SetQuestion("example.org.", dns.TypeA)
+	m.SetQuestion("example.org.", dns.TypeAAAA)
 	m.Extra = append(m.Extra, o)
 
 	primaryResp, _, err := c.Exchange(m, primaryAddr)
@@ -390,6 +395,23 @@ func TestSecondaryServesTransferredDNSSECData(t *testing.T) {
 	gotSecondary := toStrings(secondaryResp.Answer)
 	if strings.Join(gotPrimary, "\n") != strings.Join(gotSecondary, "\n") {
 		t.Fatalf("signed answer mismatch\nprimary:\n%s\nsecondary:\n%s", strings.Join(gotPrimary, "\n"), strings.Join(gotSecondary, "\n"))
+	}
+
+	m = new(dns.Msg)
+	m.SetQuestion("example.org.", dns.TypeA)
+	m.Extra = append(m.Extra, o)
+	primaryResp, _, err = c.Exchange(m, primaryAddr)
+	if err != nil {
+		t.Fatalf("query primary A: %v", err)
+	}
+	secondaryResp, _, err = c.Exchange(m, secondaryAddr)
+	if err != nil {
+		t.Fatalf("query secondary A: %v", err)
+	}
+	gotPrimary = toStrings(primaryResp.Answer)
+	gotSecondary = toStrings(secondaryResp.Answer)
+	if strings.Join(gotPrimary, "\n") != strings.Join(gotSecondary, "\n") {
+		t.Fatalf("signed A answer mismatch\nprimary:\n%s\nsecondary:\n%s", strings.Join(gotPrimary, "\n"), strings.Join(gotSecondary, "\n"))
 	}
 
 	m = new(dns.Msg)

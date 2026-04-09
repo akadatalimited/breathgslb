@@ -42,6 +42,9 @@ func buildMux(cfg *Config, gr *geoResolver, sup *supervisor, prev map[string]*au
 
 		mux.HandleFunc(zname, auth.handle)
 		auths[zname] = auth
+		if cfg.DisableBackgroundLoops {
+			continue
+		}
 		if strings.ToLower(z.Serve) == "secondary" && len(z.Masters) > 0 {
 			if sup != nil {
 				sup.watch(ctx, zname+" fetchLoop", auth.fetchLoop)

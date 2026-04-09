@@ -70,7 +70,7 @@ func (a *authority) transferFromMasters() error {
 		if a.zone.TSIG != nil && len(a.zone.TSIG.Keys) > 0 {
 			k := a.zone.TSIG.Keys[0]
 			name := ensureDot(k.Name)
-			alg := k.Algorithm
+			alg := normalizeTSIGAlgorithm(k.Algorithm)
 			if alg == "" {
 				alg = dns.HmacSHA256
 			}
@@ -137,6 +137,27 @@ func (a *authority) transferFromMasters() error {
 		return nil
 	}
 	return lastErr
+}
+
+func normalizeTSIGAlgorithm(alg string) string {
+	switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(alg), ".")) {
+	case "":
+		return ""
+	case "hmac-md5":
+		return dns.HmacMD5
+	case "hmac-sha1":
+		return dns.HmacSHA1
+	case "hmac-sha224":
+		return dns.HmacSHA224
+	case "hmac-sha256":
+		return dns.HmacSHA256
+	case "hmac-sha384":
+		return dns.HmacSHA384
+	case "hmac-sha512":
+		return dns.HmacSHA512
+	default:
+		return alg
+	}
 }
 
 func (a *authority) purgeLoop() {
@@ -537,4 +558,3 @@ func (a *authority) checkOnce() {
 	s6 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AAAAStandby), hc)
 	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
 }
-

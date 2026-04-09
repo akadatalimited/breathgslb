@@ -171,6 +171,10 @@ type Config struct {
 	ZonesDir    string   `yaml:"zones_dir,omitempty"`
 	Zones       []Zone   `yaml:"zones"`
 
+	// DisableBackgroundLoops is for tests that need a static authority without
+	// starting health, purge, or secondary fetch goroutines.
+	DisableBackgroundLoops bool `yaml:"-"`
+
 	TimeoutSec  int  `yaml:"timeout_sec"`
 	IntervalSec int  `yaml:"interval_sec"`
 	Rise        int  `yaml:"rise"`
