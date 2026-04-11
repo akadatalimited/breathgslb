@@ -1,0 +1,102 @@
+# BreathGSLB primary main config model
+#
+# This file is a schema-shaped operator model, not a minimal example.
+# It is intended to show all current top-level YAML options that a primary can use.
+# It is valid YAML, but not intended to be loaded as-is because it shows
+# mutually exclusive choices side by side.
+#
+# Main config precedence:
+# 1. listen_addrs
+# 2. interfaces
+# 3. listen
+#
+# Zone loading:
+# - inline zones under `zones:` are allowed
+# - forward zone files are usually loaded from `zones_dir`
+# - reverse zone files are usually loaded from `reverse_dir`
+#
+# Runtime note:
+# - primaries normally keep zone data in files under zones_dir/reverse_dir
+# - discovery is optional on a primary, but can be enabled so the primary also
+#   publishes the shared catalog zone for secondaries
+
+listen: ":53"
+
+listen_addrs:
+  - "[2a02:8012:bc57:53::1]:53"
+  - "0.0.0.0:53"
+
+interfaces:
+  - "gslb0"
+  - "enp1s0"
+
+zones_dir: "/etc/breathgslb/zones"
+reverse_dir: "/etc/breathgslb/reverse"
+
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+edns_buf: 1232
+max_records: 8
+log_queries: true
+max_workers: 0
+
+jitter_ms: 200
+cooldown_sec: 25
+
+dns64_prefix: "64:ff9b::"
+
+# Persistence is answer stickiness, not zone persistence.
+persistence_enabled: false
+persistence_mode: "rr"
+
+log_file: "/var/log/breathgslb/breathgslb.log"
+log_syslog: false
+
+tsig:
+  path: "/etc/breathgslb/tsig"
+
+# Optional shared discovery catalog for secondaries.
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  masters:
+    - "[2a02:8012:bc57:53::1]:53"
+  ttl: 60
+  tsig:
+    default_algorithm: "hmac-sha256"
+    seed_env: "BREATH_DISCOVERY_TSIG_SEED"
+    epoch: 1
+    allow_unsigned: false
+    keys:
+      - name: "breathgslb-discovery."
+        algorithm: "hmac-sha256"
+        secret: ""
+        allow_xfr_from:
+          - "127.0.0.1"
+          - "::1"
+          - "2a02:8012:bc57::/48"
+          - "172.16.0.0/12"
+
+geoip:
+  enabled: true
+  database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
+  prefer_field: "registered"
+  cache_ttl_sec: 600
+
+# Optional HTTPS admin API.
+api: false
+api-listen: 8443
+api-interface:
+  - "127.0.0.1"
+  - "::1"
+api-token: ""
+api-cert: "/etc/breathgslb/api/server.crt"
+api-key: "/etc/breathgslb/api/server.key"
+
+# Optional CPU limiting knobs.
+max_cpu_cores: 0
+max_threads: 0
+
+# Inline zones are supported, but file-based zones are the usual pattern.
+zones: []

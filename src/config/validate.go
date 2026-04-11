@@ -111,6 +111,9 @@ func ValidateZone(z *Zone) error {
 	if err := validateHosts(z); err != nil {
 		return err
 	}
+	if z.Geo != nil && len(z.Geo.Named) > 0 && geoUsesLegacyTiers(z.Geo) {
+		return fmt.Errorf("geo: named-pool geo cannot be combined with legacy master/standby/fallback geo")
+	}
 	if z.Geo != nil && len(z.Geo.Named) > 0 {
 		poolNames := map[string]bool{}
 		for _, p := range z.Pools {
@@ -239,7 +242,59 @@ func ValidateZone(z *Zone) error {
 			}
 		}
 	}
+	if err := validateZoneRoleByName(z); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func validateZoneRoleByName(z *Zone) error {
+	isReverse := isReverseZoneName(z.Name)
+	if !isReverse {
+		if len(z.PTR) > 0 {
+			return fmt.Errorf("ptr: forward zones must not define PTR records; use delegated reverse zones under in-addr.arpa or ip6.arpa")
+		}
+		return nil
+	}
+
+	if z.Alias != "" || len(z.AliasHost) > 0 {
+		return fmt.Errorf("reverse zones must not define alias or alias_host")
+	}
+	if len(z.Hosts) > 0 {
+		return fmt.Errorf("reverse zones must not define hosts")
+	}
+	if len(z.Pools) > 0 {
+		return fmt.Errorf("reverse zones must not define pools")
+	}
+	if len(z.AMaster)+len(z.AAAAMaster)+len(z.AStandby)+len(z.AAAAStandby)+len(z.AFallback)+len(z.AAAAFallback) > 0 {
+		return fmt.Errorf("reverse zones must not define forward apex A/AAAA answer fields")
+	}
+	if len(z.AMasterPrivate)+len(z.AAAAMasterPrivate)+len(z.AStandbyPrivate)+len(z.AAAAStandbyPrivate)+len(z.AFallbackPrivate)+len(z.AAAAFallbackPrivate) > 0 {
+		return fmt.Errorf("reverse zones must not define private apex A/AAAA answer fields")
+	}
+	if len(z.RFCMaster)+len(z.ULAMaster)+len(z.RFCStandby)+len(z.ULAStandby)+len(z.RFCFallback)+len(z.ULAFallback) > 0 {
+		return fmt.Errorf("reverse zones must not define local/private client CIDR steering fields")
+	}
+	if z.Geo != nil || z.GeoAnswers != nil {
+		return fmt.Errorf("reverse zones must not define geo or geo_answers")
+	}
+	if z.Health != nil {
+		return fmt.Errorf("reverse zones must not define health checks")
+	}
+	if len(z.TXT)+len(z.MX)+len(z.CAA)+len(z.SSHFP)+len(z.SRV)+len(z.NAPTR) > 0 || z.RP != nil {
+		return fmt.Errorf("reverse zones must not define forward-style static records; only PTR plus zone/DNSSEC/transfer metadata are supported")
+	}
+	if z.Lightup != nil {
+		if z.Lightup.Forward {
+			return fmt.Errorf("reverse zones must not enable lightup forward synthesis")
+		}
+		for i, fam := range z.Lightup.Families {
+			if fam.RespondA || fam.RespondAAAA {
+				return fmt.Errorf("reverse zones lightup.families[%d]: only respond_ptr is valid", i)
+			}
+		}
+	}
 	return nil
 }
 
@@ -291,6 +346,9 @@ func validateHosts(z *Zone) error {
 			return fmt.Errorf("hosts[%d].name: duplicate host %q", i, h.Name)
 		}
 		seen[key] = true
+		if h.Alias != "" && len(h.Pools) > 0 {
+			return fmt.Errorf("hosts[%d]: alias and pools are mutually exclusive", i)
+		}
 		if h.Alias != "" {
 			if err := validateDomain(h.Alias); err != nil {
 				return fmt.Errorf("hosts[%d].alias: %w", i, err)
@@ -298,6 +356,9 @@ func validateHosts(z *Zone) error {
 		}
 		if err := validatePools(h.Pools); err != nil {
 			return fmt.Errorf("hosts[%d]: %w", i, err)
+		}
+		if h.Geo != nil && len(h.Geo.Named) > 0 && geoUsesLegacyTiers(h.Geo) {
+			return fmt.Errorf("hosts[%d].geo: named-pool geo cannot be combined with legacy master/standby/fallback geo", i)
 		}
 		if h.Geo != nil && len(h.Geo.Named) > 0 {
 			poolNames := map[string]bool{}
@@ -311,7 +372,29 @@ func validateHosts(z *Zone) error {
 			}
 		}
 	}
+	for host := range z.AliasHost {
+		owner, err := validateHostName(z.Name, host)
+		if err != nil {
+			return fmt.Errorf("alias_host[%s]: %w", host, err)
+		}
+		if seen[strings.ToLower(owner)] {
+			return fmt.Errorf("alias_host[%s]: collides with explicit host definition", host)
+		}
+	}
 	return nil
+}
+
+func geoUsesLegacyTiers(g *GeoPolicy) bool {
+	if g == nil {
+		return false
+	}
+	tiers := []GeoTierPolicy{g.Master, g.Standby, g.Fallback}
+	for _, t := range tiers {
+		if t.AllowAll || len(t.AllowCountries) > 0 || len(t.AllowContinents) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func validateHostName(apex, name string) (string, error) {

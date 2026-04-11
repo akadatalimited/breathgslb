@@ -1,0 +1,86 @@
+# BreathGSLB secondary main config model
+#
+# This is the current intended secondary pattern:
+# - one main config
+# - no hand-maintained forward/reverse zone copies required
+# - bootstrap from discovery
+# - persist local `serve: secondary` snapshots after transfer
+#
+# It is valid YAML, but not intended to be loaded as-is because it shows
+# mutually exclusive choices side by side.
+#
+# Secondary runtime notes:
+# - `xfr_source` is optional and should only be set if that IP really exists on
+#   the local host
+# - keys and TSIG material still need to exist locally
+# - secondary snapshots are node-local runtime state and must not be copied
+#   blindly between different servers
+
+listen: ":53"
+
+listen_addrs:
+  - "[2a02:8012:bc57:53a::1]:53"
+
+interfaces:
+  - "enp1s0"
+
+zones_dir: "/etc/breathgslb/zones"
+reverse_dir: "/etc/breathgslb/reverse"
+
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+edns_buf: 1232
+max_records: 8
+log_queries: true
+max_workers: 0
+
+jitter_ms: 200
+cooldown_sec: 25
+
+dns64_prefix: "64:ff9b::"
+
+persistence_enabled: false
+persistence_mode: "rr"
+
+log_file: "/var/log/breathgslb/breathgslb.log"
+log_syslog: false
+
+tsig:
+  path: "/etc/breathgslb/tsig"
+
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  masters:
+    - "[2a02:8012:bc57:53::1]:53"
+  xfr_source: "2a02:8012:bc57:53a::1"
+  ttl: 60
+  tsig:
+    default_algorithm: "hmac-sha256"
+    # In practice this is normally the same shared discovery key as the primary.
+    keys:
+      - name: "breathgslb-discovery."
+        algorithm: "hmac-sha256"
+        secret: ""
+
+geoip:
+  enabled: true
+  database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
+  prefer_field: "registered"
+  cache_ttl_sec: 600
+
+api: false
+api-listen: 8443
+api-interface:
+  - "127.0.0.1"
+  - "::1"
+api-token: ""
+api-cert: "/etc/breathgslb/api/server.crt"
+api-key: "/etc/breathgslb/api/server.key"
+
+max_cpu_cores: 0
+max_threads: 0
+
+# For a discovery-only secondary, inline zones are normally empty.
+zones: []

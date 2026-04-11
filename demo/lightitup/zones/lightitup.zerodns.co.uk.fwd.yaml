@@ -154,8 +154,6 @@
       allow_continents: ["NA"]
     public-v6-fallback:
       allow_all: true
-    fallback:
-      allow_all: true
 
   lightup:
     enabled: true

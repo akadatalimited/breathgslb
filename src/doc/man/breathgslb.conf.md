@@ -265,6 +265,12 @@ Reverse zones may be:
 Delegated reverse zones are served live and can be signed and transferred like
 forward zones.
 
+BreathGSLB product policy is stricter than bare DNS syntax here:
+
+- forward zones must not define direct `ptr`
+- reverse zones must not define pools, hosts, ALIAS, geo steering, health, or
+  forward-style static records
+
 # DNSSEC
 
 `dnssec` supports:
@@ -308,7 +314,7 @@ The following record sections are supported:
 - `sshfp`
 - `srv`
 - `naptr`
-- `ptr`
+- `ptr` in delegated reverse zones
 
 # ALIAS AND CNAME
 

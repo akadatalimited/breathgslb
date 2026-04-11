@@ -10,7 +10,7 @@
   minttl: 60
   serve: secondary
   masters:
-    - 127.0.0.1:45639
+    - 127.0.0.1:41865
   ptr:
     - name: "1"
       ptr: example.org.

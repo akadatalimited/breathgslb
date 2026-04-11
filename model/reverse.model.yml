@@ -1,0 +1,112 @@
+# BreathGSLB reverse zone model
+#
+# Reverse zones are first-class YAML files and normally live in reverse_dir as
+# `*.rev.yaml`.
+#
+# Reverse answer sources:
+# 1. explicit `ptr:` records in the reverse zone
+# 2. generated PTR data requested by `reverse: true` on configured addresses
+# 3. `lightup` PTR synthesis for owned prefixes
+#
+# Reverse secondaries:
+# - may be discovered and transferred like forward zones
+# - persist as local `serve: secondary` snapshots
+#
+# Product policy:
+# - reverse zones are reverse-mapping zones
+# - they do not carry forward host pools, ALIAS, geo steering, health checks,
+#   or forward-style static records
+# - BreathGSLB now validates this explicitly
+
+- name: "3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa."
+  ns:
+    - "gslb.example.net."
+    - "gslb2.example.net."
+  admin: "hostmaster.example.net."
+  ttl_soa: 60
+  ttl_answer: 20
+  refresh: 60
+  retry: 10
+  expire: 90
+  minttl: 60
+
+  serve: "primary"
+
+  # Secondary-only fields. Leave unset on a normal primary reverse zone.
+  masters:
+    - "[2001:db8:53::1]:53"
+  xfr_source: "2001:db8:53a::1"
+
+  persistence_enabled: false
+  persistence_mode: "rr"
+
+  # Explicit PTR owners inside this reverse zone.
+  #
+  # Important:
+  # - the left-hand `name` is the reverse owner relative to this ip6.arpa zone
+  # - the right-hand `ptr` is the target hostname and is normally a forward name
+  #   such as example.net., not another ip6.arpa name
+  #
+  # For a /64 IPv6 reverse zone, host PTRs are typically 16 nibbles below the
+  # zone cut, not just "1" or "2".
+  ptr:
+    - name: "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0"
+      ptr: "gslb.example.net."
+      ttl: 300
+
+    - name: "2.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0"
+      ptr: "gslb2.example.net."
+      ttl: 300
+
+    # Another full relative nibble owner inside this reverse zone.
+    - name: "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1"
+      ptr: "templated-2001-db8-5353-1000-0000-0000-0000-0001.example.net."
+      ttl: 300
+
+  lightup:
+    enabled: true
+    ttl: 60
+    forward: false
+    reverse: true
+    families:
+      - family: "ipv6"
+        class: "public"
+        prefix: "2001:db8:5353::/64"
+        respond_ptr: true
+        exclude:
+          - "2001:db8:5353::1/128"
+
+      - family: "ipv4"
+        class: "private"
+        prefix: "172.16.0.0/24"
+        respond_ptr: true
+        exclude:
+          - "172.16.0.1/32"
+          - "172.16.0.2/32"
+
+    forward_template: "templated-{addr}.example.net."
+    ptr_template: "templated-{addr}.example.net."
+
+  dnssec:
+    mode: "generated"
+    zsk_keyfile: "/etc/breathgslb/keys/3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.zsk"
+    ksk_keyfile: "/etc/breathgslb/keys/3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.ksk"
+    nsec3_iterations: 0
+    nsec3_salt: ""
+    nsec3_optout: false
+
+  tsig:
+    default_algorithm: "hmac-sha256"
+    seed_env: "BREATH_TSIG_SEED"
+    epoch: 1
+    allow_unsigned: false
+    keys:
+      - name: "reverse-xfr."
+        algorithm: "hmac-sha256"
+        secret: ""
+        allow_xfr_from:
+          - "127.0.0.1"
+          - "::1"
+          - "2001:db8:53a::1"
+          - "2001:db8::/32"
+          - "172.16.0.0/12"

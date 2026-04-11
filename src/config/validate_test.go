@@ -509,3 +509,192 @@ func TestValidateDiscovery(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateForwardAndReverseZoneSeparation(t *testing.T) {
+	baseForward := func() Zone {
+		return Zone{
+			Name:      "example.org.",
+			NS:        []string{"ns1.example.org."},
+			Admin:     "hostmaster.example.org.",
+			TTLSOA:    60,
+			TTLAnswer: 20,
+			Refresh:   60,
+			Retry:     30,
+			Expire:    600,
+			Minttl:    60,
+		}
+	}
+	baseReverse := func() Zone {
+		z := baseForward()
+		z.Name = "0.16.172.in-addr.arpa."
+		z.NS = []string{"ns1.example.org."}
+		return z
+	}
+
+	tests := []struct {
+		name    string
+		zone    Zone
+		wantErr string
+	}{
+		{
+			name: "ForwardZoneRejectsPTR",
+			zone: func() Zone {
+				z := baseForward()
+				z.PTR = []PTRRecord{{Name: "1", PTR: "host.example.org."}}
+				return z
+			}(),
+			wantErr: "forward zones must not define PTR records",
+		},
+		{
+			name: "ReverseZoneRejectsHealth",
+			zone: func() Zone {
+				z := baseReverse()
+				z.Health = &HealthConfig{Kind: "http", HostHeader: "example.org", Path: "/health"}
+				return z
+			}(),
+			wantErr: "reverse zones must not define health checks",
+		},
+		{
+			name: "ReverseZoneRejectsPools",
+			zone: func() Zone {
+				z := baseReverse()
+				z.Pools = []Pool{{Name: "rev", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::1"}}}}
+				return z
+			}(),
+			wantErr: "reverse zones must not define pools",
+		},
+		{
+			name: "ReverseZoneRejectsTXT",
+			zone: func() Zone {
+				z := baseReverse()
+				z.TXT = []TXTRecord{{Name: "@", Text: []string{"metadata"}}}
+				return z
+			}(),
+			wantErr: "reverse zones must not define forward-style static records",
+		},
+		{
+			name: "ReverseZoneAllowsPTRAndReverseOnlyLightup",
+			zone: func() Zone {
+				z := baseReverse()
+				z.PTR = []PTRRecord{{Name: "1", PTR: "host.example.org."}}
+				z.Lightup = &LightupConfig{
+					Enabled: true,
+					Reverse: true,
+					Families: []LightupFamily{{
+						Family:     "ipv4",
+						Class:      "private",
+						Prefix:     "172.16.0.0/24",
+						RespondPTR: true,
+					}},
+					ForwardTemplate: "templated-{addr}.example.org.",
+				}
+				return z
+			}(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateZone(&tt.zone)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateZone() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsAmbiguousHostAndGeoOverlaps(t *testing.T) {
+	baseZone := func() Zone {
+		return Zone{
+			Name:      "example.org.",
+			NS:        []string{"ns1.example.org."},
+			Admin:     "hostmaster.example.org.",
+			TTLSOA:    60,
+			TTLAnswer: 20,
+			Refresh:   60,
+			Retry:     30,
+			Expire:    600,
+			Minttl:    60,
+		}
+	}
+
+	tests := []struct {
+		name    string
+		zone    Zone
+		wantErr string
+	}{
+		{
+			name: "HostAliasAndPoolsMutuallyExclusive",
+			zone: func() Zone {
+				z := baseZone()
+				z.Hosts = []Host{{
+					Name:  "app",
+					Alias: "target.example.net.",
+					Pools: []Pool{{Name: "app-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::10"}}}},
+				}}
+				return z
+			}(),
+			wantErr: "alias and pools are mutually exclusive",
+		},
+		{
+			name: "AliasHostCollidesWithExplicitHost",
+			zone: func() Zone {
+				z := baseZone()
+				z.Hosts = []Host{{Name: "app", Pools: []Pool{{Name: "app-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::10"}}}}}}
+				z.AliasHost = map[string]string{"app": "target.example.net."}
+				return z
+			}(),
+			wantErr: "collides with explicit host definition",
+		},
+		{
+			name: "ZoneNamedGeoCannotMixLegacyTiers",
+			zone: func() Zone {
+				z := baseZone()
+				z.Pools = []Pool{
+					{Name: "eu-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::1"}}},
+					{Name: "global-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::2"}}},
+				}
+				z.Geo = &GeoPolicy{
+					Named:    []NamedGeoPolicy{{Name: "eu-v6", Policy: GeoTierPolicy{AllowCountries: []string{"GB"}}}},
+					Fallback: GeoTierPolicy{AllowAll: true},
+				}
+				return z
+			}(),
+			wantErr: "named-pool geo cannot be combined with legacy master/standby/fallback geo",
+		},
+		{
+			name: "HostNamedGeoCannotMixLegacyTiers",
+			zone: func() Zone {
+				z := baseZone()
+				z.Hosts = []Host{{
+					Name: "app",
+					Pools: []Pool{
+						{Name: "app-eu-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::10"}}},
+						{Name: "app-global-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::11"}}},
+					},
+					Geo: &GeoPolicy{
+						Named:    []NamedGeoPolicy{{Name: "app-eu-v6", Policy: GeoTierPolicy{AllowCountries: []string{"GB"}}}},
+						Fallback: GeoTierPolicy{AllowAll: true},
+					},
+				}}
+				return z
+			}(),
+			wantErr: "named-pool geo cannot be combined with legacy master/standby/fallback geo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateZone(&tt.zone)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

@@ -7,6 +7,9 @@ reference is:
 
 The current design documents are:
 
+- [DNS RFC Notes](dnsrfc/README.md)
+- [RFC Compliance Matrix](RFC_COMPLIANCE.md)
+- [BZONE](BZONE.md)
 - [POOLS](POOLS.md)
 - [Zone Replication](ZONE_REPLICATION.md)
 - [Lightup Plan](LIGHTITUP.md)
@@ -28,7 +31,7 @@ Resolution order is:
 2. host `alias` or zone `alias_host`
 3. lightup synthesis
 4. apex pools or legacy apex fields
-5. static records
+5. static forward records
 
 For a discovery-based secondary:
 
@@ -136,6 +139,9 @@ geo:
 Legacy `geo.master`, `geo.standby`, and `geo.fallback` still exist for older
 configs.
 
+Do not mix named-pool geo and legacy `master` / `standby` / `fallback` keys in
+the same `geo:` block.
+
 `geo_answers` is separate. It does direct answer override, not just pool
 selection.
 
@@ -179,6 +185,12 @@ Files use:
 
 Delegated reverse zones should be served directly from `reverse_dir`.
 
+Product policy:
+
+- reverse zones are reverse-mapping zones
+- they do not define pools, hosts, ALIAS, geo steering, or health checks
+- forward zones do not define direct `PTR` records
+
 ## DNSSEC
 
 Current DNSSEC behavior:
@@ -216,7 +228,8 @@ The current options are:
 - host `A` / `AAAA` through `hosts:` plus `pools:`
 - host and apex ALIAS behavior through `alias`, `hosts[].alias`, and
   `alias_host`
-- static `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`, `PTR`
+- static forward `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`
+- explicit reverse-zone `PTR`
 
 There is not currently a first-class `cname:` section.
 
@@ -225,6 +238,8 @@ Use:
 - `hosts:` for real in-zone `A` / `AAAA`
 - `alias` / `alias_host` for ALIAS-style behavior
 - `lightup` for deterministic synthetic names
+
+`hosts[].alias` and `hosts[].pools` are mutually exclusive.
 
 ## Operations
 

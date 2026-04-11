@@ -67,6 +67,40 @@ zones:
               - ip: "13.41.102.90"
 ```
 
+## Current Non-Apex Host Policy Review
+
+The current non-apex host model is the correct direction, but it needs strict
+policy boundaries so the config does not drift into multiple competing naming
+systems.
+
+Current policy:
+
+* non-apex hosts are explicit configured names, not free-form label parsing
+* first-class in-zone `A` and `AAAA` for non-apex names come from `hosts[].pools`
+* host `alias` and zone `alias_host` remain ALIAS-style behavior, not first-class `CNAME`
+* `hosts[].alias` and `hosts[].pools` are mutually exclusive
+* `lightup` remains deterministic synthesis below configured host truth
+* zone health is the default, host health is the first real override
+* named-pool `geo` is preferred over legacy role-based geo for new config
+* named-pool `geo` and legacy `master` / `standby` / `fallback` geo must not be mixed in the same block
+* secondaries must persist and reload the full host policy model, not a flattened serving cache
+
+What this means operationally:
+
+* use `hosts:` when you want a real hostname inside the zone to have steerable `A` or `AAAA`
+* use `hosts[].alias` or `alias_host` when you want ALIAS-style target resolution
+* use `lightup` when the name should be generated from owned address space
+* do not expect arbitrary labels such as `trash.example.` to synthesize unless `lightup` explicitly allows that template
+
+Current intentional limits:
+
+* no wildcard host policy engine
+* no first-class `cname:` section
+* no pool-level or member-level health overrides by default
+* no second answer engine for non-apex names; hosts and apex must keep using the same pool logic
+
+This is the stable policy baseline for future host work.
+
 ## Pool Model
 
 A pool is a candidate answer group. It must carry actual answer members.

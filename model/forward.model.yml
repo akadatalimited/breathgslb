@@ -1,0 +1,437 @@
+# BreathGSLB forward zone model
+#
+# This file is a full model of the current forward zone schema.
+# It intentionally shows both:
+# - the current pool/host model
+# - the legacy apex compatibility fields
+#
+# Query precedence inside a forward zone:
+# 1. exact host in `hosts:`
+# 2. host `alias` or zone `alias_host`
+# 3. `lightup` synthesis for matching names
+# 4. apex pools or legacy apex fields
+# 5. static records such as TXT/MX/CAA/RP/SSHFP/SRV/NAPTR
+#
+# Overlap rules:
+# - explicit host data wins over alias_host and lightup
+# - ALIAS-style fields are not CNAME; there is no first-class `cname:` section
+# - `hosts[].health` overrides zone `health`
+# - named-pool `geo` is preferred for new config
+# - legacy `a_master` / `aaaa_master` and friends are compatibility input
+
+- name: "example.net."
+  ns:
+    - "gslb.example.net."
+    - "gslb2.example.net."
+  admin: "hostmaster.example.net."
+  ttl_soa: 60
+  ttl_answer: 20
+  refresh: 60
+  retry: 10
+  expire: 90
+  minttl: 60
+
+  # serve:
+  # - omitted or "primary": locally authoritative primary
+  # - "local": locally authoritative with local/private answer behavior
+  # - "secondary": replica pulled from masters
+  serve: "primary"
+
+  # Secondary-only fields. Leave unset on a normal primary forward zone.
+  masters:
+    - "[2a02:8012:bc57:53::1]:53"
+  xfr_source: "2a02:8012:bc57:53a::1"
+
+  # If true, local/private answers can still be served when isolated.
+  private_allow_when_isolated: false
+
+  # Answer stickiness, not zone transfer persistence.
+  persistence_enabled: false
+  persistence_mode: "rr"
+
+  # Legacy apex public fields.
+  a_master:
+    - ip: "203.0.113.10"
+      reverse: true
+  aaaa_master:
+    - ip: "2001:db8:10::10"
+      reverse: true
+  a_standby:
+    - ip: "203.0.113.20"
+  aaaa_standby:
+    - ip: "2001:db8:20::10"
+  a_fallback:
+    - ip: "203.0.113.30"
+  aaaa_fallback:
+    - ip: "2001:db8:30::10"
+
+  # Legacy apex private/local-view fields.
+  a_master_private:
+    - ip: "172.16.0.10"
+  aaaa_master_private:
+    - ip: "fd00:10::10"
+  a_standby_private:
+    - ip: "172.16.1.10"
+  aaaa_standby_private:
+    - ip: "fd00:20::10"
+  a_fallback_private:
+    - ip: "172.16.2.10"
+  aaaa_fallback_private:
+    - ip: "fd00:30::10"
+
+  rfc_master:
+    - "172.16.0.0/24"
+  ula_master:
+    - "fd00:10::/64"
+  rfc_standby:
+    - "172.16.1.0/24"
+  ula_standby:
+    - "fd00:20::/64"
+  rfc_fallback:
+    - "172.16.2.0/24"
+  ula_fallback:
+    - "fd00:30::/64"
+
+  # ALIAS-style apex answer when no direct apex A/AAAA data is chosen.
+  alias: "origin.example.net."
+
+  # Zone-level named ALIAS mapping for subdomains.
+  alias_host:
+    www: "web.origin.example.net."
+
+  # Current apex/host answer model.
+  pools:
+    - name: "public-v6-primary"
+      family: "ipv6"
+      class: "public"
+      role: "primary"
+      members:
+        - ip: "2001:db8:10::10"
+          reverse: true
+
+    - name: "public-v4-primary"
+      family: "ipv4"
+      class: "public"
+      role: "primary"
+      members:
+        - ip: "203.0.113.10"
+          reverse: true
+
+    - name: "public-v6-secondary"
+      family: "ipv6"
+      class: "public"
+      role: "secondary"
+      members:
+        - ip: "2001:db8:20::10"
+
+    - name: "public-v4-secondary"
+      family: "ipv4"
+      class: "public"
+      role: "secondary"
+      members:
+        - ip: "203.0.113.20"
+
+    - name: "public-v6-fallback"
+      family: "ipv6"
+      class: "public"
+      role: "fallback"
+      members:
+        - ip: "2001:db8:30::10"
+
+    - name: "public-v4-fallback"
+      family: "ipv4"
+      class: "public"
+      role: "fallback"
+      members:
+        - ip: "203.0.113.30"
+
+    - name: "private-v6-primary"
+      family: "ipv6"
+      class: "private"
+      role: "primary"
+      members:
+        - ip: "fd00:10::10"
+      client_nets:
+        - "fd00:10::/64"
+
+    - name: "private-v4-primary"
+      family: "ipv4"
+      class: "private"
+      role: "primary"
+      members:
+        - ip: "172.16.0.10"
+      client_nets:
+        - "172.16.0.0/24"
+
+  # First-class in-zone hostnames.
+  hosts:
+    - name: "@"
+      # Apex hosts are allowed. They participate in exact host matching just
+      # like any other host, while zone-level apex pools and legacy apex fields
+      # remain as compatibility input.
+      pools:
+        - name: "apex-v6-primary"
+          family: "ipv6"
+          class: "public"
+          role: "primary"
+          members:
+            - ip: "2001:db8:40::10"
+
+    - name: "app"
+      pools:
+        - name: "app-v6-primary"
+          family: "ipv6"
+          class: "public"
+          role: "primary"
+          members:
+            - ip: "2001:db8:50::10"
+
+        - name: "app-v4-primary"
+          family: "ipv4"
+          class: "public"
+          role: "primary"
+          members:
+            - ip: "203.0.113.50"
+
+        - name: "app-v6-private"
+          family: "ipv6"
+          class: "private"
+          role: "primary"
+          members:
+            - ip: "fd00:50::10"
+          client_nets:
+            - "fd00:50::/64"
+
+        - name: "app-v4-private"
+          family: "ipv4"
+          class: "private"
+          role: "primary"
+          members:
+            - ip: "172.16.50.10"
+          client_nets:
+            - "172.16.50.0/24"
+
+        - name: "app-v6-global"
+          family: "ipv6"
+          class: "public"
+          role: "fallback"
+          members:
+            - ip: "2001:db8:50::53"
+
+      geo:
+        app-v6-primary:
+          allow_countries: ["GB", "FR", "DE"]
+          allow_continents: ["EU"]
+        app-v4-primary:
+          allow_countries: ["GB", "FR", "DE"]
+          allow_continents: ["EU"]
+        app-v6-global:
+          allow_all: true
+
+      health:
+        kind: "http"
+        host_header: "app.example.net"
+        path: "/health"
+        sni: "app.example.net"
+        insecure_tls: false
+        scheme: "https"
+        method: "GET"
+        port: 443
+        expect: "OK"
+        tls_enable: false
+        alpn: ""
+        udp_payload_b64: ""
+        udp_expect_re: ""
+        icmp_payload_b64: ""
+        protocol: 0
+
+    - name: "status"
+      alias: "status-origin.example.net."
+
+  # Geo policy for pools or legacy apex tiers.
+  # Do not mix named-pool geo with legacy master/standby/fallback keys in the
+  # same block. They are alternative models.
+  geo:
+    public-v6-primary:
+      allow_countries: ["GB", "FR", "DE"]
+      allow_continents: ["EU"]
+    public-v4-primary:
+      allow_countries: ["GB", "FR", "DE"]
+      allow_continents: ["EU"]
+    public-v6-secondary:
+      allow_countries: ["US", "CA"]
+      allow_continents: ["NA"]
+    public-v4-secondary:
+      allow_countries: ["US", "CA"]
+      allow_continents: ["NA"]
+    public-v6-fallback:
+      allow_all: true
+    public-v4-fallback:
+      allow_all: true
+
+  # Geo direct answer overrides. This is zone-level, not host-level.
+  geo_answers:
+    country:
+      GB:
+        a:
+          - "203.0.113.11"
+        aaaa:
+          - "2001:db8:11::11"
+        a_private:
+          - "172.16.11.11"
+        aaaa_private:
+          - "fd00:11::11"
+        rfc:
+          - "172.16.11.11"
+        ula:
+          - "fd00:11::11"
+    continent:
+      NA:
+        a:
+          - "203.0.113.22"
+        aaaa:
+          - "2001:db8:22::22"
+
+  # Deterministic synthetic forward/reverse names.
+  lightup:
+    enabled: true
+    domain: "lightup.example.net."
+    ttl: 60
+    forward: true
+    reverse: true
+    strategy: "hash"
+
+    # Older single-prefix form is still supported, but must not be combined
+    # with `families:`. It is shown here as comments only to keep this model
+    # file valid.
+    # prefix: "2001:db8:5353::/64"
+    # exclude:
+    #   - "2001:db8:5353::1/128"
+
+    # Current family-aware form.
+    families:
+      - family: "ipv6"
+        class: "public"
+        prefix: "2001:db8:5353::/64"
+        respond_aaaa: true
+        respond_ptr: true
+        exclude:
+          - "2001:db8:5353::1/128"
+
+      - family: "ipv6"
+        class: "ula"
+        prefix: "fd00:5353::/64"
+        respond_aaaa: true
+        respond_ptr: true
+        exclude:
+          - "fd00:5353::1/128"
+
+      - family: "ipv4"
+        class: "private"
+        prefix: "172.16.0.0/24"
+        respond_a: true
+        respond_ptr: true
+        exclude:
+          - "172.16.0.1/32"
+          - "172.16.0.2/32"
+
+    # Exact-template forward names must match this template to synthesize.
+    forward_template: "templated-{addr}.example.net."
+    # If omitted, PTR generation falls back to the forward template.
+    ptr_template: "templated-{addr}.example.net."
+    ns_aaaa:
+      - "2001:db8:53::1"
+      - "2001:db8:53a::1"
+
+  # Shared/static records.
+  txt:
+    - name: "@"
+      text:
+        - "operator note"
+        - "another text segment"
+      ttl: 300
+
+  mx:
+    - name: "@"
+      preference: 10
+      exchange: "mail.example.net."
+      ttl: 300
+
+  caa:
+    - name: "@"
+      flag: 0
+      tag: "issue"
+      value: "letsencrypt.org"
+      ttl: 300
+
+  rp:
+    name: "@"
+    mbox: "hostmaster.example.net."
+    txt: "rp.example.net."
+    ttl: 300
+
+  sshfp:
+    - name: "ssh"
+      algorithm: 4
+      type: 2
+      fingerprint: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      ttl: 300
+
+  srv:
+    - name: "_sip._tcp"
+      priority: 10
+      weight: 5
+      port: 5060
+      target: "sip.example.net."
+      ttl: 300
+
+  naptr:
+    - name: "@"
+      order: 10
+      preference: 10
+      flags: "S"
+      services: "SIP+D2U"
+      regexp: ""
+      replacement: "_sip._udp.example.net."
+      ttl: 300
+
+  health:
+    kind: "http"
+    host_header: "example.net"
+    path: "/health"
+    sni: "example.net"
+    insecure_tls: false
+    scheme: "https"
+    method: "GET"
+    port: 443
+    expect: "OK"
+    tls_enable: false
+    alpn: ""
+    udp_payload_b64: ""
+    udp_expect_re: ""
+    icmp_payload_b64: ""
+    protocol: 0
+
+  dnssec:
+    mode: "generated"
+    zsk_keyfile: "/etc/breathgslb/keys/example.net.zsk"
+    ksk_keyfile: "/etc/breathgslb/keys/example.net.ksk"
+    nsec3_iterations: 0
+    nsec3_salt: ""
+    nsec3_optout: false
+
+  tsig:
+    default_algorithm: "hmac-sha256"
+    seed_env: "BREATH_TSIG_SEED"
+    epoch: 1
+    allow_unsigned: false
+    keys:
+      - name: "example-xfr."
+        algorithm: "hmac-sha256"
+        secret: ""
+        allow_xfr_from:
+          - "127.0.0.1"
+          - "::1"
+          - "2001:db8:53a::1"
+          - "2001:db8::/32"
+          - "172.16.0.0/12"

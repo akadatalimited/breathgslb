@@ -89,6 +89,44 @@ func TestHostPoolAnswers(t *testing.T) {
 	}
 }
 
+func TestApexHostPoolsAnswerAtApex(t *testing.T) {
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    300,
+		TTLAnswer: 60,
+		Refresh:   300,
+		Retry:     60,
+		Expire:    3600,
+		Minttl:    60,
+		Hosts: []Host{{
+			Name: "@",
+			Pools: []Pool{
+				{Name: "apex-v6", Family: "ipv6", Class: "public", Role: "primary", Members: []IPAddr{{IP: "2001:db8:40::10"}}},
+				{Name: "apex-v4", Family: "ipv4", Class: "public", Role: "primary", Members: []IPAddr{{IP: "198.51.100.40"}}},
+			},
+		}},
+	}}}
+	config.SetupDefaults(cfg)
+	_, auth := startRecordServer(t, cfg, nil)
+	auth.setMasterUp(true, true)
+	hostState := auth.serviceState("example.org.")
+	hostState.mu.Lock()
+	hostState.master.v4.up = true
+	hostState.master.v6.up = true
+	hostState.mu.Unlock()
+
+	gotAAAA := auth.addrAAAA("example.org.", net.ParseIP("2001:db8::10"), nil)
+	if len(gotAAAA) != 1 || gotAAAA[0].(*dns.AAAA).AAAA.String() != "2001:db8:40::10" {
+		t.Fatalf("expected apex host AAAA answer, got %v", gotAAAA)
+	}
+	gotA := auth.addrA("example.org.", net.ParseIP("198.51.100.10"), nil)
+	if len(gotA) != 1 || gotA[0].(*dns.A).A.String() != "198.51.100.40" {
+		t.Fatalf("expected apex host A answer, got %v", gotA)
+	}
+}
+
 func TestHostPoolRecordsReplicateToSecondary(t *testing.T) {
 	ensureIPv4(t)
 	mcfg := &Config{Zones: []Zone{{

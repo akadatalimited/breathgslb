@@ -45,6 +45,9 @@ Live demo material is here:
 
 Design documents for the current direction:
 
+- [DNS RFC Notes](dnsrfc/README.md)
+- [RFC Compliance Matrix](RFC_COMPLIANCE.md)
+- [BZONE](BZONE.md)
 - [POOLS](POOLS.md)
 - [Zone Replication](ZONE_REPLICATION.md)
 - [Lightup Plan](LIGHTITUP.md)
@@ -112,8 +115,8 @@ Resolution order is:
 2. host `alias` or zone `alias_host`
 3. `lightup` synthesis for matching names
 4. apex pools or legacy apex fields
-5. static records such as `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`,
-   `PTR`
+5. static forward records such as `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`,
+   `NAPTR`
 
 Important distinctions:
 
@@ -139,6 +142,9 @@ Then it compares those values to:
 
 Named-pool geo is the current preferred model. Legacy `geo.master`,
 `geo.standby`, and `geo.fallback` are compatibility only.
+
+Do not mix named-pool geo and legacy `master` / `standby` / `fallback` keys in
+the same `geo:` block.
 
 ## Lightup
 
@@ -168,6 +174,12 @@ BreathGSLB can:
 
 Reverse zone files use `*.rev.yaml`.
 
+Product policy:
+
+- forward zones do not carry direct `PTR` records
+- reverse zones are for PTR plus zone, DNSSEC, and transfer metadata
+- reverse zones do not carry pools, hosts, ALIAS, geo steering, or health checks
+
 ## DNSSEC
 
 DNSSEC supports:
@@ -191,14 +203,17 @@ What exists now:
 - named host `alias`
 - `alias_host` map for hostname-to-target ALIAS behavior
 - first-class host `A` and `AAAA` via `hosts:` and `pools:`
-- static named records for `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`,
-  `PTR`
+- static named forward records for `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`,
+  `NAPTR`
+- explicit `PTR` in delegated reverse zones
 
 Use:
 
 - `hosts:` when you need real in-zone `A`/`AAAA`
 - `alias` or `alias_host` when you need ALIAS-style target resolution
 - `lightup` when you need deterministic synthetic names tied to owned prefixes
+
+`hosts[].alias` and `hosts[].pools` are mutually exclusive.
 
 ## Replication
 

@@ -30,12 +30,26 @@ zones:
         role: "secondary"
         members:
           - ip: "198.51.100.1"
+      - name: "global-v6"
+        family: "ipv6"
+        class: "public"
+        role: "fallback"
+        members:
+          - ip: "2001:db8::2"
+      - name: "global-v4"
+        family: "ipv4"
+        class: "public"
+        role: "fallback"
+        members:
+          - ip: "198.51.100.2"
     geo:
       eu-v6:
         allow_continents: ["EU"]
       us-v4:
         allow_countries: ["US"]
-      fallback:
+      global-v6:
+        allow_all: true
+      global-v4:
         allow_all: true
 `
 
@@ -56,16 +70,16 @@ zones:
 		t.Fatalf("Load() error = %v", err)
 	}
 	z := c.Zones[0]
-	if len(z.Pools) != 2 {
-		t.Fatalf("expected 2 pools, got %#v", z.Pools)
+	if len(z.Pools) != 4 {
+		t.Fatalf("expected 4 pools, got %#v", z.Pools)
 	}
-	if z.Geo == nil || len(z.Geo.Named) != 2 {
+	if z.Geo == nil || len(z.Geo.Named) != 4 {
 		t.Fatalf("expected named geo policies, got %#v", z.Geo)
 	}
 	if z.Geo.Named[0].Name != "eu-v6" || len(z.Geo.Named[0].Policy.AllowContinents) != 1 {
 		t.Fatalf("unexpected first named geo policy %#v", z.Geo.Named[0])
 	}
-	if !z.Geo.Fallback.AllowAll {
-		t.Fatalf("expected fallback allow_all, got %#v", z.Geo.Fallback)
+	if geoUsesLegacyTiers(z.Geo) {
+		t.Fatalf("did not expect legacy geo tiers, got %#v", z.Geo)
 	}
 }

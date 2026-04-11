@@ -30,7 +30,7 @@ At query time, resolution is layered in this order:
 2. host `alias` or zone `alias_host`
 3. lightup synthesis for matching names
 4. apex pools or legacy apex fields
-5. static records such as TXT, MX, CAA, RP, SSHFP, SRV, NAPTR, PTR
+5. static forward records such as TXT, MX, CAA, RP, SSHFP, SRV, NAPTR
 
 For a discovery-based secondary:
 
@@ -262,6 +262,7 @@ Important behavior:
 - host `health` overrides zone `health`
 - host `geo` overrides zone `geo` for that host
 - host `alias` is supported
+- `hosts[].alias` and `hosts[].pools` are mutually exclusive
 
 Current health inheritance is:
 
@@ -305,6 +306,10 @@ from the MMDB. Typical examples:
 
 Legacy `geo.master`, `geo.standby`, and `geo.fallback` still work. Named-pool
 geo is the preferred model when `pools:` are present.
+
+Do not mix named-pool geo and legacy `master` / `standby` / `fallback` keys in
+the same `geo:` block. They are alternative models and BreathGSLB now rejects
+that overlap during validation.
 
 `geo_answers` is separate from `geo`. It does not just select an eligible pool;
 it directly overrides returned A/AAAA/private answers by country or continent.
@@ -471,6 +476,8 @@ Why explicit reverse zones matter:
 - delegated reverse space is independent DNS authority
 - reverse zones must be served live, not just generated at config time
 - DNSSEC and AXFR must treat reverse zones exactly like forward zones
+- reverse zones in BreathGSLB are intentionally reverse-only policy zones:
+  PTR plus zone/DNSSEC/transfer metadata, not forward host steering
 
 For IPv6 reverse lookups, owner names are full nibble-form labels under the
 delegated `ip6.arpa.` zone.
@@ -561,12 +568,15 @@ Current support for names below the apex:
 - host ALIAS: `hosts[].alias`
 - map-based host ALIAS: `alias_host`
 - synthetic host `A`/`AAAA`/`PTR`: `lightup`
-- static TXT/MX/CAA/RP/SSHFP/SRV/NAPTR/PTR: record sections with explicit names
+- static TXT/MX/CAA/RP/SSHFP/SRV/NAPTR: forward-zone record sections with explicit names
+- explicit PTR: reverse-zone record section
 
 Important current limitation:
 
 - there is no first-class `cname:` record section
 - there is no raw arbitrary static `A:` or `AAAA:` list outside `hosts[].pools`
+- forward zones must not define direct `PTR` records
+- reverse zones must not define forward-style health, pools, hosts, alias, or forward static records
 
 So if you need a hostname inside the zone:
 

@@ -433,6 +433,13 @@ on configured addresses
 .IP \[bu] 2
 lightup synthetic PTRs for owned prefixes
 
+BreathGSLB product policy is stricter than bare DNS syntax here:
+.IP \[bu] 2
+forward zones must not define direct PTR records
+.IP \[bu] 2
+reverse zones must not define pools, hosts, ALIAS, geo steering, health, or
+forward-style static records
+
 .SH DNSSEC
 DNSSEC supports:
 .IP \[bu] 2
