@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // Test that serial values persist across restarts and advance with time.
 func TestSerialPersistenceRestart(t *testing.T) {
@@ -14,19 +17,19 @@ func TestSerialPersistenceRestart(t *testing.T) {
 
 	cfg := &Config{CooldownSec: 1, Zones: []Zone{{Name: "example.com."}}}
 
-	serialNow = func() uint32 { return 100 }
+	serialNow = func() time.Time { return time.Date(2026, time.April, 11, 5, 52, 10, 0, time.UTC) }
 	_, auths := buildMux(cfg, nil, nil, nil)
 	a := auths[ensureDot("example.com")]
-	if a.serial != 100 {
-		t.Fatalf("expected serial 100, got %d", a.serial)
+	if a.serial != 2026041100 {
+		t.Fatalf("expected serial 2026041100, got %d", a.serial)
 	}
 	a.cancel()
 
-	serialNow = func() uint32 { return 200 }
+	serialNow = func() time.Time { return time.Date(2026, time.April, 11, 5, 53, 10, 0, time.UTC) }
 	_, auths = buildMux(cfg, nil, nil, nil)
 	a = auths[ensureDot("example.com")]
-	if a.serial != 200 {
-		t.Fatalf("expected serial 200 after restart, got %d", a.serial)
+	if a.serial != 2026041101 {
+		t.Fatalf("expected serial 2026041101 after restart, got %d", a.serial)
 	}
 	a.cancel()
 }
@@ -43,19 +46,19 @@ func TestSerialClockRollback(t *testing.T) {
 
 	cfg := &Config{CooldownSec: 1, Zones: []Zone{{Name: "example.com."}}}
 
-	serialNow = func() uint32 { return 100 }
+	serialNow = func() time.Time { return time.Date(2026, time.April, 11, 5, 52, 10, 0, time.UTC) }
 	_, auths := buildMux(cfg, nil, nil, nil)
 	a := auths[ensureDot("example.com")]
-	if a.serial != 100 {
-		t.Fatalf("expected serial 100, got %d", a.serial)
+	if a.serial != 2026041100 {
+		t.Fatalf("expected serial 2026041100, got %d", a.serial)
 	}
 	a.cancel()
 
-	serialNow = func() uint32 { return 50 }
+	serialNow = func() time.Time { return time.Date(2026, time.April, 10, 5, 52, 10, 0, time.UTC) }
 	_, auths = buildMux(cfg, nil, nil, nil)
 	a = auths[ensureDot("example.com")]
-	if a.serial != 101 {
-		t.Fatalf("expected serial 101 after rollback, got %d", a.serial)
+	if a.serial != 2026041101 {
+		t.Fatalf("expected serial 2026041101 after rollback, got %d", a.serial)
 	}
 	a.cancel()
 }

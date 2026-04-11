@@ -449,3 +449,63 @@ func TestValidatePools(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDiscovery(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr string
+	}{
+		{
+			name: "ValidDiscovery",
+			cfg: Config{
+				Discovery: &DiscoveryConfig{
+					CatalogZone: "_catalog.example.org.",
+					Masters:     []string{"[2001:db8::53]:53"},
+					XFRSource:   "2001:db8::54",
+					TSIG: &TSIGZoneConfig{Keys: []TSIGKey{{
+						Name:         "cluster-xfr.",
+						Secret:       "c2VjcmV0c2VjcmV0c2VjcmV0",
+						AllowXFRFrom: []string{"2001:db8::/64"},
+					}}},
+				},
+			},
+		},
+		{
+			name: "MastersRequireCatalog",
+			cfg: Config{
+				Discovery: &DiscoveryConfig{
+					Masters: []string{"[2001:db8::53]:53"},
+				},
+			},
+			wantErr: "discovery.catalog_zone",
+		},
+		{
+			name: "InvalidDiscoveryCIDRRejected",
+			cfg: Config{
+				Discovery: &DiscoveryConfig{
+					CatalogZone: "_catalog.example.org.",
+					TSIG: &TSIGZoneConfig{Keys: []TSIGKey{{
+						Name:         "cluster-xfr.",
+						AllowXFRFrom: []string{"2001:db8::/129"},
+					}}},
+				},
+			},
+			wantErr: "discovery.tsig.keys[0].allow_xfr_from[0]",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateConfig(&tt.cfg)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateConfig() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

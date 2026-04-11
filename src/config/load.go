@@ -24,6 +24,7 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return nil, err
 	}
+	cfg.BaseDir = filepath.Dir(filepath.Clean(path))
 	loaded := map[string]bool{}
 	if err := loadZoneDir(&cfg, cfg.ZonesDir, loaded); err != nil {
 		return nil, err
@@ -141,46 +142,56 @@ func GenerateTSIGKeys(cfg *Config) {
 		keyDir = cfg.TSIG.Path
 		_ = os.MkdirAll(keyDir, 0o755)
 	}
+	if cfg.Discovery != nil && cfg.Discovery.TSIG != nil {
+		populateTSIGKeys(keyDir, cfg.Discovery.TSIG)
+	}
 	for zi := range cfg.Zones {
 		z := &cfg.Zones[zi]
 		if z.TSIG == nil {
 			continue
 		}
-		defAlg := z.TSIG.DefaultAlgorithm
-		if defAlg == "" {
-			defAlg = "hmac-sha256"
-		}
-		seed := ""
-		if z.TSIG.SeedEnv != "" {
-			seed = os.Getenv(z.TSIG.SeedEnv)
-		}
-		for ki := range z.TSIG.Keys {
-			k := &z.TSIG.Keys[ki]
-			if k.Secret == "" {
-				if keyDir != "" {
-					if existing, err := loadTSIGKey(keyDir, k.Name); err == nil {
-						if k.Algorithm == "" && existing.Algorithm != "" {
-							k.Algorithm = existing.Algorithm
-						}
-						if existing.Secret != "" {
-							k.Secret = existing.Secret
-						}
+		populateTSIGKeys(keyDir, z.TSIG)
+	}
+}
+
+func populateTSIGKeys(keyDir string, cfg *TSIGZoneConfig) {
+	if cfg == nil {
+		return
+	}
+	defAlg := cfg.DefaultAlgorithm
+	if defAlg == "" {
+		defAlg = "hmac-sha256"
+	}
+	seed := ""
+	if cfg.SeedEnv != "" {
+		seed = os.Getenv(cfg.SeedEnv)
+	}
+	for ki := range cfg.Keys {
+		k := &cfg.Keys[ki]
+		if k.Secret == "" {
+			if keyDir != "" {
+				if existing, err := loadTSIGKey(keyDir, k.Name); err == nil {
+					if k.Algorithm == "" && existing.Algorithm != "" {
+						k.Algorithm = existing.Algorithm
+					}
+					if existing.Secret != "" {
+						k.Secret = existing.Secret
 					}
 				}
 			}
-			if k.Algorithm == "" {
-				k.Algorithm = defAlg
+		}
+		if k.Algorithm == "" {
+			k.Algorithm = defAlg
+		}
+		if k.Secret == "" {
+			if seed != "" {
+				k.Secret = DeriveTSIGSecret(seed, k.Name, cfg.Epoch)
+			} else {
+				k.Secret = randomTSIGSecret()
 			}
-			if k.Secret == "" {
-				if seed != "" {
-					k.Secret = DeriveTSIGSecret(seed, k.Name, z.TSIG.Epoch)
-				} else {
-					k.Secret = randomTSIGSecret()
-				}
-			}
-			if keyDir != "" {
-				saveTSIGKey(keyDir, *k)
-			}
+		}
+		if keyDir != "" {
+			saveTSIGKey(keyDir, *k)
 		}
 	}
 }

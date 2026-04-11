@@ -81,8 +81,8 @@ func (a *authority) transferFromMasters() error {
 			}
 			tr = &dns.Transfer{Conn: &dns.Conn{Conn: conn}}
 		}
-		if a.zone.TSIG != nil && len(a.zone.TSIG.Keys) > 0 {
-			k := a.zone.TSIG.Keys[0]
+		if cfg := preferredTSIGConfig(a.zone.TSIG, discoveryTSIG(a.cfg)); cfg != nil {
+			k := cfg.Keys[0]
 			name := ensureDot(k.Name)
 			alg := normalizeTSIGAlgorithm(k.Algorithm)
 			if alg == "" {
@@ -151,6 +151,9 @@ func (a *authority) transferFromMasters() error {
 		a.zone.Minttl = startSOA.Minttl
 		a.zidx = buildIndexFromRRs(a.zone.Name, records)
 		a.mu.Unlock()
+		if err := persistSecondarySnapshot(a.cfg, a.zone, records, endSOA); err != nil {
+			log.Printf("persist secondary snapshot for %s failed: %v", a.zone.Name, err)
+		}
 		return nil
 	}
 	return lastErr

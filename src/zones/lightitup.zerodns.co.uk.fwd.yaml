@@ -1,0 +1,21 @@
+- name: lightitup.zerodns.co.uk.
+  ns:
+    - gslb.zerodns.co.uk.
+    - gslb2.zerodns.co.uk.
+  admin: hostmaster.zerodns.co.uk.
+  ttl_soa: 60
+  ttl_answer: 20
+  refresh: 60
+  retry: 10
+  expire: 90
+  minttl: 60
+  serve: secondary
+  masters:
+    - '[::1]:36643'
+  aaaa_fallback:
+    - ip: 2a02:8012:bc57:5353::1
+  tsig:
+    keys:
+        - name: cluster-xfr.
+          algorithm: hmac-sha256
+          secret: c2VjcmV0c2VjcmV0c2VjcmV0

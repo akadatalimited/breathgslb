@@ -22,6 +22,7 @@ type (
 	TSIGGlobalConfig = configpkg.TSIGGlobalConfig
 	TSIGKey          = configpkg.TSIGKey
 	TSIGZoneConfig   = configpkg.TSIGZoneConfig
+	DiscoveryConfig  = configpkg.DiscoveryConfig
 	TXTRecord        = configpkg.TXTRecord
 	MXRecord         = configpkg.MXRecord
 	CAARecord        = configpkg.CAARecord

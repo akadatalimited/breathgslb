@@ -15,22 +15,22 @@ It installs directly into `/etc/breathgslb` via `sudo make demodata`.
 - primary config: `/etc/breathgslb/config.yaml`
 - secondary config: `/etc/breathgslb/config.gslb2.yaml`
 - primary zone data under `/etc/breathgslb/zones` and `/etc/breathgslb/reverse`
-- explicit secondary zone data under `/etc/breathgslb/zones-secondary` and
-  `/etc/breathgslb/reverse-secondary`
 - generated DNSSEC key material under `/etc/breathgslb/keys`
 - transfer key material under `/etc/breathgslb/tsig`
 - serial snapshots under `/etc/breathgslb/serials`
 
 The primary remains explicit and deterministic. The secondary is a true
-`serve: "secondary"` replica with `masters:` pointing at
-`[2a02:8012:bc57:53::1]:53` and `xfr_source: "2a02:8012:bc57:53a::1"` so AXFR
-comes from the nameserver address rather than whatever source the kernel picks.
-There is no promotion or election logic in this demo step.
+replica, but it no longer needs its own forward/reverse zone YAML. It
+bootstraps from the shared catalog zone `_catalog.breathgslb.` using the shared
+`lightitup-xfr.` TSIG key, then AXFRs each discovered zone from
+`[2a02:8012:bc57:53::1]:53` with `xfr_source: "2a02:8012:bc57:53a::1"` so the
+transfer comes from the nameserver address rather than whatever source the
+kernel picks. There is no promotion or election logic in this demo step.
 
 Both the forward and delegated reverse zones use `dnssec.mode: generated` with
 stable key paths under `/etc/breathgslb/keys/` and default to plain NSEC with
-`nsec3_iterations: 0`. The secondary keeps matching DNSSEC and `lightup`
-configuration locally while AXFR remains the source of zone content.
+`nsec3_iterations: 0`. The secondary keeps only the shared transfer/bootstrap
+config locally while AXFR remains the source of zone content.
 
 The demo forward zone now uses the new apex `pools:` model directly. It keeps
 the older apex `a_master` / `aaaa_master` style fields alongside it only as a

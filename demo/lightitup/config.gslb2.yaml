@@ -1,8 +1,6 @@
 # gslb2.zerodns.co.uk. secondary / replica node
 listen_addrs:
   - "[2a02:8012:bc57:53a::1]:53"
-zones_dir: "/etc/breathgslb/zones-secondary"
-reverse_dir: "/etc/breathgslb/reverse-secondary"
 
 timeout_sec: 5
 interval_sec: 8
@@ -16,6 +14,17 @@ log_syslog: false
 
 tsig:
   path: "/etc/breathgslb/tsig"
+
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  masters:
+    - "[2a02:8012:bc57:53::1]:53"
+  xfr_source: "2a02:8012:bc57:53a::1"
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "lightitup-xfr."
+        secret: ""
 
 geoip:
   enabled: true

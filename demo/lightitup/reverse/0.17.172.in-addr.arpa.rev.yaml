@@ -1,0 +1,33 @@
+- name: "0.17.172.in-addr.arpa."
+  ns: ["gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."]
+  admin: "hostmaster.zerodns.co.uk."
+  ttl_soa: 300
+  ttl_answer: 300
+  refresh: 300
+  retry: 60
+  expire: 3600
+  minttl: 60
+
+  dnssec:
+    mode: generated
+    zsk_keyfile: "/etc/breathgslb/keys/0.17.172.in-addr.arpa.zsk"
+    ksk_keyfile: "/etc/breathgslb/keys/0.17.172.in-addr.arpa.ksk"
+    nsec3_iterations: 0
+
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "lightitup-xfr."
+        secret: ""
+        allow_xfr_from:
+          - "127.0.0.1"
+          - "::1"
+          - "2a02:8012:bc57:53a::1"
+
+  ptr:
+    - name: "1.0.17.172.in-addr.arpa."
+      ptr: "route.lightitup.zerodns.co.uk."
+      ttl: 300
+    - name: "2.0.17.172.in-addr.arpa."
+      ptr: "minimer.lightitup.zerodns.co.uk."
+      ttl: 300

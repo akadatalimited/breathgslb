@@ -9,11 +9,20 @@ forward, see [POOLS.md](./POOLS.md).
 For lightup-specific staging and historical notes, see
 [LIGHTITUP.md](./LIGHTITUP.md) and [LIGHTITUP_PHASE1.md](./LIGHTITUP_PHASE1.md).
 
-This document explains how to configure zone replication between BreathGSLB servers to achieve high availability and redundancy.
+This document explains how to configure zone replication between BreathGSLB
+servers to achieve high availability and redundancy.
 
 ## Overview
 
-BreathGSLB supports standard DNS zone replication using AXFR (Authoritative Zone Transfer) and IXFR (Incremental Zone Transfer) protocols. This allows you to set up primary-secondary relationships between servers for redundancy and load distribution.
+BreathGSLB supports standard DNS zone replication using AXFR (Authoritative
+Zone Transfer) and IXFR (Incremental Zone Transfer) protocols. This allows you
+to set up primary-secondary relationships between servers for redundancy and
+load distribution.
+
+There are now two supported bootstrap models:
+
+1. Explicit per-zone secondary configuration
+2. Catalog-based secondary discovery from the main config only
 
 ## Configuration Options
 
@@ -44,6 +53,51 @@ zones:
       - "2001:db8::1"  # IPv6 address of primary server (optional)
     # ... other zone configuration
 ```
+
+### Catalog-Based Secondary Discovery
+
+If you do not want mirrored forward/reverse zone YAML on the secondary, use the
+shared discovery catalog instead. In this mode the secondary main config knows:
+
+- the catalog zone name
+- the primary server(s)
+- the outbound transfer source address if needed
+- the shared TSIG key used for catalog AXFR and default zone AXFR
+
+The secondary then discovers zone names from the primary and constructs
+in-memory `serve: "secondary"` stubs before normal AXFR begins.
+
+**Primary main config:**
+```yaml
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  ttl: 60
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "cluster-xfr."
+        secret: ""
+        allow_xfr_from:
+          - "2001:db8:53a::/64"
+```
+
+**Secondary main config:**
+```yaml
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  masters:
+    - "[2001:db8:53::1]:53"
+  xfr_source: "2001:db8:53a::1"
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "cluster-xfr."
+        secret: ""
+```
+
+In catalog mode, the secondary does not need its own zone definition files.
+Zone content still comes from AXFR/IXFR. Keys, TSIG files, and other persisted
+signing state still need to be synchronized separately.
 
 ### Zone Transfer Security with TSIG
 

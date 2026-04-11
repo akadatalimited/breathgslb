@@ -263,33 +263,55 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 func (a *authority) xfrAllowed(w dns.ResponseWriter, r *dns.Msg) bool {
-	if a.zone.TSIG == nil {
+	configs := transferTSIGConfigs(a.cfg, a.zone.TSIG)
+	if len(configs) == 0 {
 		return true
 	}
 	ts := r.IsTsig()
 	if ts == nil || w.TsigStatus() != nil {
-		if a.zone.TSIG.AllowUnsigned {
-			return true
-		}
-		return false
-	}
-	ip := clientIP(w, r)
-	keyName := ensureDot(ts.Hdr.Name)
-	for _, k := range a.zone.TSIG.Keys {
-		if ensureDot(k.Name) != keyName {
-			continue
-		}
-		if len(k.AllowXFRFrom) == 0 {
-			return true
-		}
-		for _, allow := range k.AllowXFRFrom {
-			if allowXFRFromMatches(ip, allow) {
+		for _, cfg := range configs {
+			if cfg.AllowUnsigned {
 				return true
 			}
 		}
 		return false
 	}
+	ip := clientIP(w, r)
+	keyName := ensureDot(ts.Hdr.Name)
+	for _, cfg := range configs {
+		for _, k := range cfg.Keys {
+			if ensureDot(k.Name) != keyName {
+				continue
+			}
+			if len(k.AllowXFRFrom) == 0 {
+				return true
+			}
+			for _, allow := range k.AllowXFRFrom {
+				if allowXFRFromMatches(ip, allow) {
+					return true
+				}
+			}
+		}
+	}
 	return false
+}
+
+func transferTSIGConfigs(cfg *Config, zoneTSIG *TSIGZoneConfig) []*TSIGZoneConfig {
+	var out []*TSIGZoneConfig
+	if zoneTSIG != nil {
+		out = append(out, zoneTSIG)
+	}
+	if d := discoveryTSIG(cfg); d != nil && d != zoneTSIG {
+		out = append(out, d)
+	}
+	return out
+}
+
+func discoveryTSIG(cfg *Config) *TSIGZoneConfig {
+	if cfg == nil || cfg.Discovery == nil {
+		return nil
+	}
+	return cfg.Discovery.TSIG
 }
 
 func allowXFRFromMatches(ip net.IP, allow string) bool {

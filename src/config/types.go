@@ -183,6 +183,16 @@ type TSIGZoneConfig struct {
 	Keys             []TSIGKey `yaml:"keys,omitempty"`
 }
 
+// DiscoveryConfig bootstraps secondaries from a shared catalog zone and can
+// also provide a shared transfer key for server-to-server replication.
+type DiscoveryConfig struct {
+	CatalogZone string          `yaml:"catalog_zone,omitempty"`
+	Masters     []string        `yaml:"masters,omitempty"`
+	XFRSource   string          `yaml:"xfr_source,omitempty"`
+	TTL         uint32          `yaml:"ttl,omitempty"`
+	TSIG        *TSIGZoneConfig `yaml:"tsig,omitempty"`
+}
+
 // StringSlice allows a YAML field to be either a single string or a list.
 type StringSlice []string
 
@@ -204,6 +214,8 @@ func (ss *StringSlice) UnmarshalYAML(value *yaml.Node) error {
 
 // Config is the top-level YAML.
 type Config struct {
+	BaseDir string `yaml:"-"`
+
 	Listen      string   `yaml:"listen"`
 	ListenAddrs []string `yaml:"listen_addrs,omitempty"`
 	Interfaces  []string `yaml:"interfaces,omitempty"`
@@ -236,6 +248,8 @@ type Config struct {
 	LogSyslog bool   `yaml:"log_syslog,omitempty"`
 
 	TSIG *TSIGGlobalConfig `yaml:"tsig,omitempty"`
+
+	Discovery *DiscoveryConfig `yaml:"discovery,omitempty"`
 
 	GeoIP *GeoIPConfig `yaml:"geoip,omitempty"`
 

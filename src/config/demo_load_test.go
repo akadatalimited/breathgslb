@@ -92,10 +92,12 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 		name          string
 		configName    string
 		expectedServe map[string]string
+		wantZonesMin  int
 	}{
 		{
 			name:       "primary",
 			configName: "config.yaml",
+			wantZonesMin: 3,
 			expectedServe: map[string]string{
 				"lightitup.zerodns.co.uk.": "primary",
 			},
@@ -103,10 +105,8 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 		{
 			name:       "secondary",
 			configName: "config.gslb2.yaml",
-			expectedServe: map[string]string{
-				"lightitup.zerodns.co.uk.":                  "secondary",
-				"3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.": "secondary",
-			},
+			wantZonesMin: 0,
+			expectedServe: map[string]string{},
 		},
 	} {
 		configSrc := filepath.Join(srcDir, tc.configName)
@@ -133,8 +133,20 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 		if c.GeoIP == nil || c.GeoIP.Database == "" {
 			t.Fatalf("%s: expected demo GeoIP config, got %#v", tc.name, c.GeoIP)
 		}
-		if len(c.Zones) != 3 {
-			t.Fatalf("%s: expected 3 demo zones, got %d", tc.name, len(c.Zones))
+		if c.Discovery == nil || c.Discovery.CatalogZone == "" {
+			t.Fatalf("%s: expected demo discovery config, got %#v", tc.name, c.Discovery)
+		}
+		if len(c.Zones) < tc.wantZonesMin {
+			t.Fatalf("%s: expected at least %d demo zones, got %d", tc.name, tc.wantZonesMin, len(c.Zones))
+		}
+		if tc.name == "secondary" {
+			if len(c.Discovery.Masters) == 0 {
+				t.Fatalf("%s: expected discovery masters, got %#v", tc.name, c.Discovery)
+			}
+			if c.Discovery.XFRSource == "" {
+				t.Fatalf("%s: expected discovery xfr_source, got %#v", tc.name, c.Discovery)
+			}
+			continue
 		}
 		var sawForward, sawReverseV6, sawReverseV4 bool
 		for _, z := range c.Zones {
@@ -144,9 +156,6 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 			switch z.Name {
 			case "lightitup.zerodns.co.uk.":
 				sawForward = true
-				if tc.name == "secondary" && z.XFRSource == "" {
-					t.Fatalf("%s: expected demo forward secondary xfr_source, got empty", tc.name)
-				}
 				if z.Geo == nil {
 					t.Fatalf("%s: expected demo forward zone geo policy", tc.name)
 				}

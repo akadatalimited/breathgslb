@@ -1,13 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 
-	"github.com/akadatalimited/breathgslb/src/config"
 	"github.com/akadatalimited/breathgslb/src/dnsserver"
 	"github.com/akadatalimited/breathgslb/src/logging"
 )
@@ -26,13 +26,10 @@ func main() {
 	flag.Parse()
 
 	serialDir = filepath.Join(filepath.Dir(filepath.Clean(*cfgPath)), "serials")
-
-	cfg, err := config.Load(*cfgPath)
+	cfg, _, err := loadRuntimeConfig(*cfgPath)
 	if err != nil {
 		log.Fatalf("load config %s: %v", *cfgPath, err)
 	}
-	config.SetupDefaults(cfg)
-	config.GenerateTSIGKeys(cfg)
 
 	if *apiListen != "" {
 		cfg.API = true
@@ -63,14 +60,18 @@ func main() {
 	}
 
 	geo := newGeoResolver(cfg.GeoIP)
-	current.geo = geo
 	sup = newSupervisor()
 	mux, auths := buildMux(cfg, geo, sup, nil)
+	rt := &router{}
+	rt.inner.Store(mux)
 	current.cfg = cfg
+	current.cfgSig = mustRuntimeConfigSignature(cfg)
+	current.rt = rt
 	current.auths = auths
+	current.geo = geo
 
 	secrets := collectTSIGSecrets(cfg)
-	dnsserver.StartListeners(mux, cfg, cfg.MaxWorkers, secrets)
+	dnsserver.StartListeners(rt, cfg, cfg.MaxWorkers, secrets)
 
 	if cfg.API {
 		apiCfg, err := runtimeAPIConfig(cfg, *apiListen)
@@ -88,12 +89,30 @@ func main() {
 		}()
 	}
 
+	go autoReloadLoop(context.Background(), *cfgPath)
+
 	handleSignals(*cfgPath)
 	shutdown()
 }
 
+func mustRuntimeConfigSignature(cfg *Config) string {
+	sig, err := runtimeConfigSignature(cfg)
+	if err != nil {
+		log.Fatalf("runtime config signature: %v", err)
+	}
+	return sig
+}
+
 func collectTSIGSecrets(cfg *Config) map[string]string {
 	secrets := make(map[string]string)
+	if cfg.Discovery != nil && cfg.Discovery.TSIG != nil {
+		for _, k := range cfg.Discovery.TSIG.Keys {
+			if k.Name == "" || k.Secret == "" {
+				continue
+			}
+			secrets[ensureDot(k.Name)] = k.Secret
+		}
+	}
 	for _, z := range cfg.Zones {
 		if z.TSIG == nil {
 			continue

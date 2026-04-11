@@ -17,10 +17,22 @@ log_syslog: false
 tsig:
   path: "/etc/breathgslb/tsig"
 
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  ttl: 60
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "lightitup-xfr."
+        secret: ""
+        allow_xfr_from:
+          - "::1"
+          - "127.0.0.1"
+          - "2a02:8012:bc57:53a::/64"
+
 geoip:
   enabled: true
   database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
   prefer_field: "country"
   cache_ttl_sec: 600
-
 

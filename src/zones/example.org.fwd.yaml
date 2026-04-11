@@ -1,0 +1,17 @@
+- name: example.org.
+  ns:
+    - ns.example.org.
+  admin: hostmaster.example.org.
+  ttl_soa: 3600
+  ttl_answer: 300
+  refresh: 1
+  retry: 1
+  expire: 60
+  minttl: 0
+  serve: secondary
+  masters:
+    - 127.0.0.1:44305
+  a_fallback:
+    - ip: 192.0.2.2
+  aaaa_fallback:
+    - ip: 2001:db8::2

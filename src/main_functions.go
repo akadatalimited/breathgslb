@@ -25,7 +25,7 @@ func init() {
 
 var (
 	serialDir = "."
-	serialNow = func() uint32 { return uint32(time.Now().Unix()) }
+	serialNow = time.Now
 )
 
 func serialPath(zone string) string {
@@ -35,7 +35,7 @@ func serialPath(zone string) string {
 }
 
 func nextSerial(zone string) uint32 {
-	now := serialNow()
+	now := serialFromTime(serialNow())
 	path := serialPath(zone)
 	var prev uint64
 	if b, err := os.ReadFile(path); err == nil {
@@ -50,12 +50,24 @@ func nextSerial(zone string) uint32 {
 	return serial
 }
 
+func serialFromTime(t time.Time) uint32 {
+	y, m, d := t.Date()
+	return uint32(y*10000+int(m)*100+d) * 100
+}
+
+func writeSerial(zone string, serial uint32) {
+	path := serialPath(zone)
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	_ = os.WriteFile(path, []byte(strconv.FormatUint(uint64(serial), 10)), 0o644)
+}
+
 // ---- globals for reload ----
 
 var (
 	current struct {
 		mu    sync.Mutex
 		cfg   *Config
+		cfgSig string
 		rt    *router
 		logW  io.WriteCloser
 		auths map[string]*authority // by zone name (fqdn)

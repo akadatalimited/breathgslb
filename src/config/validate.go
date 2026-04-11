@@ -41,6 +41,31 @@ func ValidateConfig(cfg *Config) error {
 			return fmt.Errorf("zone %q: %w", cfg.Zones[i].Name, err)
 		}
 	}
+	if cfg.Discovery != nil {
+		if cfg.Discovery.CatalogZone != "" {
+			if err := validateDomain(cfg.Discovery.CatalogZone); err != nil {
+				return fmt.Errorf("discovery.catalog_zone: %w", err)
+			}
+		}
+		if cfg.Discovery.XFRSource != "" {
+			ip := net.ParseIP(strings.TrimSpace(cfg.Discovery.XFRSource))
+			if ip == nil {
+				return fmt.Errorf("discovery.xfr_source: invalid IP %q", cfg.Discovery.XFRSource)
+			}
+		}
+		if len(cfg.Discovery.Masters) > 0 && cfg.Discovery.CatalogZone == "" {
+			return fmt.Errorf("discovery.catalog_zone: required when discovery.masters is set")
+		}
+		if cfg.Discovery.TSIG != nil {
+			for i, k := range cfg.Discovery.TSIG.Keys {
+				for j, raw := range k.AllowXFRFrom {
+					if !validateAllowXFRFrom(strings.TrimSpace(raw)) {
+						return fmt.Errorf("discovery.tsig.keys[%d].allow_xfr_from[%d]: invalid IP or CIDR %q", i, j, raw)
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 

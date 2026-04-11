@@ -43,6 +43,8 @@
     - ip: "2a02:8012:bc57:5353::2"
   a_standby:
     - ip: "13.41.102.86"
+  a_standby_private: 
+    - ip: "172.17.0.2"
 
   aaaa_fallback:
     - ip: "2a02:8012:bc57:5353::53"

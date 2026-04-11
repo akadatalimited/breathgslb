@@ -1,0 +1,17 @@
+- name: 2.0.192.in-addr.arpa.
+  ns:
+    - ns.example.org.
+  admin: hostmaster.example.org.
+  ttl_soa: 3600
+  ttl_answer: 60
+  refresh: 1
+  retry: 1
+  expire: 60
+  minttl: 60
+  serve: secondary
+  masters:
+    - 127.0.0.1:33215
+  ptr:
+    - name: "1"
+      ptr: example.org.
+      ttl: 300
