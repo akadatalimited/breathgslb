@@ -1,0 +1,1 @@
+make; sudo make demodata; rsync -razv ../brethgslb minimer:~/; sudo rsync -razv /etc/breathgslb root@minimer:/etc/ ; sudo ./breathgslb -config /etc/breathgslb/config.yaml

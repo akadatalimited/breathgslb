@@ -306,3 +306,104 @@ discovery:
 		t.Fatalf("secondary did not discover new reverse zone: %#v", secondaryCfg2.Zones)
 	}
 }
+
+func TestDiscoveryBootstrapPreservesZonePolicyModel(t *testing.T) {
+	ensureIPv6(t)
+	primary := &Config{
+		TimeoutSec: 1,
+		Discovery: &DiscoveryConfig{
+			CatalogZone: "_catalog.breathgslb.",
+			TSIG: &TSIGZoneConfig{Keys: []TSIGKey{{
+				Name:         "cluster-xfr.",
+				Algorithm:    "hmac-sha256",
+				Secret:       testSecret,
+				AllowXFRFrom: []string{"::1"},
+			}}},
+		},
+		Zones: []Zone{{
+			Name:      "lightitup.zerodns.co.uk.",
+			NS:        []string{"gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."},
+			Admin:     "hostmaster.zerodns.co.uk.",
+			TTLSOA:    60,
+			TTLAnswer: 20,
+			Refresh:   60,
+			Retry:     10,
+			Expire:    90,
+			Minttl:    60,
+			Pools: []Pool{
+				{Name: "public-v6-primary", Family: "ipv6", Class: "public", Role: "primary", Members: []IPAddr{{IP: "2a02:8012:bc57:5353::1"}}},
+			},
+			Hosts: []Host{{
+				Name: "app",
+				Pools: []Pool{
+					{Name: "app-v6-primary", Family: "ipv6", Class: "public", Role: "primary", Members: []IPAddr{{IP: "2a02:8012:bc57:5353::10"}}},
+				},
+				Geo: &GeoPolicy{Named: []NamedGeoPolicy{
+					{Name: "app-v6-primary", Policy: GeoTierPolicy{AllowCountries: []string{"GB"}}},
+				}},
+				Health: &HealthConfig{Kind: "http", HostHeader: "app.lightitup.zerodns.co.uk", Path: "/health", Scheme: "https", Port: 443, Expect: "OK"},
+			}},
+			Geo: &GeoPolicy{Named: []NamedGeoPolicy{
+				{Name: "public-v6-primary", Policy: GeoTierPolicy{AllowCountries: []string{"GB"}, AllowContinents: []string{"EU"}}},
+			}},
+			Lightup: &LightupConfig{
+				Enabled:         true,
+				TTL:             60,
+				Forward:         true,
+				Reverse:         true,
+				ForwardTemplate: "templated-{addr}.lightitup.zerodns.co.uk.",
+				Families: []LightupFamily{{
+					Family:      "ipv6",
+					Class:       "public",
+					Prefix:      "2a02:8012:bc57:5353::/64",
+					RespondAAAA: true,
+					RespondPTR:  true,
+				}},
+			},
+			Health: &HealthConfig{Kind: "http", HostHeader: "lightitup.zerodns.co.uk", Path: "/health", Scheme: "https", Port: 443, Expect: "OK"},
+		}},
+	}
+	appendCatalogZone(primary)
+	_, addr := startTestServerV6(t, primary)
+
+	secondary := &Config{
+		TimeoutSec: 1,
+		Discovery: &DiscoveryConfig{
+			CatalogZone: "_catalog.breathgslb.",
+			Masters:     []string{addr},
+			TSIG: &TSIGZoneConfig{Keys: []TSIGKey{{
+				Name:      "cluster-xfr.",
+				Algorithm: "hmac-sha256",
+				Secret:    testSecret,
+			}}},
+		},
+	}
+	if err := bootstrapDiscoveredZones(secondary); err != nil {
+		t.Fatalf("bootstrapDiscoveredZones: %v", err)
+	}
+	if len(secondary.Zones) != 1 {
+		t.Fatalf("expected 1 discovered zone, got %d", len(secondary.Zones))
+	}
+	z := secondary.Zones[0]
+	if len(z.Pools) != 1 || z.Pools[0].Name != "public-v6-primary" {
+		t.Fatalf("discovered pools = %#v", z.Pools)
+	}
+	if z.Geo == nil || len(z.Geo.Named) != 1 || z.Geo.Named[0].Name != "public-v6-primary" {
+		t.Fatalf("discovered geo = %#v", z.Geo)
+	}
+	if len(z.Hosts) != 1 || z.Hosts[0].Name != "app" {
+		t.Fatalf("discovered hosts = %#v", z.Hosts)
+	}
+	if z.Hosts[0].Health == nil || z.Hosts[0].Health.HostHeader != "app.lightitup.zerodns.co.uk" {
+		t.Fatalf("discovered host health = %#v", z.Hosts[0].Health)
+	}
+	if z.Hosts[0].Geo == nil || len(z.Hosts[0].Geo.Named) != 1 || z.Hosts[0].Geo.Named[0].Name != "app-v6-primary" {
+		t.Fatalf("discovered host geo = %#v", z.Hosts[0].Geo)
+	}
+	if z.Lightup == nil || z.Lightup.ForwardTemplate != "templated-{addr}.lightitup.zerodns.co.uk." {
+		t.Fatalf("discovered lightup = %#v", z.Lightup)
+	}
+	if z.TSIG == nil || len(z.TSIG.Keys) != 1 || z.TSIG.Keys[0].Secret != testSecret {
+		t.Fatalf("discovered tsig = %#v", z.TSIG)
+	}
+}

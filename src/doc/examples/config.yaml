@@ -1,199 +1,247 @@
-# breathgslb global settings
-listen: ":53"                     # optional; default port 53 if omitted
-#listen_addrs: ["0.0.0.0:53", "[::]:53"]  # explicit bind targets (overrides
-# interfaces)
-# interfaces: ["enX0"]            # derive IPs from interface(s) and bind there
+# Modern primary example
+#
+# This file shows the current model:
+# - explicit bind addresses
+# - file-based forward and reverse zones
+# - shared discovery catalog for secondaries
+# - pools at the apex
+# - first-class host records under hosts:
+# - named-pool geo
+# - lightup forward/reverse synthesis
 
-api: true
-api-listen: 9443
-api-interface: ["eth0"]
-api-token: "/etc/breathgslb/token"       # Windows: C:\breathgslb\token
-api-cert: "/etc/breathgslb/cert.pem"     # Windows: C:\breathgslb\cert.pem
-api-key: "/etc/breathgslb/key.pem"       # Windows: C:\breathgslb\key.pem
+listen_addrs:
+  - "[2a02:8012:bc57:53::1]:53"
 
-reverse_dir: "reverse_zones"      # where generated reverse zones are written
-zones_dir: "zones"                # load <zone>.fwd.yaml files from this directory
+zones_dir: "/etc/breathgslb/zones"
+reverse_dir: "/etc/breathgslb/reverse"
 
-timeout_sec: 3                # per health probe
-interval_sec: 4               # base interval between probe rounds
-rise: 1                       # successes to mark UP
-fall: 2                       # failures to mark DOWN
-jitter_ms: 600                # add 0..600ms jitter to each interval
-cooldown_sec: 30              # minimum seconds between state flips (per
-# A/AAAA family)
-dns64_prefix: "64:ff9b::"     # synthesize AAAA from A when needed
-edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6
-# without frag)
-log_queries: true             # log queries and health transitions
-log_syslog: true
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+jitter_ms: 200
+cooldown_sec: 25
+edns_buf: 1232
+log_queries: true
+log_file: "/var/log/breathgslb/breathgslb.log"
+
 tsig:
   path: "/etc/breathgslb/tsig"
 
-geoip.enabled: true
-
 geoip:
+  enabled: true
   database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
-  prefer_ecs: true          # trust EDNS Client Subnet when present
-  prefer_field: "country"   # or "registered_country"
-  cache_ttl_sec: 600        # LRU of lookups to avoid hammering mmdb
+  prefer_field: "registered"
+  cache_ttl_sec: 600
 
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  ttl: 60
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "cluster-xfr."
+        secret: ""
+        allow_xfr_from:
+          - "::1"
+          - "2a02:8012:bc57::/48"
 
 zones:
-  #
-  # ZONE 1 — gslb-sitetest.akadata.ltd. (apex answers are GSLB-controlled)
-  #
-  - name: "gslb-sitetest.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]        # parent must delegate to this NS, with
-    # glue A/AAAA
-    admin: "hostmaster.akadata.ltd."
+  - name: "lightitup.zerodns.co.uk."
+    serve: "primary"
+    ns: ["gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."]
+    admin: "hostmaster.zerodns.co.uk."
     ttl_soa: 60
     ttl_answer: 20
     refresh: 60
-    retry: 30
-    expire: 600
+    retry: 10
+    expire: 90
     minttl: 60
 
-    serve: "local"
-
-    # Health-driven apex addresses
-    a_master:
-      - ip: "217.155.241.55"        # e.g., home/Zen v4
-        reverse: true
-    rfc_master:          ["172.16.0.0/24"]                          # e.g., the
-    # private rfc_1918 address
-    a_master_private:    ["172.16.0.1"]
-    aaaa_master_private: ["2a02:8012:bc57:1::2"]
-    ula_master:          ["2a02:8012:bc57:1::/64"]                  # e.g., the
-    # private ipv6 address space, local network or ULA RFC 4193
-    aaaa_master:         ["2a02:8012:bc57::1"]                      # e.g.,
-    # home/Zen v6
-
-    a_standby:    ["13.41.102.86"]                           # e.g., AWS v4
-    aaaa_standby: ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]   # e.g., AWS v6
-
-    a_fallback:    ["217.155.241.55"]                           # e.g.,same as
-    # master to test
-    aaaa_fallback:
-      - ip: "2a02:8012:bc57:cafe:f00d:babe::2"   # e.g., part of /48 to test v6
-        reverse: true
-
-    # Optional ALIAS at apex (only used if no A/AAAA lists are set)
-    # alias: "status.akadata.ltd."
-    # Map hostnames to ALIAS targets
-    # alias_host:
-    #   www: "status.akadata.ltd."
-
-    geoip:
-      enabled: true
-      database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
-      prefer_field: "country"     # or "registered"
-      cache_ttl_sec: 600
-
-    geo:
-      master:
-        allow_countries:  ["GB"]   # UK to master
-        allow_continents: ["EU"]   # rest of Europe to master
-      standby:
-        allow_countries:  ["US","CA"]  # North America → standby
-        # (or allow_continents: ["NA"])
-      fallback:
-        allow_all: true            # everyone else → fallback
-
-
-    health:
-      kind: http
-      host_header: "gslb-sitetest.akadata.ltd"
-      sni:         "gslb-sitetest.akadata.ltd"
-      path:        "/health"
-      expect:      "OK"
-      insecure_tls: false
-
-    # Other health check kinds:
-    # health:
-    #   kind: http3
-    #   expect: "OK"
-    # health:
-    #   kind: tcp
-    #   port: 443
-    #   tls_enable: true
-    #   sni: "gslb-sitetest.akadata.ltd"
-    #   alpn: "h2"
-    # health:
-    #   kind: udp
-    #   port: 53
-    #   udp_payload_b64: "cGluZw=="    # "ping"
-    #   udp_expect_re: "."
-    # health:
-    #   kind: rawip
-    #   protocol: 47                   # GRE
-
     dnssec:
-      mode: manual
-
-      zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+38151"
-      ksk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+12218"
-
+      mode: generated
+      zsk_keyfile: "/etc/breathgslb/keys/lightitup.zerodns.co.uk.zsk"
+      ksk_keyfile: "/etc/breathgslb/keys/lightitup.zerodns.co.uk.ksk"
+      nsec3_iterations: 0
 
     tsig:
-      seed_env: "BREATH_TSIG_SEED"      # optional; derive
-      # deterministically from this env var
       default_algorithm: "hmac-sha256"
-      allow_unsigned: true              # allow AXFR without TSIG
       keys:
-        - name: "gslb-xfr."             # TSIG key name (owner form,
-        # trailing dot)
-          algorithm: "hmac-sha256"      # optional; defaults to above
-          secret: "24823612"                    # if empty → derive from
-          # seed; if no seed → random per start
-          allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
+        - name: "lightitup-xfr."
+          secret: ""
+          allow_xfr_from:
+            - "::1"
+            - "2a02:8012:bc57::/48"
 
-    # Shared/static records served authoritatively
+    pools:
+      - name: "public-v6-primary"
+        family: "ipv6"
+        class: "public"
+        role: "primary"
+        members:
+          - ip: "2a02:8012:bc57:5353::1"
+      - name: "public-v4-primary"
+        family: "ipv4"
+        class: "public"
+        role: "primary"
+        members:
+          - ip: "217.155.241.55"
+      - name: "public-v6-secondary"
+        family: "ipv6"
+        class: "public"
+        role: "secondary"
+        members:
+          - ip: "2a02:8012:bc57:5353::2"
+      - name: "public-v4-secondary"
+        family: "ipv4"
+        class: "public"
+        role: "secondary"
+        members:
+          - ip: "13.41.102.86"
+      - name: "public-v6-fallback"
+        family: "ipv6"
+        class: "public"
+        role: "fallback"
+        members:
+          - ip: "2a02:8012:bc57:5353::53"
+      - name: "private-v6-primary"
+        family: "ipv6"
+        class: "private"
+        role: "primary"
+        members:
+          - ip: "2a02:8012:bc57:5353::2"
+        client_nets:
+          - "2a02:8012:bc57:5353::/64"
+      - name: "private-v4-primary"
+        family: "ipv4"
+        class: "private"
+        role: "primary"
+        members:
+          - ip: "172.16.0.1"
+        client_nets:
+          - "172.16.0.0/24"
 
-    # TXT at apex (omit name => apex). Multiple strings supported.
+    hosts:
+      - name: "app"
+        health:
+          kind: http
+          host_header: "app.lightitup.zerodns.co.uk"
+          path: "/health"
+          scheme: https
+          method: GET
+          port: 443
+          expect: "OK"
+        pools:
+          - name: "app-v6-primary"
+            family: "ipv6"
+            class: "public"
+            role: "primary"
+            members:
+              - ip: "2a02:8012:bc57:5353::10"
+          - name: "app-v4-primary"
+            family: "ipv4"
+            class: "public"
+            role: "primary"
+            members:
+              - ip: "217.155.241.60"
+          - name: "app-v6-private"
+            family: "ipv6"
+            class: "private"
+            role: "primary"
+            members:
+              - ip: "2a02:8012:bc57:5353::10"
+            client_nets:
+              - "2a02:8012:bc57:5353::/64"
+          - name: "app-v4-private"
+            family: "ipv4"
+            class: "private"
+            role: "primary"
+            members:
+              - ip: "172.16.0.10"
+            client_nets:
+              - "172.16.0.0/24"
+
+    geo:
+      public-v6-primary:
+        allow_countries: ["GB", "FR", "DE"]
+        allow_continents: ["EU"]
+      public-v4-primary:
+        allow_countries: ["GB", "FR", "DE"]
+        allow_continents: ["EU"]
+      public-v6-secondary:
+        allow_countries: ["US", "CA"]
+        allow_continents: ["NA"]
+      public-v4-secondary:
+        allow_countries: ["US", "CA"]
+        allow_continents: ["NA"]
+      public-v6-fallback:
+        allow_all: true
+      fallback:
+        allow_all: true
+
+    lightup:
+      enabled: true
+      ttl: 60
+      forward: true
+      reverse: true
+      strategy: "hash"
+      forward_template: "templated-{addr}.lightitup.zerodns.co.uk."
+      families:
+        - family: "ipv6"
+          class: "public"
+          prefix: "2a02:8012:bc57:5353::/64"
+          respond_aaaa: true
+          respond_ptr: true
+          exclude:
+            - "2a02:8012:bc57:5353::1/128"
+            - "2a02:8012:bc57:5353::53/128"
+        - family: "ipv4"
+          class: "private"
+          prefix: "172.16.0.0/24"
+          respond_a: true
+          respond_ptr: true
+          exclude:
+            - "172.16.0.1/32"
+            - "172.16.0.2/32"
+
+    alias_host:
+      www: "articles.akadata.ltd."
+
     txt:
-        - text:
-            - "Breath Technology - a DNS Zone by BreathGSLB - In YHVH we trust"
-          ttl: 300
-        - text:
-            - "google-site-verification=Ge2Ewklz6s4_jHy6bawlp3w-LWUWljX8y2nyy2p"
-            - "6a5Q"
-          ttl: 300
-        - name: "_dmarc.gslb-sitetest.akadata.ltd."
-          text:
-            - "v=DMARC1; p=quarantine; rua=mailto:postmaster@akadata.ltd"
-          ttl: 900
-
-    # MX at apex (use FQDN for Exchange)
+      - text:
+          - "BreathGSLB primary example"
+        ttl: 300
     mx:
-      - preference: 1
-        exchange: "aspmx.l.google.com."
-        ttl: 300
-      - preference: 5
-        exchange: "alt1.aspmx.l.google.com."
-        ttl: 300
-      - preference: 5
-        exchange: "alt2.aspmx.l.google.com."
-        ttl: 300
       - preference: 10
-        exchange: "alt3.aspmx.l.google.com."
+        exchange: "mail.zerodns.co.uk."
         ttl: 300
-      - preference: 10
-        exchange: "alt4.aspmx.l.google.com."
-        ttl: 300
-
-    # CAA at apex
     caa:
-      - flag: 128
+      - flag: 0
         tag: "issue"
         value: "letsencrypt.org"
         ttl: 900
-      - flag: 0
-        tag: "iodef"
-        value: "mailto:abuse@akadata.ltd"
-        ttl: 900
+    srv:
+      - name: "_https._tcp.app.lightitup.zerodns.co.uk."
+        priority: 10
+        weight: 60
+        port: 443
+        target: "app.lightitup.zerodns.co.uk."
+        ttl: 60
+    naptr:
+      - name: "lightitup.zerodns.co.uk."
+        order: 100
+        preference: 10
+        flags: "S"
+        services: "SIPS+D2T"
+        regexp: ""
+        replacement: "_https._tcp.app.lightitup.zerodns.co.uk."
+        ttl: 60
 
-    # RP (Responsible Person) at apex
-    rp:
-      mbox: "hostmaster.akadata.ltd."
-      txt:  "contact.akadata.ltd."
-      ttl: 900
+    health:
+      kind: http
+      host_header: "lightitup.zerodns.co.uk"
+      path: "/health"
+      scheme: https
+      method: GET
+      port: 443
+      expect: "OK"

@@ -1,0 +1,1120 @@
+%PDF-1.4
+1 0 obj<</Type /Catalog /Pages 2 0 R>>endobj
+2 0 obj<</Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R 21 0 R 23 0 R 25 0 R] /Count 12>>endobj
+3 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+4 0 obj<</Length 2359>>stream
+BT
+72 760 Td
+/F1 12 Tf (BreathGSLB Book) Tj
+0 -28 Td
+/F1 12 Tf (Intro & Scope) Tj
+0 -28 Td
+/F1 12 Tf (BreathGSLB is an authoritative DNS server with:) Tj
+0 -28 Td
+/F1 12 Tf (- health-aware answer selection) Tj
+0 -14 Td
+/F1 12 Tf (- pools for apex and named hosts) Tj
+0 -14 Td
+/F1 12 Tf (- GeoIP steering) Tj
+0 -14 Td
+/F1 12 Tf (- lightup forward and reverse synthesis) Tj
+0 -14 Td
+/F1 12 Tf (- DNSSEC signing) Tj
+0 -14 Td
+/F1 12 Tf (- primary/secondary replication with discovery bootstrap) Tj
+0 -28 Td
+/F1 12 Tf (This book collates the man pages and longer-form reference material used to) Tj
+0 -14 Td
+/F1 12 Tf (build the PDF manual. The detailed configuration reference is generated from) Tj
+0 -14 Td
+/F1 12 Tf (the current `breathgslb.conf\\(5\\)` source and reflects the live runtime model.) Tj
+0 -28 Td
+/F1 12 Tf (Runtime Model) Tj
+0 -28 Td
+/F1 12 Tf (The current model is:) Tj
+0 -28 Td
+/F1 12 Tf (- one main config for listeners, timing, GeoIP, TSIG, and discovery) Tj
+0 -14 Td
+/F1 12 Tf (- forward zone files in `zones_dir`) Tj
+0 -14 Td
+/F1 12 Tf (- reverse zone files in `reverse_dir`) Tj
+0 -14 Td
+/F1 12 Tf (- primary zones and discovery-based secondaries) Tj
+0 -14 Td
+/F1 12 Tf (- apex and named hosts answered through the same pool model) Tj
+0 -28 Td
+/F1 12 Tf (BreathGSLB is authoritative only. It does not recurse.) Tj
+0 -28 Td
+/F1 12 Tf (Config Model) Tj
+0 -28 Td
+/F1 12 Tf (The important design change is that the server is no longer just an) Tj
+0 -14 Td
+/F1 12 Tf (apex-steering engine.) Tj
+0 -28 Td
+/F1 12 Tf (It now supports:) Tj
+0 -28 Td
+/F1 12 Tf (- apex `pools`) Tj
+0 -14 Td
+/F1 12 Tf (- named `hosts`) Tj
+0 -14 Td
+/F1 12 Tf (- per-host `pools`) Tj
+0 -14 Td
+/F1 12 Tf (- named-pool `geo`) Tj
+0 -14 Td
+/F1 12 Tf (- zone-default `health` with host override) Tj
+0 -14 Td
+/F1 12 Tf (- deterministic `lightup`) Tj
+0 -28 Td
+/F1 12 Tf (Legacy `a_master` / `aaaa_master` and related fields still exist for) Tj
+0 -14 Td
+/F1 12 Tf (compatibility, but pools are the forward direction.) Tj
+0 -28 Td
+/F1 12 Tf (Reverse, Lightup, and DNSSEC) Tj
+0 -28 Td
+/F1 12 Tf (Reverse zones are first-class data under `reverse_dir`, using `*.rev.yaml`.) Tj
+0 -28 Td
+/F1 12 Tf (`lightup` provides deterministic forward and reverse synthesis inside owned) Tj
+0 -14 Td
+/F1 12 Tf (prefixes. Exact template-shaped forward names return the embedded address if it) Tj
+ET
+endstream endobj
+5 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+6 0 obj<</Length 2546>>stream
+BT
+72 760 Td
+/F1 12 Tf (is valid for the configured family and not excluded. Reverse PTR generation) Tj
+0 -14 Td
+/F1 12 Tf (follows the configured templates so forward and reverse naming remain symmetric.) Tj
+0 -28 Td
+/F1 12 Tf (DNSSEC supports generated or manual keys, NSEC or NSEC3, and signed primary and) Tj
+0 -14 Td
+/F1 12 Tf (secondary answers.) Tj
+0 -28 Td
+/F1 12 Tf (Replication) Tj
+0 -28 Td
+/F1 12 Tf (Secondaries may:) Tj
+0 -28 Td
+/F1 12 Tf (- bootstrap from a shared discovery catalog) Tj
+0 -14 Td
+/F1 12 Tf (- transfer zones with TSIG) Tj
+0 -14 Td
+/F1 12 Tf (- persist node-local secondary snapshots) Tj
+0 -28 Td
+/F1 12 Tf (Those persisted snapshots are runtime state, not shared source config. Shared) Tj
+0 -14 Td
+/F1 12 Tf (cluster material is limited to things such as TSIG and DNSSEC keys.) Tj
+0 -28 Td
+/F1 12 Tf (Service Setup) Tj
+0 -28 Td
+/F1 12 Tf (Service definitions for common init systems are under `services/`. Use the) Tj
+0 -14 Td
+/F1 12 Tf (systemd unit on Linux distributions with systemd, the OpenRC script for Alpine) Tj
+0 -14 Td
+/F1 12 Tf (and other OpenRC systems, and the Launchd plist for macOS.) Tj
+0 -28 Td
+/F1 12 Tf (Documentation Structure) Tj
+0 -28 Td
+/F1 12 Tf (The chapters below are generated from the current manpage sources.) Tj
+0 -28 Td
+/F1 12 Tf (breathgslb\\(8\\)) Tj
+0 -28 Td
+/F1 12 Tf (```markdown) Tj
+0 -14 Td
+/F1 12 Tf (NAME) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb - health?checked authoritative DNS with global load balancing) Tj
+0 -14 Td
+/F1 12 Tf (SYNOPSIS) Tj
+0 -14 Td
+/F2 12 Tf (breathgslb) Tj
+0 -14 Td
+/F1 12 Tf ([ -config file ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-listen addr ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-token token ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-cert file ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -api-key file ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -supervisor path ]) Tj
+0 -14 Td
+/F1 12 Tf ([ -debug-pprof ]) Tj
+0 -14 Td
+/F1 12 Tf (DESCRIPTION) Tj
+0 -14 Td
+/F2 12 Tf (BreathGSLB) Tj
+0 -14 Td
+/F1 12 Tf (is a compact authoritative server that selects A and AAAA answers based on) Tj
+0 -14 Td
+/F1 12 Tf (live health checks.  It serves normal DNS records while optionally) Tj
+0 -14 Td
+/F1 12 Tf (synthesising AAAA from A via DNS64.  The daemon listens on UDP and TCP for) Tj
+0 -14 Td
+/F1 12 Tf (both IPv4 and IPv6 and can expose an HTTPS admin API for health and) Tj
+0 -14 Td
+/F1 12 Tf (statistics.) Tj
+0 -14 Td
+/F1 12 Tf (DNS64) Tj
+0 -14 Td
+/F1 12 Tf (When no AAAA record exists for a name,) Tj
+0 -14 Td
+/F2 12 Tf (breathgslb) Tj
+0 -14 Td
+/F1 12 Tf (can synthesise one from an A record using the configured) Tj
+ET
+endstream endobj
+7 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 8 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+8 0 obj<</Length 2869>>stream
+BT
+72 760 Td
+/F2 12 Tf (dns64_prefix .) Tj
+0 -14 Td
+/F1 12 Tf (The IPv4 address is embedded into the prefix and returned to the) Tj
+0 -14 Td
+/F1 12 Tf (client, allowing an IPv6?only host to reach a legacy IPv4 service via) Tj
+0 -14 Td
+/F1 12 Tf (an external NAT64 gateway.) Tj
+0 -28 Td
+/F1 12 Tf (Client AAAA?  -> BreathGSLB ->  A?   -> IPv4 server) Tj
+0 -14 Td
+/F1 12 Tf (       <- AAAA   DNS64      <-  A   <-) Tj
+0 -14 Td
+/F1 12 Tf (This bridges IPv6?only networks to IPv4 infrastructure without exposing) Tj
+0 -14 Td
+/F1 12 Tf (new public addresses.) Tj
+0 -14 Td
+/F1 12 Tf (OPTIONS) Tj
+0 -14 Td
+/F1 12 Tf (-config " " file) Tj
+0 -14 Td
+/F1 12 Tf (Path to the YAML configuration file.  Defaults to) Tj
+0 -14 Td
+/F1 12 Tf (-api-listen " " addr) Tj
+0 -14 Td
+/F1 12 Tf (Bind address for the optional HTTPS admin API, e.g.) Tj
+0 -14 Td
+/F2 12 Tf (:9443) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F1 12 Tf (127.0.0.1:9443 .) Tj
+0 -14 Td
+/F1 12 Tf (-api-token " " token) Tj
+0 -14 Td
+/F1 12 Tf (Bearer token for API requests.  May be a literal string or) Tj
+0 -14 Td
+/F1 12 Tf (path to a file whose contents are used.) Tj
+0 -14 Td
+/F1 12 Tf (-api-cert " " file) Tj
+0 -14 Td
+/F1 12 Tf (TLS certificate file for the admin API.) Tj
+0 -14 Td
+/F1 12 Tf (-api-key " " file) Tj
+0 -14 Td
+/F1 12 Tf (TLS private key for the admin API.) Tj
+0 -14 Td
+/F1 12 Tf (-supervisor " " path) Tj
+0 -14 Td
+/F1 12 Tf (Send service state change notifications to the given supervisor socket) Tj
+0 -14 Td
+/F1 12 Tf (or FIFO.  The format of the messages is supervisor specific.) Tj
+0 -14 Td
+/F1 12 Tf (-debug-pprof) Tj
+0 -14 Td
+/F1 12 Tf (Enable Go's pprof debug server on) Tj
+0 -14 Td
+/F1 12 Tf (localhost:6060 .) Tj
+0 -14 Td
+/F1 12 Tf (USAGE) Tj
+0 -14 Td
+/F1 12 Tf (Start the daemon with a configuration file:) Tj
+0 -28 Td
+/F1 12 Tf (breathgslb -config /etc/breathgslb/config.yaml) Tj
+0 -28 Td
+/F1 12 Tf (For split?horizon deployments run separate instances with differing) Tj
+0 -14 Td
+/F1 12 Tf (configuration files and distinct listeners.  Share TSIG keys between) Tj
+0 -14 Td
+/F1 12 Tf (instances when signed zone transfers are required.  Transfers signed with a) Tj
+0 -14 Td
+/F1 12 Tf (TSIG key are honored only from client addresses listed in that key's) Tj
+0 -14 Td
+/F1 12 Tf (fBallow_xfr_fromfP list; other sources receive fBREFUSEDfP.) Tj
+0 -28 Td
+/F1 12 Tf (TLS certificates and API tokens are read from the paths supplied on the) Tj
+0 -14 Td
+/F1 12 Tf (command line or in the configuration file.  To rotate them atomically,) Tj
+0 -14 Td
+/F1 12 Tf (write the new material to a separate file, update a symlink, and reload) Tj
+0 -14 Td
+/F2 12 Tf (breathgslb) Tj
+0 -14 Td
+/F1 12 Tf (with) Tj
+0 -14 Td
+/F2 12 Tf (SIGHUP) Tj
+0 -14 Td
+/F1 12 Tf (or a restart.) Tj
+0 -14 Td
+/F1 12 Tf (SEE ALSO) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb.conf \\(5\\)```) Tj
+0 -28 Td
+/F1 12 Tf (breathgslb.conf\\(5\\)) Tj
+ET
+endstream endobj
+9 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 10 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+10 0 obj<</Length 2021>>stream
+BT
+72 746 Td
+/F1 12 Tf (```markdown) Tj
+0 -14 Td
+/F1 12 Tf (NAME) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb.conf - configuration format for BreathGSLB) Tj
+0 -28 Td
+/F1 12 Tf (SYNOPSIS) Tj
+0 -14 Td
+/F2 12 Tf (/etc/breathgslb/config.yaml) Tj
+0 -14 Td
+/F2 12 Tf (/etc/breathgslb/zones/*.fwd.yaml) Tj
+0 -14 Td
+/F2 12 Tf (/etc/breathgslb/reverse/*.rev.yaml) Tj
+0 -28 Td
+/F1 12 Tf (DESCRIPTION) Tj
+0 -14 Td
+/F1 12 Tf (BreathGSLB is configured from one main YAML file plus optional forward and) Tj
+0 -14 Td
+/F1 12 Tf (reverse zone files loaded from) Tj
+0 -14 Td
+/F2 12 Tf (zones_dir) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F1 12 Tf (reverse_dir .) Tj
+0 -28 Td
+/F1 12 Tf (The current model is:) Tj
+0 -14 Td
+/F1 12 Tf (one main config for listeners, timing, GeoIP, TSIG, API, and discovery) Tj
+0 -14 Td
+/F1 12 Tf (forward zones in) Tj
+0 -14 Td
+/F2 12 Tf (zones_dir) Tj
+0 -14 Td
+/F1 12 Tf (as) Tj
+0 -14 Td
+/F2 12 Tf (*.fwd.yaml) Tj
+0 -14 Td
+/F1 12 Tf (reverse zones in) Tj
+0 -14 Td
+/F2 12 Tf (reverse_dir) Tj
+0 -14 Td
+/F1 12 Tf (as) Tj
+0 -14 Td
+/F2 12 Tf (*.rev.yaml) Tj
+0 -14 Td
+/F1 12 Tf (primary or discovery-based secondary operation) Tj
+0 -14 Td
+/F1 12 Tf (apex and named hosts answered through the same pool model) Tj
+0 -28 Td
+/F1 12 Tf (BreathGSLB is authoritative only. It does not recurse.) Tj
+0 -28 Td
+/F1 12 Tf (RUNTIME MODEL) Tj
+0 -14 Td
+/F1 12 Tf (At query time, resolution is layered in this order:) Tj
+0 -14 Td
+/F1 12 Tf (exact host match in) Tj
+0 -14 Td
+/F2 12 Tf (hosts:) Tj
+0 -14 Td
+/F1 12 Tf (host) Tj
+0 -14 Td
+/F2 12 Tf (alias) Tj
+0 -14 Td
+/F1 12 Tf (or zone) Tj
+0 -14 Td
+/F2 12 Tf (alias_host) Tj
+0 -14 Td
+/F2 12 Tf (lightup) Tj
+0 -14 Td
+/F1 12 Tf (synthesis for matching names) Tj
+0 -14 Td
+/F1 12 Tf (apex) Tj
+0 -14 Td
+/F2 12 Tf (pools) Tj
+0 -14 Td
+/F1 12 Tf (or legacy apex fields) Tj
+0 -14 Td
+/F1 12 Tf (static records such as) Tj
+0 -14 Td
+/F1 12 Tf (TXT ,) Tj
+0 -14 Td
+/F1 12 Tf (MX ,) Tj
+0 -14 Td
+/F1 12 Tf (CAA ,) Tj
+0 -14 Td
+/F1 12 Tf (RP ,) Tj
+0 -14 Td
+/F1 12 Tf (SSHFP ,) Tj
+0 -14 Td
+/F1 12 Tf (SRV ,) Tj
+ET
+endstream endobj
+11 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 12 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+12 0 obj<</Length 2414>>stream
+BT
+72 760 Td
+/F1 12 Tf (NAPTR ,) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F1 12 Tf (PTR) Tj
+0 -28 Td
+/F1 12 Tf (For a discovery-based secondary:) Tj
+0 -14 Td
+/F1 12 Tf (load only the main config) Tj
+0 -14 Td
+/F1 12 Tf (transfer the shared catalog zone) Tj
+0 -14 Td
+/F1 12 Tf (reconstruct full zone intent from the catalog payload) Tj
+0 -14 Td
+/F1 12 Tf (AXFR the discovered zones) Tj
+0 -14 Td
+/F1 12 Tf (persist local secondary snapshots for restart durability) Tj
+0 -28 Td
+/F1 12 Tf (GLOBAL SETTINGS) Tj
+0 -14 Td
+/F1 12 Tf (Common top-level keys include:) Tj
+0 -14 Td
+/F1 12 Tf (listen) Tj
+0 -14 Td
+/F1 12 Tf (Fallback bind address, usually) Tj
+0 -14 Td
+/F1 12 Tf (:53 .) Tj
+0 -14 Td
+/F1 12 Tf (listen_addrs) Tj
+0 -14 Td
+/F1 12 Tf (Explicit bind addresses in) Tj
+0 -14 Td
+/F2 12 Tf (host:port) Tj
+0 -14 Td
+/F1 12 Tf (form.) Tj
+0 -14 Td
+/F1 12 Tf (interfaces) Tj
+0 -14 Td
+/F1 12 Tf (Derive bind addresses from named interfaces.) Tj
+0 -14 Td
+/F1 12 Tf (zones_dir) Tj
+0 -14 Td
+/F1 12 Tf (Directory containing forward zone files.) Tj
+0 -14 Td
+/F1 12 Tf (reverse_dir) Tj
+0 -14 Td
+/F1 12 Tf (Directory containing reverse zone files.) Tj
+0 -14 Td
+/F1 12 Tf (timeout_sec) Tj
+0 -14 Td
+/F1 12 Tf (Probe and transfer timeout base.) Tj
+0 -14 Td
+/F1 12 Tf (interval_sec) Tj
+0 -14 Td
+/F1 12 Tf (Base interval between health rounds and runtime refresh cycles.) Tj
+0 -14 Td
+/F1 12 Tf (rise) Tj
+0 -14 Td
+/F1 12 Tf (Successes required before a health state becomes UP.) Tj
+0 -14 Td
+/F1 12 Tf (fall) Tj
+0 -14 Td
+/F1 12 Tf (Failures required before a health state becomes DOWN.) Tj
+0 -14 Td
+/F1 12 Tf (jitter_ms) Tj
+0 -14 Td
+/F1 12 Tf (Random delay added to probe scheduling.) Tj
+0 -14 Td
+/F1 12 Tf (cooldown_sec) Tj
+0 -14 Td
+/F1 12 Tf (Minimum dwell time before a tier or pool flips state.) Tj
+0 -14 Td
+/F1 12 Tf (dns64_prefix) Tj
+0 -14 Td
+/F1 12 Tf (Prefix used for synthetic AAAA from A.) Tj
+0 -14 Td
+/F1 12 Tf (edns_buf) Tj
+0 -14 Td
+/F1 12 Tf (Advertised EDNS UDP payload size.) Tj
+0 -14 Td
+/F1 12 Tf (max_records) Tj
+0 -14 Td
+/F1 12 Tf (Maximum A or AAAA records returned in one answer.) Tj
+0 -14 Td
+/F1 12 Tf (log_queries) Tj
+0 -14 Td
+/F1 12 Tf (Enable query logging.) Tj
+0 -14 Td
+/F1 12 Tf (log_file) Tj
+0 -14 Td
+/F1 12 Tf (Log file path.) Tj
+0 -14 Td
+/F1 12 Tf (log_syslog) Tj
+0 -14 Td
+/F1 12 Tf (Enable syslog logging.) Tj
+0 -14 Td
+/F1 12 Tf (tsig.path) Tj
+0 -14 Td
+/F1 12 Tf (Directory used for TSIG key persistence.) Tj
+ET
+endstream endobj
+13 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 14 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+14 0 obj<</Length 2195>>stream
+BT
+72 760 Td
+/F1 12 Tf (geoip) Tj
+0 -14 Td
+/F1 12 Tf (GeoIP enablement and MMDB configuration.) Tj
+0 -14 Td
+/F1 12 Tf (discovery) Tj
+0 -14 Td
+/F1 12 Tf (Shared catalog bootstrap for config-only secondaries.) Tj
+0 -28 Td
+/F1 12 Tf (DISCOVERY) Tj
+0 -14 Td
+/F1 12 Tf (The) Tj
+0 -14 Td
+/F2 12 Tf (discovery) Tj
+0 -14 Td
+/F1 12 Tf (block allows a secondary to start from only its main config.) Tj
+0 -28 Td
+/F1 12 Tf (discovery:) Tj
+0 -14 Td
+/F1 12 Tf (  catalog_zone: "_catalog.breathgslb.") Tj
+0 -14 Td
+/F1 12 Tf (  masters: ["[2a02:8012:bc57:53::1]:53"]) Tj
+0 -14 Td
+/F1 12 Tf (  xfr_source: "2a02:8012:bc57:53a::1") Tj
+0 -14 Td
+/F1 12 Tf (  tsig:) Tj
+0 -14 Td
+/F1 12 Tf (    default_algorithm: "hmac-sha256") Tj
+0 -14 Td
+/F1 12 Tf (    keys:) Tj
+0 -14 Td
+/F1 12 Tf (      - name: "lightitup-xfr.") Tj
+0 -14 Td
+/F1 12 Tf (        secret: "") Tj
+0 -28 Td
+/F1 12 Tf (Fields:) Tj
+0 -14 Td
+/F1 12 Tf (catalog_zone) Tj
+0 -14 Td
+/F1 12 Tf (Shared catalog zone used for bootstrap.) Tj
+0 -14 Td
+/F1 12 Tf (masters) Tj
+0 -14 Td
+/F1 12 Tf (Primaries to query for that catalog.) Tj
+0 -14 Td
+/F1 12 Tf (xfr_source) Tj
+0 -14 Td
+/F1 12 Tf (Optional local source IP for outbound AXFR. Only set this when that exact) Tj
+0 -14 Td
+/F1 12 Tf (address exists on the local host.) Tj
+0 -14 Td
+/F1 12 Tf (tsig) Tj
+0 -14 Td
+/F1 12 Tf (Shared transfer/bootstrap key material.) Tj
+0 -28 Td
+/F1 12 Tf (ZONES) Tj
+0 -14 Td
+/F1 12 Tf (Each zone entry defines one authoritative zone.) Tj
+0 -28 Td
+/F1 12 Tf (- name: "lightitup.zerodns.co.uk.") Tj
+0 -14 Td
+/F1 12 Tf (  ns: ["gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."]) Tj
+0 -14 Td
+/F1 12 Tf (  admin: "hostmaster.zerodns.co.uk.") Tj
+0 -14 Td
+/F1 12 Tf (  ttl_soa: 60) Tj
+0 -14 Td
+/F1 12 Tf (  ttl_answer: 20) Tj
+0 -14 Td
+/F1 12 Tf (  refresh: 60) Tj
+0 -14 Td
+/F1 12 Tf (  retry: 10) Tj
+0 -14 Td
+/F1 12 Tf (  expire: 90) Tj
+0 -14 Td
+/F1 12 Tf (  minttl: 60) Tj
+0 -14 Td
+/F1 12 Tf (  serve: "primary") Tj
+0 -28 Td
+/F1 12 Tf (Important fields:) Tj
+0 -14 Td
+/F1 12 Tf (name) Tj
+0 -14 Td
+/F1 12 Tf (Zone FQDN.) Tj
+0 -14 Td
+/F1 12 Tf (ns) Tj
+0 -14 Td
+/F1 12 Tf (Published authoritative NS set.) Tj
+0 -14 Td
+/F1 12 Tf (admin) Tj
+0 -14 Td
+/F1 12 Tf (SOA mailbox in dotted form.) Tj
+ET
+endstream endobj
+15 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 16 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+16 0 obj<</Length 2094>>stream
+BT
+72 760 Td
+/F1 12 Tf (ttl_soa) Tj
+0 -14 Td
+/F1 12 Tf (SOA TTL.) Tj
+0 -14 Td
+/F1 12 Tf (ttl_answer) Tj
+0 -14 Td
+/F1 12 Tf (Default TTL for dynamic A and AAAA answers.) Tj
+0 -14 Td
+/F1 12 Tf (refresh) Tj
+0 -14 Td
+/F1 12 Tf (SOA refresh timer.) Tj
+0 -14 Td
+/F1 12 Tf (retry) Tj
+0 -14 Td
+/F1 12 Tf (SOA retry timer.) Tj
+0 -14 Td
+/F1 12 Tf (expire) Tj
+0 -14 Td
+/F1 12 Tf (SOA expire timer.) Tj
+0 -14 Td
+/F1 12 Tf (minttl) Tj
+0 -14 Td
+/F1 12 Tf (SOA minimum TTL.) Tj
+0 -14 Td
+/F1 12 Tf (serve) Tj
+0 -14 Td
+/F1 12 Tf (Zone role:) Tj
+0 -14 Td
+/F1 12 Tf (primary ,) Tj
+0 -14 Td
+/F1 12 Tf (local ,) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F1 12 Tf (secondary .) Tj
+0 -14 Td
+/F1 12 Tf (masters) Tj
+0 -14 Td
+/F1 12 Tf (Upstream primaries for a secondary zone.) Tj
+0 -14 Td
+/F1 12 Tf (xfr_source) Tj
+0 -14 Td
+/F1 12 Tf (Optional source IP used when the zone AXFRs from a master.) Tj
+0 -28 Td
+/F1 12 Tf (APEX MODEL) Tj
+0 -14 Td
+/F1 12 Tf (There are two apex answer models:) Tj
+0 -14 Td
+/F1 12 Tf (legacy apex fields such as) Tj
+0 -14 Td
+/F1 12 Tf (a_master ,) Tj
+0 -14 Td
+/F1 12 Tf (aaaa_master ,) Tj
+0 -14 Td
+/F1 12 Tf (a_standby ,) Tj
+0 -14 Td
+/F1 12 Tf (aaaa_standby ,) Tj
+0 -14 Td
+/F1 12 Tf (a_fallback ,) Tj
+0 -14 Td
+/F1 12 Tf (and related private/local-view fields) Tj
+0 -14 Td
+/F1 12 Tf (the current) Tj
+0 -14 Td
+/F2 12 Tf (pools) Tj
+0 -14 Td
+/F1 12 Tf (model) Tj
+0 -28 Td
+/F1 12 Tf (Legacy fields remain for compatibility. Pools are the long-term direction.) Tj
+0 -28 Td
+/F1 12 Tf (POOLS) Tj
+0 -14 Td
+/F1 12 Tf (Pools are the current answer-selection model for the apex and for named hosts.) Tj
+0 -28 Td
+/F1 12 Tf (pools:) Tj
+0 -14 Td
+/F1 12 Tf (  - name: "public-v6-primary") Tj
+0 -14 Td
+/F1 12 Tf (    family: "ipv6") Tj
+0 -14 Td
+/F1 12 Tf (    class: "public") Tj
+0 -14 Td
+/F1 12 Tf (    role: "primary") Tj
+0 -14 Td
+/F1 12 Tf (    members:) Tj
+0 -14 Td
+/F1 12 Tf (      - ip: "2a02:8012:bc57:5353::1") Tj
+0 -14 Td
+/F1 12 Tf (  - name: "private-v4-primary") Tj
+0 -14 Td
+/F1 12 Tf (    family: "ipv4") Tj
+0 -14 Td
+/F1 12 Tf (    class: "private") Tj
+0 -14 Td
+/F1 12 Tf (    role: "primary") Tj
+ET
+endstream endobj
+17 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 18 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+18 0 obj<</Length 1900>>stream
+BT
+72 760 Td
+/F1 12 Tf (    members:) Tj
+0 -14 Td
+/F1 12 Tf (      - ip: "172.16.0.1") Tj
+0 -14 Td
+/F1 12 Tf (    client_nets:) Tj
+0 -14 Td
+/F1 12 Tf (      - "172.16.0.0/24") Tj
+0 -28 Td
+/F1 12 Tf (Pool fields:) Tj
+0 -14 Td
+/F1 12 Tf (name) Tj
+0 -14 Td
+/F1 12 Tf (Stable pool identifier used by geo policy.) Tj
+0 -14 Td
+/F1 12 Tf (family) Tj
+0 -14 Td
+/F1 12 Tf (Either) Tj
+0 -14 Td
+/F2 12 Tf (ipv4) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F1 12 Tf (ipv6 .) Tj
+0 -14 Td
+/F1 12 Tf (class) Tj
+0 -14 Td
+/F1 12 Tf (Usually) Tj
+0 -14 Td
+/F2 12 Tf (public) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F1 12 Tf (private .) Tj
+0 -14 Td
+/F1 12 Tf (role) Tj
+0 -14 Td
+/F1 12 Tf (Typically) Tj
+0 -14 Td
+/F1 12 Tf (primary ,) Tj
+0 -14 Td
+/F1 12 Tf (secondary ,) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F1 12 Tf (fallback .) Tj
+0 -14 Td
+/F1 12 Tf (members) Tj
+0 -14 Td
+/F1 12 Tf (The actual IPs returned in DNS answers.) Tj
+0 -14 Td
+/F1 12 Tf (client_nets) Tj
+0 -14 Td
+/F1 12 Tf (Source CIDRs that make a private pool eligible.) Tj
+0 -28 Td
+/F1 12 Tf (HOSTS) Tj
+0 -14 Td
+/F2 12 Tf (hosts:) Tj
+0 -14 Td
+/F1 12 Tf (provides first-class in-zone names.) Tj
+0 -28 Td
+/F1 12 Tf (hosts:) Tj
+0 -14 Td
+/F1 12 Tf (  - name: "app") Tj
+0 -14 Td
+/F1 12 Tf (    health:) Tj
+0 -14 Td
+/F1 12 Tf (      kind: http) Tj
+0 -14 Td
+/F1 12 Tf (      host_header: "app.lightitup.zerodns.co.uk") Tj
+0 -14 Td
+/F1 12 Tf (      path: "/health") Tj
+0 -14 Td
+/F1 12 Tf (    pools:) Tj
+0 -14 Td
+/F1 12 Tf (      - name: "app-v6") Tj
+0 -14 Td
+/F1 12 Tf (        family: "ipv6") Tj
+0 -14 Td
+/F1 12 Tf (        class: "public") Tj
+0 -14 Td
+/F1 12 Tf (        role: "primary") Tj
+0 -14 Td
+/F1 12 Tf (        members:) Tj
+0 -14 Td
+/F1 12 Tf (          - ip: "2a02:8012:bc57:5353::10") Tj
+0 -28 Td
+/F1 12 Tf (Each host can carry:) Tj
+0 -14 Td
+/F2 12 Tf (pools) Tj
+0 -14 Td
+/F2 12 Tf (geo) Tj
+0 -14 Td
+/F2 12 Tf (health) Tj
+0 -14 Td
+/F2 12 Tf (alias) Tj
+ET
+endstream endobj
+19 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 20 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+20 0 obj<</Length 2034>>stream
+BT
+72 746 Td
+/F1 12 Tf (Zone health is the default. Host health overrides it when present.) Tj
+0 -28 Td
+/F1 12 Tf (GEO ROUTING) Tj
+0 -14 Td
+/F1 12 Tf (Geo routing uses MaxMind country data from the configured MMDB.) Tj
+0 -28 Td
+/F1 12 Tf (The code reads:) Tj
+0 -14 Td
+/F2 12 Tf (country.iso_code) Tj
+0 -14 Td
+/F2 12 Tf (registered_country.iso_code) Tj
+0 -14 Td
+/F2 12 Tf (continent.code) Tj
+0 -28 Td
+/F1 12 Tf (Those ISO-style codes are matched directly against:) Tj
+0 -14 Td
+/F2 12 Tf (allow_countries) Tj
+0 -14 Td
+/F2 12 Tf (allow_continents) Tj
+0 -28 Td
+/F1 12 Tf (Named-pool geo is the preferred model:) Tj
+0 -28 Td
+/F1 12 Tf (geo:) Tj
+0 -14 Td
+/F1 12 Tf (  eu-v6:) Tj
+0 -14 Td
+/F1 12 Tf (    allow_countries: ["GB", "FR", "DE"]) Tj
+0 -14 Td
+/F1 12 Tf (    allow_continents: ["EU"]) Tj
+0 -14 Td
+/F1 12 Tf (  us-v6:) Tj
+0 -14 Td
+/F1 12 Tf (    allow_countries: ["US", "CA"]) Tj
+0 -14 Td
+/F1 12 Tf (    allow_continents: ["NA"]) Tj
+0 -14 Td
+/F1 12 Tf (  global-v6:) Tj
+0 -14 Td
+/F1 12 Tf (    allow_all: true) Tj
+0 -28 Td
+/F1 12 Tf (Legacy) Tj
+0 -14 Td
+/F1 12 Tf (geo.master ,) Tj
+0 -14 Td
+/F1 12 Tf (geo.standby ,) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (geo.fallback) Tj
+0 -14 Td
+/F1 12 Tf (still work for older configs.) Tj
+0 -28 Td
+/F2 12 Tf (geo_answers) Tj
+0 -14 Td
+/F1 12 Tf (is separate from) Tj
+0 -14 Td
+/F1 12 Tf (geo .) Tj
+0 -14 Td
+/F1 12 Tf (It directly overrides returned answers by country or continent.) Tj
+0 -28 Td
+/F1 12 Tf (LIGHTUP) Tj
+0 -14 Td
+/F2 12 Tf (lightup) Tj
+0 -14 Td
+/F1 12 Tf (provides deterministic forward and reverse synthesis inside configured owned) Tj
+0 -14 Td
+/F1 12 Tf (prefixes.) Tj
+0 -28 Td
+/F1 12 Tf (lightup:) Tj
+0 -14 Td
+/F1 12 Tf (  enabled: true) Tj
+0 -14 Td
+/F1 12 Tf (  forward_template: "fresh-{addr}.lightitup.zerodns.co.uk.") Tj
+0 -14 Td
+/F1 12 Tf (  families:) Tj
+0 -14 Td
+/F1 12 Tf (    - family: "ipv6") Tj
+0 -14 Td
+/F1 12 Tf (      class: "public") Tj
+0 -14 Td
+/F1 12 Tf (      prefix: "2a02:8012:bc57:5353::/64") Tj
+0 -14 Td
+/F1 12 Tf (      respond_aaaa: true) Tj
+ET
+endstream endobj
+21 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 22 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+22 0 obj<</Length 2192>>stream
+BT
+72 760 Td
+/F1 12 Tf (      respond_ptr: true) Tj
+0 -14 Td
+/F1 12 Tf (      exclude:) Tj
+0 -14 Td
+/F1 12 Tf (        - "2a02:8012:bc57:5353::1/128") Tj
+0 -28 Td
+/F1 12 Tf (Purpose:) Tj
+0 -14 Td
+/F1 12 Tf (synthetic forward names for addresses you own) Tj
+0 -14 Td
+/F1 12 Tf (deterministic PTR generation) Tj
+0 -14 Td
+/F1 12 Tf (stable forward/reverse round-tripping) Tj
+0 -28 Td
+/F1 12 Tf (Important behavior:) Tj
+0 -14 Td
+/F1 12 Tf (explicit records always win) Tj
+0 -14 Td
+/F1 12 Tf (with an explicit) Tj
+0 -14 Td
+/F2 12 Tf (forward_template) Tj
+0 -14 Td
+/F1 12 Tf (only names matching that template synthesize) Tj
+0 -14 Td
+/F1 12 Tf (excluded ranges are hard deny-ranges inside the lightup prefix) Tj
+0 -14 Td
+/F1 12 Tf (exact template names return the embedded address if it is inside the configured) Tj
+0 -14 Td
+/F1 12 Tf (prefix and not excluded) Tj
+0 -28 Td
+/F1 12 Tf (REVERSE ZONES) Tj
+0 -14 Td
+/F1 12 Tf (Delegated reverse zones are first-class YAML files in) Tj
+0 -14 Td
+/F1 12 Tf (reverse_dir .) Tj
+0 -14 Td
+/F1 12 Tf (Files use the) Tj
+0 -14 Td
+/F2 12 Tf (*.rev.yaml) Tj
+0 -14 Td
+/F1 12 Tf (suffix.) Tj
+0 -28 Td
+/F1 12 Tf (Reverse zones may contain:) Tj
+0 -14 Td
+/F1 12 Tf (explicit PTR records) Tj
+0 -14 Td
+/F1 12 Tf (generated PTR data requested by) Tj
+0 -14 Td
+/F2 12 Tf (reverse: true) Tj
+0 -14 Td
+/F1 12 Tf (on configured addresses) Tj
+0 -14 Td
+/F1 12 Tf (lightup synthetic PTRs for owned prefixes) Tj
+0 -28 Td
+/F1 12 Tf (DNSSEC) Tj
+0 -14 Td
+/F1 12 Tf (DNSSEC supports:) Tj
+0 -14 Td
+/F1 12 Tf (manual or generated key material) Tj
+0 -14 Td
+/F1 12 Tf (plain NSEC or NSEC3) Tj
+0 -14 Td
+/F1 12 Tf (signed primary answers) Tj
+0 -14 Td
+/F1 12 Tf (signed secondary answers using transferred signed data) Tj
+0 -28 Td
+/F1 12 Tf (For generated keys, use stable key paths under) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/keys/ .) Tj
+0 -28 Td
+/F1 12 Tf (TRANSFERS AND TSIG) Tj
+0 -14 Td
+/F1 12 Tf (Per-zone) Tj
+0 -14 Td
+/F2 12 Tf (tsig) Tj
+0 -14 Td
+/F1 12 Tf (and shared) Tj
+0 -14 Td
+/F2 12 Tf (discovery.tsig) Tj
+0 -14 Td
+/F1 12 Tf (support signed zone transfers.) Tj
+0 -28 Td
+/F2 12 Tf (allow_xfr_from) Tj
+0 -14 Td
+/F1 12 Tf (accepts:) Tj
+0 -14 Td
+/F1 12 Tf (exact IPv4 addresses) Tj
+ET
+endstream endobj
+23 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 24 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+24 0 obj<</Length 1695>>stream
+BT
+72 760 Td
+/F1 12 Tf (exact IPv6 addresses) Tj
+0 -14 Td
+/F1 12 Tf (IPv4 CIDRs) Tj
+0 -14 Td
+/F1 12 Tf (IPv6 CIDRs) Tj
+0 -28 Td
+/F1 12 Tf (Use) Tj
+0 -14 Td
+/F2 12 Tf (xfr_source) Tj
+0 -14 Td
+/F1 12 Tf (only when the chosen source IP is actually configured on the local host.) Tj
+0 -28 Td
+/F1 12 Tf (ALIAS, CNAME, AND OTHER RECORDS) Tj
+0 -14 Td
+/F1 12 Tf (The current schema supports:) Tj
+0 -14 Td
+/F1 12 Tf (zone apex) Tj
+0 -14 Td
+/F2 12 Tf (alias) Tj
+0 -14 Td
+/F1 12 Tf (host) Tj
+0 -14 Td
+/F2 12 Tf (alias) Tj
+0 -14 Td
+/F1 12 Tf (map-based host ALIAS through) Tj
+0 -14 Td
+/F2 12 Tf (alias_host) Tj
+0 -14 Td
+/F1 12 Tf (named host) Tj
+0 -14 Td
+/F2 12 Tf (A) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (AAAA) Tj
+0 -14 Td
+/F1 12 Tf (through) Tj
+0 -14 Td
+/F2 12 Tf (hosts) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (pools) Tj
+0 -14 Td
+/F1 12 Tf (static) Tj
+0 -14 Td
+/F1 12 Tf (TXT ,) Tj
+0 -14 Td
+/F1 12 Tf (MX ,) Tj
+0 -14 Td
+/F1 12 Tf (CAA ,) Tj
+0 -14 Td
+/F1 12 Tf (RP ,) Tj
+0 -14 Td
+/F1 12 Tf (SSHFP ,) Tj
+0 -14 Td
+/F1 12 Tf (SRV ,) Tj
+0 -14 Td
+/F1 12 Tf (NAPTR ,) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F1 12 Tf (PTR) Tj
+0 -28 Td
+/F1 12 Tf (There is not currently a first-class) Tj
+0 -14 Td
+/F2 12 Tf (cname) Tj
+0 -14 Td
+/F1 12 Tf (section in the zone schema.) Tj
+0 -28 Td
+/F1 12 Tf (Use:) Tj
+0 -14 Td
+/F2 12 Tf (hosts) Tj
+0 -14 Td
+/F1 12 Tf (for real in-zone) Tj
+0 -14 Td
+/F2 12 Tf (A) Tj
+0 -14 Td
+/F1 12 Tf (and) Tj
+0 -14 Td
+/F2 12 Tf (AAAA) Tj
+0 -14 Td
+/F2 12 Tf (alias) Tj
+0 -14 Td
+/F1 12 Tf (or) Tj
+0 -14 Td
+/F2 12 Tf (alias_host) Tj
+0 -14 Td
+/F1 12 Tf (for ALIAS-style behavior) Tj
+0 -14 Td
+/F2 12 Tf (lightup) Tj
+0 -14 Td
+/F1 12 Tf (for deterministic synthetic names) Tj
+ET
+endstream endobj
+25 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 26 0 R /Resources<</Font<</F1 27 0 R /F2 28 0 R>>>>>>endobj
+26 0 obj<</Length 669>>stream
+BT
+72 760 Td
+/F1 12 Tf (FILES) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/config.yaml) Tj
+0 -14 Td
+/F1 12 Tf (Main config.) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/zones/) Tj
+0 -14 Td
+/F1 12 Tf (Forward zone files.) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/reverse/) Tj
+0 -14 Td
+/F1 12 Tf (Reverse zone files.) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/keys/) Tj
+0 -14 Td
+/F1 12 Tf (DNSSEC key material.) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/tsig/) Tj
+0 -14 Td
+/F1 12 Tf (TSIG key material.) Tj
+0 -14 Td
+/F1 12 Tf (/etc/breathgslb/serials/) Tj
+0 -14 Td
+/F1 12 Tf (Persisted SOA serial state.) Tj
+0 -28 Td
+/F1 12 Tf (SEE ALSO) Tj
+0 -14 Td
+/F1 12 Tf (breathgslb \\(8\\)```) Tj
+ET
+endstream endobj
+27 0 obj<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>endobj
+28 0 obj<</Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold>>endobj
+xref
+0 29
+0000000000 65535 f 
+0000000009 00000 n 
+0000000054 00000 n 
+0000000182 00000 n 
+0000000310 00000 n 
+0000002717 00000 n 
+0000002845 00000 n 
+0000005439 00000 n 
+0000005567 00000 n 
+0000008484 00000 n 
+0000008613 00000 n 
+0000010683 00000 n 
+0000010813 00000 n 
+0000013276 00000 n 
+0000013406 00000 n 
+0000015650 00000 n 
+0000015780 00000 n 
+0000017923 00000 n 
+0000018053 00000 n 
+0000020002 00000 n 
+0000020132 00000 n 
+0000022215 00000 n 
+0000022345 00000 n 
+0000024586 00000 n 
+0000024716 00000 n 
+0000026460 00000 n 
+0000026590 00000 n 
+0000027307 00000 n 
+0000027374 00000 n 
+trailer<</Root 1 0 R /Size 29>>
+startxref
+27446
+%%EOF

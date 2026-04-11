@@ -1,13 +1,49 @@
 geoip:
-  enable: true
-  mmdb_path: /etc/breathgslb/geoip/GeoLite2-Country.mmdb
-  ecs_scope_v4: 24      # what we announce back so recursors can cache sanely
-  ecs_scope_v6: 56
+  enabled: true
+  database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
+  prefer_field: "registered"
+  cache_ttl_sec: 600
 
 zones:
-  - name: "gslb-sitetest.akadata.ltd."
-    # …existing…
-    geo_rules:
-      - if: { countries: ["GB","IE"] }    prefer: master
-      - if: { continents: ["EU"] }        prefer: standby
-      - default: fallback
+  - name: "example.net."
+    ns: ["ns1.example.net.", "ns2.example.net."]
+    admin: "hostmaster.example.net."
+    ttl_soa: 60
+    ttl_answer: 20
+    refresh: 300
+    retry: 60
+    expire: 3600
+    minttl: 60
+    serve: "primary"
+
+    pools:
+      - name: "eu-v6"
+        family: "ipv6"
+        class: "public"
+        role: "primary"
+        members:
+          - ip: "2001:db8:10::10"
+
+      - name: "na-v6"
+        family: "ipv6"
+        class: "public"
+        role: "secondary"
+        members:
+          - ip: "2001:db8:20::10"
+
+      - name: "global-v6"
+        family: "ipv6"
+        class: "public"
+        role: "fallback"
+        members:
+          - ip: "2001:db8:30::10"
+
+    geo:
+      eu-v6:
+        allow_countries: ["GB", "IE", "FR", "DE"]
+        allow_continents: ["EU"]
+      na-v6:
+        allow_countries: ["US", "CA"]
+        allow_continents: ["NA"]
+      global-v6:
+        allow_all: true

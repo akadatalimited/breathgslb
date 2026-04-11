@@ -98,6 +98,26 @@ func (g *GeoPolicy) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+func (g GeoPolicy) MarshalYAML() (interface{}, error) {
+	out := make(map[string]GeoTierPolicy)
+	if len(g.Master.AllowCountries) > 0 || len(g.Master.AllowContinents) > 0 || g.Master.AllowAll {
+		out["master"] = g.Master
+	}
+	if len(g.Standby.AllowCountries) > 0 || len(g.Standby.AllowContinents) > 0 || g.Standby.AllowAll {
+		out["standby"] = g.Standby
+	}
+	if len(g.Fallback.AllowCountries) > 0 || len(g.Fallback.AllowContinents) > 0 || g.Fallback.AllowAll {
+		out["fallback"] = g.Fallback
+	}
+	for _, named := range g.Named {
+		if strings.TrimSpace(named.Name) == "" {
+			continue
+		}
+		out[named.Name] = named.Policy
+	}
+	return out, nil
+}
+
 type GeoAnswerSet struct {
 	A           []string `yaml:"a,omitempty"`
 	AAAA        []string `yaml:"aaaa,omitempty"`

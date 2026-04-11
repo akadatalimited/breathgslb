@@ -1,222 +1,262 @@
-# breathgslb global settings
-listen: ":53"                 # port only; server binds udp4/udp6/tcp4/tcp6 automatically
-reverse_dir: "reverse_zones"   # directory for generated reverse zones
-zones_dir: "zones"              # load <zone>.fwd.yaml files from this directory
-api: true
-api-listen: 9443
-api-interface: ["eth0"]
-api-token: "/etc/breathgslb/token"       # Windows: C:\breathgslb\token
-api-cert: "/etc/breathgslb/cert.pem"     # Windows: C:\breathgslb\cert.pem
-api-key: "/etc/breathgslb/key.pem"       # Windows: C:\breathgslb\key.pem
-timeout_sec: 5                # per health probe
-interval_sec: 8               # base interval between probe rounds
-rise: 2                       # successes to mark UP
-fall: 4                       # failures to mark DOWN
-jitter_ms: 600                # add 0..600ms jitter to each interval
-cooldown_sec: 25              # minimum seconds between state flips (per A/AAAA family)
-dns64_prefix: "64:ff9b::"     # synthesize AAAA from A when needed
-edns_buf: 1232                # EDNS0 UDP payload (1232 is safe for IPv6 without frag)
-log_queries: true             # log queries and health transitions
-log_syslog: true
+# BreathGSLB sample configuration set
+#
+# This file shows both primary and secondary patterns.
+# The primary serves local zone files and publishes the discovery catalog.
+# The secondary starts from only its main config and discovers zones from the
+# primary using the shared discovery TSIG.
+
+listen_addrs:
+  - "[2001:db8:53::1]:53"
+
+zones_dir: "/etc/breathgslb/zones"
+reverse_dir: "/etc/breathgslb/reverse"
+
+timeout_sec: 5
+interval_sec: 8
+rise: 2
+fall: 4
+jitter_ms: 250
+cooldown_sec: 25
+dns64_prefix: "64:ff9b::"
+edns_buf: 1232
+max_records: 8
+log_queries: true
+log_file: "/var/log/breathgslb/breathgslb.log"
+
 tsig:
   path: "/etc/breathgslb/tsig"
 
-zones:
-  #
-  # ZONE 1 — gslb-sitetest.akadata.ltd. (apex answers are GSLB-controlled)
-  #
-  - name: "gslb-sitetest.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]        # parent must delegate to this NS, with glue A/AAAA
-    admin: "hostmaster.akadata.ltd."
-    ttl_soa: 60
-    ttl_answer: 20
-    refresh: 60
-    retry: 30
-    expire: 600
-    minttl: 60
-    dnssec:
-      mode: manual                      # off to disable; generated for auto keys
-      zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+ZSKID"
-      ksk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+KSKID"
+geoip:
+  enabled: true
+  database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
+  prefer_field: "registered"
+  cache_ttl_sec: 600
 
-
-
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  ttl: 60
   tsig:
-    default_algorithm: hmac-sha256
-    seed_env: "BREATH_TSIG_SEED"      # optional; enables deterministic derivation
-    epoch: 1                          # bump to rotate deterministically
-    allow_unsigned: true              # permit unsigned transfers
+    default_algorithm: "hmac-sha256"
+    seed_env: "BREATH_TSIG_SEED"
+    epoch: 1
     keys:
-      - name: "gslb-xfr."
-        algorithm: hmac-sha256
-        secret: ""                    # if empty -> derive from seed or random per start
-        allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
+      - name: "cluster-xfr."
+        secret: ""
+        allow_xfr_from:
+          - "::1"
+          - "2001:db8::/32"
+          - "192.0.2.0/24"
 
+zones:
+  - name: "example.net."
+    serve: "primary"
+    ns: ["ns1.example.net.", "ns2.example.net."]
+    admin: "hostmaster.example.net."
+    ttl_soa: 300
+    ttl_answer: 60
+    refresh: 300
+    retry: 60
+    expire: 3600
+    minttl: 60
 
-    # Health-driven apex addresses
-    a_healthy:      ["217.155.241.55"]                         # e.g., home/Zen v4
-    aaaa_healthy:   ["2a02:8012:bc57::1"]                      # e.g., home/Zen v6
-    a_fallback:     ["13.41.102.86"]                           # e.g., AWS v4
-    aaaa_fallback:  ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]   # e.g., AWS v6
+    dnssec:
+      mode: generated
+      zsk_keyfile: "/etc/breathgslb/keys/example.net.zsk"
+      ksk_keyfile: "/etc/breathgslb/keys/example.net.ksk"
+      nsec3_iterations: 0
 
-    # Optional ALIAS at apex (only used if no A/AAAA lists are set)
-    # alias: "status.akadata.ltd."
-    # Map hostnames to ALIAS targets
-    # alias_host:
-    #   www: "status.akadata.ltd."
+    tsig:
+      default_algorithm: "hmac-sha256"
+      keys:
+        - name: "example-xfr."
+          secret: ""
+          allow_xfr_from:
+            - "2001:db8:53a::1"
+            - "2001:db8::/32"
 
-    health:
-      kind: http
-      host_header: "gslb-sitetest.akadata.ltd"
-      sni:         "gslb-sitetest.akadata.ltd"
-      path:        "/health"
-      expect:      "OK"
-      insecure_tls: false
+    pools:
+      - name: "eu-v6"
+        family: "ipv6"
+        class: "public"
+        role: "primary"
+        members:
+          - ip: "2001:db8:5353::10"
+      - name: "eu-v4"
+        family: "ipv4"
+        class: "public"
+        role: "primary"
+        members:
+          - ip: "198.51.100.10"
+      - name: "na-v6"
+        family: "ipv6"
+        class: "public"
+        role: "secondary"
+        members:
+          - ip: "2001:db8:5353::20"
+      - name: "na-v4"
+        family: "ipv4"
+        class: "public"
+        role: "secondary"
+        members:
+          - ip: "198.51.100.20"
+      - name: "fallback-v6"
+        family: "ipv6"
+        class: "public"
+        role: "fallback"
+        members:
+          - ip: "2001:db8:5353::53"
+      - name: "private-v6"
+        family: "ipv6"
+        class: "private"
+        role: "primary"
+        members:
+          - ip: "fd00:5353::10"
+        client_nets:
+          - "fd00:5353::/64"
+      - name: "private-v4"
+        family: "ipv4"
+        class: "private"
+        role: "primary"
+        members:
+          - ip: "172.16.0.10"
+        client_nets:
+          - "172.16.0.0/24"
 
-    # Other health check kinds:
-    # health:
-    #   kind: http3
-    #   expect: "OK"
-    # health:
-    #   kind: tcp
-    #   port: 443
-    #   tls_enable: true
-    #   sni: "gslb-sitetest.akadata.ltd"
-    #   alpn: "h2"
-    # health:
-    #   kind: udp
-    #   port: 53
-    #   udp_payload_b64: "cGluZw=="    # "ping"
-    #   udp_expect_re: "."
-    # health:
-    #   kind: rawip
-    #   protocol: 47                   # GRE
+    hosts:
+      - name: "app"
+        health:
+          kind: http
+          host_header: "app.example.net"
+          path: "/health"
+          scheme: https
+          method: GET
+          port: 443
+          expect: "OK"
+        pools:
+          - name: "app-eu-v6"
+            family: "ipv6"
+            class: "public"
+            role: "primary"
+            members:
+              - ip: "2001:db8:5353::100"
+          - name: "app-na-v6"
+            family: "ipv6"
+            class: "public"
+            role: "secondary"
+            members:
+              - ip: "2001:db8:5353::200"
+        geo:
+          app-eu-v6:
+            allow_countries: ["GB", "FR", "DE"]
+            allow_continents: ["EU"]
+          app-na-v6:
+            allow_countries: ["US", "CA"]
+            allow_continents: ["NA"]
 
-    # Shared/static records served authoritatively
+    geo:
+      eu-v6:
+        allow_countries: ["GB", "FR", "DE"]
+        allow_continents: ["EU"]
+      eu-v4:
+        allow_countries: ["GB", "FR", "DE"]
+        allow_continents: ["EU"]
+      na-v6:
+        allow_countries: ["US", "CA"]
+        allow_continents: ["NA"]
+      na-v4:
+        allow_countries: ["US", "CA"]
+        allow_continents: ["NA"]
+      fallback-v6:
+        allow_all: true
 
-    # TXT at apex (omit name => apex). Multiple strings supported.
+    lightup:
+      enabled: true
+      ttl: 60
+      forward: true
+      reverse: true
+      strategy: "hash"
+      forward_template: "templated-{addr}.example.net."
+      families:
+        - family: "ipv6"
+          class: "public"
+          prefix: "2001:db8:5353::/64"
+          respond_aaaa: true
+          respond_ptr: true
+          exclude:
+            - "2001:db8:5353::10/128"
+            - "2001:db8:5353::53/128"
+        - family: "ipv4"
+          class: "private"
+          prefix: "172.16.0.0/24"
+          respond_a: true
+          respond_ptr: true
+          exclude:
+            - "172.16.0.1/32"
+            - "172.16.0.2/32"
+
+    alias: "status.example.net."
+    alias_host:
+      www: "status.example.net."
+
     txt:
-      - text:
-          - "google-site-verification=Ge2Ewklz6s4_jHy6bawlp3w-LWUWljX8y2nyy2p6a5Q"
+      - text: ["BreathGSLB sample zone"]
         ttl: 300
-      - name: "_dmarc.gslb-sitetest.akadata.ltd."
-        text:
-          - "v=DMARC1; p=quarantine; rua=mailto:postmaster@akadata.ltd"
-        ttl: 900
-
-    # MX at apex (use FQDN for Exchange)
     mx:
-      - preference: 1
-        exchange: "aspmx.l.google.com."
-        ttl: 300
-      - preference: 5
-        exchange: "alt1.aspmx.l.google.com."
-        ttl: 300
-      - preference: 5
-        exchange: "alt2.aspmx.l.google.com."
-        ttl: 300
       - preference: 10
-        exchange: "alt3.aspmx.l.google.com."
+        exchange: "mail.example.net."
         ttl: 300
-      - preference: 10
-        exchange: "alt4.aspmx.l.google.com."
-        ttl: 300
-
-    # CAA at apex
     caa:
-      - flag: 128
+      - flag: 0
         tag: "issue"
         value: "letsencrypt.org"
         ttl: 900
-      - flag: 0
-        tag: "iodef"
-        value: "mailto:abuse@akadata.ltd"
-        ttl: 900
-
-    # RP (Responsible Person) at apex
     rp:
-      mbox: "hostmaster.akadata.ltd."
-      txt:  "contact.akadata.ltd."
+      mbox: "hostmaster.example.net."
+      txt: "contact.example.net."
       ttl: 900
-
-    # SSHFP examples (owner omitted => apex).
-    # Algorithm: 1=RSA,3=ECDSA,4=Ed25519; Type: 1=SHA1,2=SHA256
     sshfp:
-      - algorithm: 4
+      - name: "ssh.example.net."
+        algorithm: 4
         type: 2
-        fingerprint: "9F3C0B1E6A1D8A9B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F5A6"
+        fingerprint: "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
         ttl: 300
-      - algorithm: 3
-        type: 2
-        fingerprint: "A1B2C3D4E5F60718293A4B5C6D7E8F90123456789ABCDEF0123456789ABCDEF0"
-        ttl: 300
-
-    # SRV example pointing to the apex target (so GSLB applies indirectly)
     srv:
-      - name: "_sips._tcp.gslb-sitetest.akadata.ltd."
+      - name: "_https._tcp.app.example.net."
         priority: 10
         weight: 60
         port: 443
-        target: "gslb-sitetest.akadata.ltd."
+        target: "app.example.net."
         ttl: 60
-
-    # NAPTR example mapping to the SRV above (SIPS+D2T)
     naptr:
-      - name: "gslb-sitetest.akadata.ltd."
+      - name: "example.net."
         order: 100
         preference: 10
         flags: "S"
         services: "SIPS+D2T"
         regexp: ""
-        replacement: "_sips._tcp.gslb-sitetest.akadata.ltd."
+        replacement: "_https._tcp.app.example.net."
         ttl: 60
-
-  #
-  # ZONE 2 — articles.akadata.ltd. (demonstrates ALIAS synth)
-  #
-  - name: "articles.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]
-    admin: "hostmaster.akadata.ltd."
-    ttl_soa: 60
-    ttl_answer: 60
-    refresh: 60
-    retry: 30
-    expire: 600
-    minttl: 60
-    dnssec:
-      mode: generated                   # auto-generate and persist keys
-      zsk_keyfile: "/etc/breathgslb/keys/articles.akadata.ltd.zsk"   # prefix for .key/.private
-      ksk_keyfile: "/etc/breathgslb/keys/articles.akadata.ltd.ksk"
-
-
-  tsig:
-    seed_env: "BREATH_TSIG_SEED"      # optional; derive deterministically from this env var
-    default_algorithm: "hmac-sha256"
-    allow_unsigned: true              # permit unsigned transfers
-    keys:
-      - name: "gslb-xfr."             # TSIG key name (owner form, trailing dot)
-        algorithm: "hmac-sha256"      # optional; defaults to above
-        secret: ""                    # if empty → derive from seed; if no seed → random per start
-        allow_xfr_from: ["198.51.100.53", "2001:db8::53"]
-
-
-    # No explicit A/AAAA lists here; ALIAS will synthesize A/AAAA from target
-    alias: "status.akadata.ltd."
 
     health:
       kind: http
-      host_header: "articles.akadata.ltd"
-      sni:         "articles.akadata.ltd"
-      path:        "/health"
-      expect:      "OK"
-      insecure_tls: false
+      host_header: "example.net"
+      path: "/health"
+      scheme: https
+      method: GET
+      port: 443
+      expect: "OK"
 
-    # Shared records at apex
-    txt:
-      - text: ["openai-domain-verification=dv-EXAMPLE"]
-        ttl: 300
-    caa:
-      - flag: 128
-        tag: "issue"
-        value: "letsencrypt.org"
-        ttl: 900
+# Secondary-only main config pattern:
+#
+# listen_addrs:
+#   - "[2001:db8:53a::1]:53"
+# zones: []
+# discovery:
+#   catalog_zone: "_catalog.breathgslb."
+#   masters: ["[2001:db8:53::1]:53"]
+#   xfr_source: "2001:db8:53a::1"
+#   tsig:
+#     default_algorithm: "hmac-sha256"
+#     keys:
+#       - name: "cluster-xfr."
+#         secret: ""

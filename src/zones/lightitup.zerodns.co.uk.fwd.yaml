@@ -11,8 +11,8 @@
   minttl: 60
   serve: secondary
   masters:
-    - '[::1]:36643'
-  aaaa_fallback:
+    - '[::1]:38233'
+  aaaa_master:
     - ip: 2a02:8012:bc57:5353::1
   tsig:
     keys:

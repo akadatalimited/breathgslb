@@ -1,23 +1,13 @@
 - name: 3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.
   ns:
     - gslb.zerodns.co.uk.
-    - gslb2.zerodns.co.uk.
   admin: hostmaster.zerodns.co.uk.
-  ttl_soa: 60
+  ttl_soa: 300
   ttl_answer: 60
-  refresh: 60
-  retry: 10
-  expire: 90
+  refresh: 300
+  retry: 60
+  expire: 3600
   minttl: 60
   serve: secondary
   masters:
-    - '[::1]:36643'
-  ptr:
-    - name: 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.
-      ptr: gslb.zerodns.co.uk.
-      ttl: 20
-  tsig:
-    keys:
-        - name: cluster-xfr.
-          algorithm: hmac-sha256
-          secret: c2VjcmV0c2VjcmV0c2VjcmV0
+    - 127.0.0.1:34167

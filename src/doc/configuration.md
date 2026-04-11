@@ -1,250 +1,616 @@
 # Configuration
 
-BreathGSLB is configured via a YAML file. Sample configurations are
-provided in [`doc/examples`](examples).
+BreathGSLB is configured from one main YAML file plus optional zone files loaded
+from `zones_dir` and `reverse_dir`.
 
 Typical invocation:
 
-```
+```sh
 breathgslb -config /etc/breathgslb/config.yaml
 ```
 
+The current model is:
+
+- one main config for listeners, probe timing, TSIG, GeoIP, and discovery
+- one or more forward zone files in `zones_dir` as `*.fwd.yaml`
+- one or more reverse zone files in `reverse_dir` as `*.rev.yaml`
+- optional generated or persisted secondary snapshots under the same tree
+
+This document is the operator-facing source of truth for the current runtime
+model: discovery, primary/secondary replication, apex pools, host pools, geo,
+lightup, reverse zones, DNSSEC, and supported record sections.
+
+## Runtime Model
+
+BreathGSLB answers authoritatively only. It does not recurse.
+
+At query time, resolution is layered in this order:
+
+1. explicit host policy (`hosts:` exact-name matches)
+2. host `alias` or zone `alias_host`
+3. lightup synthesis for matching names
+4. apex pools or legacy apex fields
+5. static records such as TXT, MX, CAA, RP, SSHFP, SRV, NAPTR, PTR
+
+For a discovery-based secondary:
+
+1. the secondary loads only its main config
+2. it AXFRs the shared catalog zone
+3. it bootstraps full secondary zone intent from that catalog payload
+4. it AXFRs each discovered zone from its primary
+5. it persists local secondary snapshots for restart durability
+
 ## Global Settings
 
-| Key | Type | Description |
-| --- | --- | --- |
-| `listen_addrs` | list[string] | Explicit `host:port` targets (highest precedence). |
-| `interfaces` | list[string] | Network interface names to derive bind addresses; ignored when `listen_addrs` is set. |
-| `listen` | string | Fallback `host:port`; default `:53`; ignored when `listen_addrs` or `interfaces` is set. |
-| `reverse_dir` | string | Directory where generated reverse zones are |
-|               |        | written. |
-| `timeout_sec` | int | Per‑probe timeout in seconds. |
-| `interval_sec` | int | Base interval between probe rounds in seconds. |
-| `rise` | int | Consecutive successes required to mark an endpoint UP. |
-| `fall` | int | Consecutive failures required to mark an endpoint DOWN. |
-| `jitter_ms` | int | Random jitter (milliseconds) added to each interval. |
-| `cooldown_sec` | int | Minimum seconds between state flips for an |
-|                |     | address family. |
-| `dns64_prefix` | IPv6 prefix string | Prefix used when synthesizing AAAA |
-|                |                     | from A. |
-| `edns_buf` | int | Advertised EDNS0 UDP payload size; A/AAAA answers are |
-|            |     | trimmed to fit. |
-| `max_records` | int | Optional hard limit on A/AAAA records per response. |
-| `log_queries` | bool | Log DNS queries and health transitions. |
-| `max_workers` | int | Number of UDP worker goroutines. |
-| `log_syslog` | bool | Send logs to syslog instead of stderr. |
-| `tsig.path` | string | Directory containing TSIG key files. |
-| `geoip.enabled` | bool | Enable GeoIP lookups. |
-| `api` | bool | Enable HTTPS admin API. |
-| `api-listen` | int | Port for admin API (default 9443). |
-| `api-interface` | string or list[string] | Interface(s) to bind the admin |
-|                 |                         | API. |
-| `api-token` | string | Path to file containing bearer token or literal |
-|             |        | token. |
-| `api-cert` | string | TLS certificate for admin API. |
-| `api-key` | string | TLS key for admin API. |
+| Key | Type | What it does | Why it exists |
+| --- | --- | --- | --- |
+| `listen` | string | Fallback bind address, usually `:53` | Simple default when you do not pin interfaces or addresses |
+| `listen_addrs` | list[string] | Explicit `host:port` bind targets | Deterministic binding on multi-address systems |
+| `interfaces` | list[string] | Derive bind addresses from named interfaces | Useful on routed IPv6 hosts where addresses live on specific interfaces |
+| `zones_dir` | string | Auto-load forward zone files from this directory | Keeps main config small and zone files separate |
+| `reverse_dir` | string | Auto-load reverse zone files from this directory | Lets delegated reverse zones be managed as first-class data |
+| `timeout_sec` | int | Probe and transfer timeout base | Keeps health and AXFR failure detection bounded |
+| `interval_sec` | int | Base interval between health rounds and runtime refresh cycles | Drives how quickly health and live file/discovery updates are seen |
+| `rise` | int | Successes required before a tier is UP | Dampens flaps |
+| `fall` | int | Failures required before a tier is DOWN | Dampens flaps |
+| `jitter_ms` | int | Random delay added to probe scheduling | Prevents lockstep probe bursts |
+| `cooldown_sec` | int | Minimum dwell time before state flips | Avoids rapid oscillation |
+| `dns64_prefix` | string | Prefix for synthetic AAAA from A | Allows IPv6-only clients to reach IPv4-only answers |
+| `edns_buf` | int | Advertised EDNS UDP payload size | Keeps answers under a safe transport size |
+| `max_records` | int | Max A/AAAA records per answer | Prevents oversized RRsets |
+| `log_queries` | bool | Query logging | Useful for operator debugging |
+| `log_file` | string | File logger target | Persistent runtime logging |
+| `log_syslog` | bool | Syslog logging | Integrates with host logging stack |
+| `max_workers` | int | UDP listener worker count | Throughput tuning |
+| `tsig.path` | string | Directory for TSIG key files | Stable transfer key persistence |
+| `geoip.enabled` | bool | Enable GeoIP lookups | Turns on geo policy and geo answer selection |
+| `geoip.database` | string | Path to MaxMind country DB | Source of country and continent codes |
+| `geoip.prefer_field` | string | `country` or `registered`/`registered_country` | Chooses which MMDB country field drives policy |
+| `geoip.cache_ttl_sec` | int | Geo lookup cache TTL | Avoids repeated MMDB hits |
+| `api`, `api-listen`, `api-interface`, `api-token`, `api-cert`, `api-key` | mixed | HTTPS admin API settings | Optional runtime control and visibility |
+| `discovery` | mapping | Shared catalog bootstrap for secondaries | Lets secondaries start from only the main config |
 
-Only one primary binding directive should be set. Precedence is
-`listen_addrs` → `interfaces` → `listen` → default `:53`; lower-priority
-entries are ignored when a higher one is present.
+Binding precedence is:
 
-### GeoIP Block
+1. `listen_addrs`
+2. `interfaces`
+3. `listen`
+4. default `:53`
 
-| Key | Type | Description |
-| --- | --- | --- |
-| `geoip.database` | string | Path to a MaxMind‑style database. |
-| `geoip.prefer_ecs` | bool | Trust EDNS Client Subnet when present. |
-| `geoip.prefer_field` | string | `"country"` or `"registered_country"`. |
-| `geoip.cache_ttl_sec` | int | LRU cache TTL for lookups. |
+## Discovery
+
+The `discovery` block is how a config-only secondary finds zones without
+shipping local forward/reverse YAML for every zone.
+
+```yaml
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  masters: ["[2a02:8012:bc57:53::1]:53"]
+  xfr_source: "2a02:8012:bc57:53a::1"
+  tsig:
+    default_algorithm: "hmac-sha256"
+    keys:
+      - name: "lightitup-xfr."
+        secret: ""
+```
+
+Fields:
+
+- `catalog_zone`: shared catalog zone name used for bootstrap
+- `masters`: primaries to query for that catalog
+- `xfr_source`: optional local source IP for outbound AXFR; only set this when
+  that address is actually configured on the local host
+- `tsig`: shared transfer/bootstrap key material
+
+Why it works this way:
+
+- AXFR only transfers RRsets, not full policy intent
+- the catalog therefore also carries a protected zone-policy payload
+- a discovery-based secondary reconstructs the rich zone model before normal
+  zone transfer begins
 
 ## Zones
 
-`zones` is a list of zone definitions.
-
-| Key | Type | Description |
-| --- | --- | --- |
-| `name` | FQDN string | Zone served authoritatively. |
-| `ns` | list[FQDN] | Authoritative nameservers (parent must delegate). |
-| `admin` | string | Administrator mailbox in dotted form. |
-| `ttl_soa` | int | SOA record TTL. |
-| `ttl_answer` | int | Default TTL for synthesized apex answers. |
-| `refresh` | int | SOA refresh interval in seconds. |
-| `retry` | int | SOA retry interval in seconds. |
-| `expire` | int | SOA expire time in seconds. |
-| `minttl` | int | SOA minimum/negative cache TTL. |
-| `serve` | string | `"local"` to serve zone from this instance. |
-
-### Address Pools
-
-Apex A/AAAA answers come from the following lists. Each item may be a
-plain IP string or an object with `ip` and optional `reverse` (bool) to
-generate a reverse zone entry.
-
-| Key | Value Type | Purpose |
-| --- | --- | --- |
-| `a_master`, `aaaa_master` | list[IPv4/IPv6 or map] | Primary pool returned |
-|                           |                        | when healthy. |
-| `a_standby`, `aaaa_standby` | list[IPv4/IPv6] | Used when master is |
-|                             |                 | unhealthy. |
-| `a_fallback`, `aaaa_fallback` | list[IPv4/IPv6] | Returned when master |
-|                               |                 | and standby are down. |
-| `rfc_master` | list[CIDR] | Private RFC1918 IPv4 ranges. |
-| `a_master_private`, `aaaa_master_private` | list[IPv4/IPv6] | Internal‑only |
-|                                           |                 | addresses. |
-| `ula_master` | list[IPv6 prefix] | ULA/private IPv6 space. |
-| `alias` | FQDN string | Apex‑only ALIAS target, used as a final fallback when all A/AAAA lists are empty. |
-| `alias_host` | map[string]FQDN | Hostname→ALIAS target map within the zone (e.g. `www: target.example.`). |
-
-When no `a_master`/`aaaa_master` lists are present the apex can point at an alias target:
+Each `zones` item defines one authoritative zone.
 
 ```yaml
-zones:
-  - name: "alias-only.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]
-    admin: "hostmaster.akadata.ltd."
-    alias: "status.akadata.ltd."
+- name: "lightitup.zerodns.co.uk."
+  ns: ["gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."]
+  admin: "hostmaster.zerodns.co.uk."
+  ttl_soa: 60
+  ttl_answer: 20
+  refresh: 60
+  retry: 10
+  expire: 90
+  minttl: 60
 ```
 
-The `alias` field is evaluated only for the zone apex. Additional hostnames can be mapped via `alias_host` entries:
+Common fields:
+
+| Key | What it does |
+| --- | --- |
+| `name` | Zone FQDN |
+| `ns` | Authoritative NS set published at the zone apex |
+| `admin` | SOA mailbox in dotted form |
+| `ttl_soa` | SOA TTL |
+| `ttl_answer` | Default TTL for dynamic A/AAAA answers |
+| `refresh`, `retry`, `expire`, `minttl` | SOA timers |
+| `serve` | Zone mode |
+| `masters` | Upstream primaries for a `secondary` zone |
+| `xfr_source` | Optional source IP used when the zone AXFRs from a master |
+
+### Zone Roles
+
+`serve` currently has three practical modes:
+
+- omitted or `"primary"`: the zone is locally authoritative
+- `"local"`: the zone is locally authoritative and enables private/public local
+  view behavior
+- `"secondary"`: the zone is a replica and must pull from `masters`
+
+`serve: "secondary"` is required in local persisted secondary snapshots so the
+daemon can reload them safely as replicas instead of treating them as primaries.
+
+## Apex Answers
+
+There are two apex configuration models:
+
+1. legacy apex fields
+2. the current pool model
+
+The pool model is the long-term direction. Legacy fields remain for
+compatibility and are still understood by the runtime.
+
+### Legacy Apex Fields
+
+Legacy apex fields define public and private answers by tier:
+
+- `a_master`, `aaaa_master`
+- `a_standby`, `aaaa_standby`
+- `a_fallback`, `aaaa_fallback`
+- `a_master_private`, `aaaa_master_private`
+- `a_standby_private`, `aaaa_standby_private`
+- `a_fallback_private`, `aaaa_fallback_private`
+- `rfc_master`, `ula_master`
+- `rfc_standby`, `ula_standby`
+- `rfc_fallback`, `ula_fallback`
+
+Each address item may be:
+
+- a scalar IP string
+- or an object with `ip` and optional `reverse: true`
+
+`reverse: true` requests generated PTR data for that address.
+
+### Pools
+
+Pools are the current answer-selection model for the apex and for named hosts.
 
 ```yaml
-zones:
-  - name: "alias-only.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]
-    admin: "hostmaster.akadata.ltd."
-    alias_host:
-      www: "status.akadata.ltd."
+pools:
+  - name: "public-v6-primary"
+    family: "ipv6"
+    class: "public"
+    role: "primary"
+    members:
+      - ip: "2a02:8012:bc57:5353::1"
+  - name: "private-v4-primary"
+    family: "ipv4"
+    class: "private"
+    role: "primary"
+    members:
+      - ip: "172.16.0.1"
+    client_nets:
+      - "172.16.0.0/24"
 ```
 
-Hostnames without an `alias_host` entry must be delegated to another DNS server.
+Pool fields:
 
-### Geographic Routing
+| Key | What it means |
+| --- | --- |
+| `name` | Stable pool identifier used by geo policy |
+| `family` | `ipv4` or `ipv6` |
+| `class` | `public` or `private` |
+| `role` | Usually `primary`, `secondary`, or `fallback` |
+| `members` | The actual IPs returned in DNS answers |
+| `client_nets` | Source CIDRs that make a private pool eligible |
 
-`geoip` block mirrors the global GeoIP options.
+Why pools exist:
 
-`geo` block defines country/continent policies for pools:
+- one host can have many candidate addresses
+- public/private answers can be expressed cleanly
+- geo can prefer named pools instead of hard-coded tier labels
+- the same model works for apex and non-apex hosts
 
-- `master`, `standby`, `fallback` objects may contain:
-  - `allow_countries` (list of ISO codes)
-  - `allow_continents` (list of continent codes)
-  - `allow_all` (bool)
+## Hosts
 
-### Health Checks
+`hosts:` creates first-class in-zone hostnames with their own `A`/`AAAA`
+behavior. This is how non-apex host addresses are defined today.
 
-`health` describes how endpoints are probed.
+```yaml
+hosts:
+  - name: "app"
+    health:
+      kind: http
+      host_header: "app.lightitup.zerodns.co.uk"
+      path: "/health"
+      scheme: https
+      method: GET
+      port: 443
+      expect: "OK"
+    pools:
+      - name: "app-v6-primary"
+        family: "ipv6"
+        class: "public"
+        role: "primary"
+        members:
+          - ip: "2a02:8012:bc57:5353::10"
+      - name: "app-v4-private"
+        family: "ipv4"
+        class: "private"
+        role: "primary"
+        members:
+          - ip: "172.16.0.10"
+        client_nets:
+          - "172.16.0.0/24"
+```
 
-Common field:
+Important behavior:
 
-- `kind` (string): `http`, `http3`, `tcp`, `udp`, or `rawip`.
-- `expect` (string): substring expected in the response.
+- `hosts[].name` is an exact owner name relative to the zone
+- host answers are exact-name only; there is no wildcard host config
+- host `health` overrides zone `health`
+- host `geo` overrides zone `geo` for that host
+- host `alias` is supported
 
-Per kind options:
+Current health inheritance is:
 
-#### HTTP / HTTP3
-- `host_header` (string)
-- `sni` (string)
-- `path` (string)
-- `insecure_tls` (bool)
+1. host `health`, if present
+2. zone `health`
 
-#### TCP
-- `port` (int)
-- `tls_enable` (bool)
-- `sni` (string)
-- `alpn` (string)
+Pool-level and member-level health overrides are not yet part of the runtime
+model.
 
-#### UDP
-- `port` (int)
-- `udp_payload_b64` (string) – base64 encoded probe payload.
-- `udp_expect_re` (string) – regex to match the reply.
+## Geo Routing
 
-#### RAWIP
-- `protocol` (int) – IP protocol number (e.g. 47 for GRE).
+Geo policy uses the MaxMind country database and exact uppercase code matching.
 
-### DNSSEC
+```yaml
+geo:
+  public-v6-primary:
+    allow_countries: ["GB", "FR", "DE"]
+    allow_continents: ["EU"]
+  public-v6-secondary:
+    allow_countries: ["US", "CA"]
+    allow_continents: ["NA"]
+  public-v6-fallback:
+    allow_all: true
+```
 
-| Key | Type | Description |
-| --- | --- | --- |
-| `dnssec.mode` | string | DNSSEC mode: `off`, `manual`, or `generated`. |
-| `dnssec.zsk_keyfile` | string | ZSK key file (manual) or output prefix (generated). |
-| `dnssec.ksk_keyfile` | string | KSK key file (manual) or output prefix (generated). When this matches `dnssec.zsk_keyfile` or is empty, `.zsk` and `.ksk` suffixes are appended to keep files distinct; provide unique prefixes to persist both keys. |
+How it works:
 
-### TSIG
+1. client IP or ECS subnet is looked up in the MMDB
+2. the resolver reads:
+   - `country.iso_code`
+   - optionally `registered_country.iso_code`
+   - `continent.code`
+3. these become uppercase strings such as `GB`, `US`, `EU`, `NA`
+4. pool or tier policy is matched by exact code membership
 
-| Key | Type | Description |
-| --- | --- | --- |
-| `tsig.seed_env` | string | Environment variable name used to derive secrets. |
-| `tsig.default_algorithm` | string or list[string] | Default HMAC algorithm |
-|                          |                        | (`hmac-sha256`, etc.). |
-| `tsig.allow_unsigned` | bool | Permit unsigned zone transfers. Default \= false. |
-| `tsig.keys` | list[map] | TSIG key definitions: `name` (FQDN), optional |
-|             |           | `algorithm`, `secret` (string; empty ⇒ |
-|             |           | derived), and `allow_xfr_from` (list[IP]). |
+`allow_countries` and `allow_continents` must therefore use ISO-style codes
+from the MMDB. Typical examples:
 
-### Static Records
+- countries: `GB`, `FR`, `DE`, `US`, `CA`
+- continents: `EU`, `NA`, `OC`, `AS`
 
-Optional sections add standard DNS records.
+Legacy `geo.master`, `geo.standby`, and `geo.fallback` still work. Named-pool
+geo is the preferred model when `pools:` are present.
 
-#### TXT
-- `name` (string, optional; apex if omitted)
-- `text` (list[string])
-- `ttl` (int)
+`geo_answers` is separate from `geo`. It does not just select an eligible pool;
+it directly overrides returned A/AAAA/private answers by country or continent.
 
-#### MX
-- `preference` (int)
-- `exchange` (FQDN)
-- `ttl` (int)
+## Health Checks
 
-#### CAA
-- `flag` (int)
-- `tag` (string)
-- `value` (string)
-- `ttl` (int)
+`health` defines how BreathGSLB decides whether `primary` or `secondary` style
+pools are healthy enough to serve.
 
-#### RP
-- `mbox` (FQDN)
-- `txt` (FQDN)
-- `ttl` (int)
+Supported kinds:
 
-#### SSHFP
-- `name` (string, optional)
-- `algorithm` (int)
-- `typ` (int)
-- `fingerprint` (hex string)
-- `ttl` (int)
+- `http`
+- `http3`
+- `tcp`
+- `udp`
+- `icmp`
+- `rawip`
 
-#### SRV
-- `name` (string)
-- `priority` (int)
-- `weight` (int)
-- `port` (int)
-- `target` (FQDN)
-- `ttl` (int)
+Common fields:
 
-#### NAPTR
-- `name` (string)
-- `order` (int)
-- `preference` (int)
-- `flags` (string)
-- `service` (string)
-- `regexp` (string)
-- `replacement` (FQDN)
-- `ttl` (int)
+- `kind`
+- `expect`
 
-## DNS Record Types
+HTTP/HTTP3 fields:
 
-- **A** – Maps a hostname to an IPv4 address.
-- **AAAA** – Maps a hostname to an IPv6 address.
-- **CNAME** – Alias pointing to a canonical name; not valid at the zone apex.
-- **TXT** – Free‑form text; often used for verification and metadata.
-- **MX** – Mail exchange records directing email for the domain.
-- **CAA** – Certificate Authority Authorization; restricts which CAs may
-  issue certificates.
-- **RP** – Responsible Person contact information for the domain.
-- **SSHFP** – SSH host key fingerprints for verifying SSH servers.
-- **SRV** – Service location records specifying hosts and ports for
-  particular services.
-- **NAPTR** – Naming Authority Pointer used with SRV for
-  application/service discovery.
+- `host_header`
+- `path`
+- `scheme`
+- `method`
+- `port`
+- `sni`
+- `insecure_tls`
 
-Use record types appropriate to your deployment to remain compliant with DNS
-RFCs.
+TCP fields:
+
+- `port`
+- `tls_enable`
+- `sni`
+- `alpn`
+
+UDP fields:
+
+- `port`
+- `udp_payload_b64`
+- `udp_expect_re`
+
+RAWIP fields:
+
+- `protocol`
+
+Why health exists:
+
+- `primary` and `secondary` pools should not be served blindly
+- A and AAAA families can fail independently
+- rise/fall/cooldown avoid unstable DNS behavior during blips
+
+## Lightup
+
+`lightup` is deterministic forward and reverse synthesis inside configured test
+or service prefixes. It is how BreathGSLB creates many in-zone names and PTRs
+without hand-writing every RR.
+
+```yaml
+lightup:
+  enabled: true
+  ttl: 60
+  forward: true
+  reverse: true
+  strategy: "hash"
+  forward_template: "templated-{addr}.lightitup.zerodns.co.uk."
+  ptr_template: "ptr-{addr}.lightitup.zerodns.co.uk."
+  families:
+    - family: "ipv6"
+      class: "public"
+      prefix: "2a02:8012:bc57:5353::/64"
+      respond_aaaa: true
+      respond_ptr: true
+      exclude:
+        - "2a02:8012:bc57:5353::1/128"
+```
+
+Fields:
+
+| Key | What it does |
+| --- | --- |
+| `enabled` | Turns the feature on |
+| `ttl` | TTL for synthetic records |
+| `forward` | Enable forward synthetic `A`/`AAAA` |
+| `reverse` | Enable synthetic PTR |
+| `strategy` | Current strategy name; non-template names use deterministic synthesis |
+| `forward_template` | Exact name pattern used for forward template parsing |
+| `ptr_template` | Optional PTR target pattern; if unset, `forward_template` is reused |
+| `families` | Per-family prefix/class behavior |
+
+Family fields:
+
+- `family`: `ipv4` or `ipv6`
+- `class`: `public` or `private`
+- `prefix`: the routable or private space lightup owns
+- `respond_a`, `respond_aaaa`, `respond_ptr`
+- `exclude`: CIDRs inside that prefix that must never synthesize
+
+### What exclusions do
+
+Exclusions are hard deny-ranges inside the lightup prefix. They exist so you
+can reserve real service addresses, routers, nameserver IPs, and manually
+managed endpoints while still synthesizing the rest of the space.
+
+If an address is excluded:
+
+- reverse PTR synthesis refuses it
+- exact forward template parsing refuses it
+- no hash fallback is used for that exact template name
+
+### Forward template format
+
+When `forward_template` contains `{addr}`, BreathGSLB can parse the embedded
+address back out of the name.
+
+Examples:
+
+- IPv6: `templated-2a02-8012-bc57-5353-0000-0000-abc1-abc1.lightitup.zerodns.co.uk.`
+- IPv4: `templated-172-16-0-42.lightitup.zerodns.co.uk.`
+
+If a `forward_template` is configured:
+
+- only names matching that exact template synthesize
+- arbitrary names such as `trash.lightitup.zerodns.co.uk.` return `NXDOMAIN`
+- exact template names return the embedded address if it is inside the lightup
+  prefix and not excluded
+
+This is how forward/reverse symmetry works:
+
+1. `dig -x <ip>` returns a templated PTR name
+2. `dig AAAA/A <templated-name>` returns that exact original IP
+
+### PTR template format
+
+`ptr_template` controls how synthetic PTR targets are named.
+
+If `ptr_template` is unset, BreathGSLB reuses `forward_template` so reverse and
+forward naming stay symmetric automatically.
+
+## Reverse Zones
+
+Reverse zones can be provided in two ways:
+
+1. explicit reverse zone files under `reverse_dir`
+2. generated reverse data from `reverse: true` on address objects
+
+Explicit reverse zone files are normal zone definitions loaded from
+`*.rev.yaml`, for example:
+
+```yaml
+- name: "3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa."
+  serve: "primary"
+  ptr:
+    - name: "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0"
+      ptr: "gslb.zerodns.co.uk."
+```
+
+Why explicit reverse zones matter:
+
+- delegated reverse space is independent DNS authority
+- reverse zones must be served live, not just generated at config time
+- DNSSEC and AXFR must treat reverse zones exactly like forward zones
+
+For IPv6 reverse lookups, owner names are full nibble-form labels under the
+delegated `ip6.arpa.` zone.
+
+## DNSSEC
+
+`dnssec` controls inline signing.
+
+```yaml
+dnssec:
+  mode: generated
+  zsk_keyfile: "/etc/breathgslb/keys/lightitup.zerodns.co.uk.zsk"
+  ksk_keyfile: "/etc/breathgslb/keys/lightitup.zerodns.co.uk.ksk"
+  nsec3_iterations: 0
+```
+
+Fields:
+
+- `mode`: `off`, `manual`, or `generated`
+- `zsk_keyfile`, `ksk_keyfile`: key prefixes
+- `nsec3_iterations`, `nsec3_salt`, `nsec3_optout`
+
+Behavior:
+
+- `generated` creates and reuses persisted keys automatically
+- `nsec3_iterations: 0` means plain NSEC
+- `nsec3_iterations > 0` enables NSEC3
+
+## TSIG and Transfers
+
+Zone transfer auth is controlled by per-zone `tsig` and optional shared
+`discovery.tsig`.
+
+```yaml
+tsig:
+  default_algorithm: "hmac-sha256"
+  keys:
+    - name: "lightitup-xfr."
+      secret: ""
+      allow_xfr_from:
+        - "2a02:8012:bc57::/48"
+```
+
+Fields:
+
+- `default_algorithm`
+- `seed_env`
+- `epoch`
+- `allow_unsigned`
+- `keys[].name`
+- `keys[].algorithm`
+- `keys[].secret`
+- `keys[].allow_xfr_from`
+
+`allow_xfr_from` accepts:
+
+- exact IPv4 or IPv6 addresses
+- IPv4 CIDRs
+- IPv6 CIDRs such as `/64` or `/48`
+
+Why `xfr_source` exists:
+
+- a multi-address secondary may need to force AXFR to come from its NS address
+- some primaries enforce ACLs on that source
+
+Do not set `xfr_source` unless that exact IP is configured on the local host.
+
+## Static Record Sections
+
+These sections are authoritative data published exactly as configured:
+
+- `txt`
+- `mx`
+- `caa`
+- `rp`
+- `sshfp`
+- `srv`
+- `naptr`
+- `ptr`
+
+They are available at the apex or at specific names through their `name` field.
+
+## Hostname Records Inside a Zone
+
+Current support for names below the apex:
+
+- exact-name `A`/`AAAA`: `hosts[].pools`
+- host ALIAS: `hosts[].alias`
+- map-based host ALIAS: `alias_host`
+- synthetic host `A`/`AAAA`/`PTR`: `lightup`
+- static TXT/MX/CAA/RP/SSHFP/SRV/NAPTR/PTR: record sections with explicit names
+
+Important current limitation:
+
+- there is no first-class `cname:` record section
+- there is no raw arbitrary static `A:` or `AAAA:` list outside `hosts[].pools`
+
+So if you need a hostname inside the zone:
+
+- use `hosts:` with `pools:` for first-class steerable `A`/`AAAA`
+- use `alias_host` or `hosts[].alias` for ALIAS-style behavior
+- use `lightup` for deterministic synthetic names
+
+## Secondary Snapshots
+
+Persisted secondary YAML files are local runtime state. They are written so a
+secondary can restart without losing transferred intent.
+
+They are not hand-authored primary config files, and they should not be copied
+blindly between hosts.
+
+Shared between nodes:
+
+- `/etc/breathgslb/keys/`
+- `/etc/breathgslb/tsig/`
+
+Node-local runtime state:
+
+- persisted `serve: "secondary"` snapshots
+- local serial files
+
+## Example Layout
+
+```yaml
+listen_addrs:
+  - "[2a02:8012:bc57:53::1]:53"
+zones_dir: "/etc/breathgslb/zones"
+reverse_dir: "/etc/breathgslb/reverse"
+
+discovery:
+  catalog_zone: "_catalog.breathgslb."
+  masters: ["[2a02:8012:bc57:53::1]:53"]
+  xfr_source: "2a02:8012:bc57:53a::1"
+
+tsig:
+  path: "/etc/breathgslb/tsig"
+
+geoip:
+  enabled: true
+  database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
+  prefer_field: "registered"
+  cache_ttl_sec: 600
+```

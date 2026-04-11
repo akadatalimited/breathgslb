@@ -1,154 +1,115 @@
-.TH BREATHGSLB.CONF 5 "2026-04-11" "BreathGSLB" "File Formats Manual"
-.SH NAME
-breathgslb.conf \- configuration format for BreathGSLB
+# NAME
+breathgslb.conf - configuration format for BreathGSLB
 
-.SH SYNOPSIS
-.B /etc/breathgslb/config.yaml
-.br
-.B /etc/breathgslb/zones/*.fwd.yaml
-.br
-.B /etc/breathgslb/reverse/*.rev.yaml
+# SYNOPSIS
+**/etc/breathgslb/config.yaml**
+**/etc/breathgslb/zones/*.fwd.yaml**
+**/etc/breathgslb/reverse/*.rev.yaml**
 
-.SH DESCRIPTION
+# DESCRIPTION
 BreathGSLB is configured from one main YAML file plus optional forward and
 reverse zone files loaded from
-.B zones_dir
+**zones_dir**
 and
-.BR reverse_dir .
+reverse_dir .
 
 The current model is:
-.IP \[bu] 2
 one main config for listeners, timing, GeoIP, TSIG, API, and discovery
-.IP \[bu] 2
 forward zones in
-.B zones_dir
+**zones_dir**
 as
-.B *.fwd.yaml
-.IP \[bu] 2
+***.fwd.yaml**
 reverse zones in
-.B reverse_dir
+**reverse_dir**
 as
-.B *.rev.yaml
-.IP \[bu] 2
+***.rev.yaml**
 primary or discovery-based secondary operation
-.IP \[bu] 2
 apex and named hosts answered through the same pool model
 
 BreathGSLB is authoritative only. It does not recurse.
 
-.SH RUNTIME MODEL
+# RUNTIME MODEL
 At query time, resolution is layered in this order:
-.IP "1." 3
 exact host match in
-.B hosts:
-.IP "2." 3
+**hosts:**
 host
-.B alias
+**alias**
 or zone
-.B alias_host
-.IP "3." 3
-.B lightup
+**alias_host**
+**lightup**
 synthesis for matching names
-.IP "4." 3
 apex
-.B pools
+**pools**
 or legacy apex fields
-.IP "5." 3
 static records such as
-.BR TXT ,
-.BR MX ,
-.BR CAA ,
-.BR RP ,
-.BR SSHFP ,
-.BR SRV ,
-.BR NAPTR ,
+TXT ,
+MX ,
+CAA ,
+RP ,
+SSHFP ,
+SRV ,
+NAPTR ,
 and
-.BR PTR
+PTR
 
 For a discovery-based secondary:
-.IP "1." 3
 load only the main config
-.IP "2." 3
 transfer the shared catalog zone
-.IP "3." 3
 reconstruct full zone intent from the catalog payload
-.IP "4." 3
 AXFR the discovered zones
-.IP "5." 3
 persist local secondary snapshots for restart durability
 
-.SH GLOBAL SETTINGS
+# GLOBAL SETTINGS
 Common top-level keys include:
-.TP
-.B listen
+## listen
 Fallback bind address, usually
-.BR :53 .
-.TP
-.B listen_addrs
+:53 .
+## listen_addrs
 Explicit bind addresses in
-.B host:port
+**host:port**
 form.
-.TP
-.B interfaces
+## interfaces
 Derive bind addresses from named interfaces.
-.TP
-.B zones_dir
+## zones_dir
 Directory containing forward zone files.
-.TP
-.B reverse_dir
+## reverse_dir
 Directory containing reverse zone files.
-.TP
-.B timeout_sec
+## timeout_sec
 Probe and transfer timeout base.
-.TP
-.B interval_sec
+## interval_sec
 Base interval between health rounds and runtime refresh cycles.
-.TP
-.B rise
+## rise
 Successes required before a health state becomes UP.
-.TP
-.B fall
+## fall
 Failures required before a health state becomes DOWN.
-.TP
-.B jitter_ms
+## jitter_ms
 Random delay added to probe scheduling.
-.TP
-.B cooldown_sec
+## cooldown_sec
 Minimum dwell time before a tier or pool flips state.
-.TP
-.B dns64_prefix
+## dns64_prefix
 Prefix used for synthetic AAAA from A.
-.TP
-.B edns_buf
+## edns_buf
 Advertised EDNS UDP payload size.
-.TP
-.B max_records
+## max_records
 Maximum A or AAAA records returned in one answer.
-.TP
-.B log_queries
+## log_queries
 Enable query logging.
-.TP
-.B log_file
+## log_file
 Log file path.
-.TP
-.B log_syslog
+## log_syslog
 Enable syslog logging.
-.TP
-.B tsig.path
+## tsig.path
 Directory used for TSIG key persistence.
-.TP
-.B geoip
+## geoip
 GeoIP enablement and MMDB configuration.
-.TP
-.B discovery
+## discovery
 Shared catalog bootstrap for config-only secondaries.
 
-.SH DISCOVERY
+# DISCOVERY
 The
-.B discovery
+**discovery**
 block allows a secondary to start from only its main config.
 
-.nf
 discovery:
   catalog_zone: "_catalog.breathgslb."
   masters: ["[2a02:8012:bc57:53::1]:53"]
@@ -156,30 +117,24 @@ discovery:
   tsig:
     default_algorithm: "hmac-sha256"
     keys:
-      \- name: "lightitup-xfr."
+      - name: "lightitup-xfr."
         secret: ""
-.fi
 
 Fields:
-.TP
-.B catalog_zone
+## catalog_zone
 Shared catalog zone used for bootstrap.
-.TP
-.B masters
+## masters
 Primaries to query for that catalog.
-.TP
-.B xfr_source
+## xfr_source
 Optional local source IP for outbound AXFR. Only set this when that exact
 address exists on the local host.
-.TP
-.B tsig
+## tsig
 Shared transfer/bootstrap key material.
 
-.SH ZONES
+# ZONES
 Each zone entry defines one authoritative zone.
 
-.nf
-\- name: "lightitup.zerodns.co.uk."
+- name: "lightitup.zerodns.co.uk."
   ns: ["gslb.zerodns.co.uk.", "gslb2.zerodns.co.uk."]
   admin: "hostmaster.zerodns.co.uk."
   ttl_soa: 60
@@ -189,170 +144,135 @@ Each zone entry defines one authoritative zone.
   expire: 90
   minttl: 60
   serve: "primary"
-.fi
 
 Important fields:
-.TP
-.B name
+## name
 Zone FQDN.
-.TP
-.B ns
+## ns
 Published authoritative NS set.
-.TP
-.B admin
+## admin
 SOA mailbox in dotted form.
-.TP
-.B ttl_soa
+## ttl_soa
 SOA TTL.
-.TP
-.B ttl_answer
+## ttl_answer
 Default TTL for dynamic A and AAAA answers.
-.TP
-.B refresh
+## refresh
 SOA refresh timer.
-.TP
-.B retry
+## retry
 SOA retry timer.
-.TP
-.B expire
+## expire
 SOA expire timer.
-.TP
-.B minttl
+## minttl
 SOA minimum TTL.
-.TP
-.B serve
+## serve
 Zone role:
-.BR primary ,
-.BR local ,
+primary ,
+local ,
 or
-.BR secondary .
-.TP
-.B masters
+secondary .
+## masters
 Upstream primaries for a secondary zone.
-.TP
-.B xfr_source
+## xfr_source
 Optional source IP used when the zone AXFRs from a master.
 
-.SH APEX MODEL
+# APEX MODEL
 There are two apex answer models:
-.IP \[bu] 2
 legacy apex fields such as
-.BR a_master ,
-.BR aaaa_master ,
-.BR a_standby ,
-.BR aaaa_standby ,
-.BR a_fallback ,
+a_master ,
+aaaa_master ,
+a_standby ,
+aaaa_standby ,
+a_fallback ,
 and related private/local-view fields
-.IP \[bu] 2
 the current
-.B pools
+**pools**
 model
 
 Legacy fields remain for compatibility. Pools are the long-term direction.
 
-.SH POOLS
+# POOLS
 Pools are the current answer-selection model for the apex and for named hosts.
 
-.nf
 pools:
-  \- name: "public-v6-primary"
+  - name: "public-v6-primary"
     family: "ipv6"
     class: "public"
     role: "primary"
     members:
-      \- ip: "2a02:8012:bc57:5353::1"
-  \- name: "private-v4-primary"
+      - ip: "2a02:8012:bc57:5353::1"
+  - name: "private-v4-primary"
     family: "ipv4"
     class: "private"
     role: "primary"
     members:
-      \- ip: "172.16.0.1"
+      - ip: "172.16.0.1"
     client_nets:
-      \- "172.16.0.0/24"
-.fi
+      - "172.16.0.0/24"
 
 Pool fields:
-.TP
-.B name
+## name
 Stable pool identifier used by geo policy.
-.TP
-.B family
+## family
 Either
-.B ipv4
+**ipv4**
 or
-.BR ipv6 .
-.TP
-.B class
+ipv6 .
+## class
 Usually
-.B public
+**public**
 or
-.BR private .
-.TP
-.B role
+private .
+## role
 Typically
-.BR primary ,
-.BR secondary ,
+primary ,
+secondary ,
 or
-.BR fallback .
-.TP
-.B members
+fallback .
+## members
 The actual IPs returned in DNS answers.
-.TP
-.B client_nets
+## client_nets
 Source CIDRs that make a private pool eligible.
 
-.SH HOSTS
-.B hosts:
+# HOSTS
+**hosts:**
 provides first-class in-zone names.
 
-.nf
 hosts:
-  \- name: "app"
+  - name: "app"
     health:
       kind: http
       host_header: "app.lightitup.zerodns.co.uk"
       path: "/health"
     pools:
-      \- name: "app-v6"
+      - name: "app-v6"
         family: "ipv6"
         class: "public"
         role: "primary"
         members:
-          \- ip: "2a02:8012:bc57:5353::10"
-.fi
+          - ip: "2a02:8012:bc57:5353::10"
 
 Each host can carry:
-.IP \[bu] 2
-.B pools
-.IP \[bu] 2
-.B geo
-.IP \[bu] 2
-.B health
-.IP \[bu] 2
-.B alias
+**pools**
+**geo**
+**health**
+**alias**
 
 Zone health is the default. Host health overrides it when present.
 
-.SH GEO ROUTING
+# GEO ROUTING
 Geo routing uses MaxMind country data from the configured MMDB.
 
 The code reads:
-.IP \[bu] 2
-.B country.iso_code
-.IP \[bu] 2
-.B registered_country.iso_code
-.IP \[bu] 2
-.B continent.code
+**country.iso_code**
+**registered_country.iso_code**
+**continent.code**
 
 Those ISO-style codes are matched directly against:
-.IP \[bu] 2
-.B allow_countries
-.IP \[bu] 2
-.B allow_continents
+**allow_countries**
+**allow_continents**
 
 Named-pool geo is the preferred model:
 
-.nf
 geo:
   eu-v6:
     allow_countries: ["GB", "FR", "DE"]
@@ -362,184 +282,149 @@ geo:
     allow_continents: ["NA"]
   global-v6:
     allow_all: true
-.fi
 
 Legacy
-.BR geo.master ,
-.BR geo.standby ,
+geo.master ,
+geo.standby ,
 and
-.B geo.fallback
+**geo.fallback**
 still work for older configs.
 
-.B geo_answers
+**geo_answers**
 is separate from
-.BR geo .
+geo .
 It directly overrides returned answers by country or continent.
 
-.SH LIGHTUP
-.B lightup
+# LIGHTUP
+**lightup**
 provides deterministic forward and reverse synthesis inside configured owned
 prefixes.
 
-.nf
 lightup:
   enabled: true
   forward_template: "fresh-{addr}.lightitup.zerodns.co.uk."
   families:
-    \- family: "ipv6"
+    - family: "ipv6"
       class: "public"
       prefix: "2a02:8012:bc57:5353::/64"
       respond_aaaa: true
       respond_ptr: true
       exclude:
-        \- "2a02:8012:bc57:5353::1/128"
-.fi
+        - "2a02:8012:bc57:5353::1/128"
 
 Purpose:
-.IP \[bu] 2
 synthetic forward names for addresses you own
-.IP \[bu] 2
 deterministic PTR generation
-.IP \[bu] 2
 stable forward/reverse round-tripping
 
 Important behavior:
-.IP \[bu] 2
 explicit records always win
-.IP \[bu] 2
 with an explicit
-.B forward_template
+**forward_template**
 only names matching that template synthesize
-.IP \[bu] 2
 excluded ranges are hard deny-ranges inside the lightup prefix
-.IP \[bu] 2
 exact template names return the embedded address if it is inside the configured
 prefix and not excluded
 
-.SH REVERSE ZONES
+# REVERSE ZONES
 Delegated reverse zones are first-class YAML files in
-.BR reverse_dir .
+reverse_dir .
 Files use the
-.B *.rev.yaml
+***.rev.yaml**
 suffix.
 
 Reverse zones may contain:
-.IP \[bu] 2
 explicit PTR records
-.IP \[bu] 2
 generated PTR data requested by
-.B reverse: true
+**reverse: true**
 on configured addresses
-.IP \[bu] 2
 lightup synthetic PTRs for owned prefixes
 
-.SH DNSSEC
+# DNSSEC
 DNSSEC supports:
-.IP \[bu] 2
 manual or generated key material
-.IP \[bu] 2
 plain NSEC or NSEC3
-.IP \[bu] 2
 signed primary answers
-.IP \[bu] 2
 signed secondary answers using transferred signed data
 
 For generated keys, use stable key paths under
-.BR /etc/breathgslb/keys/ .
+/etc/breathgslb/keys/ .
 
-.SH TRANSFERS AND TSIG
+# TRANSFERS AND TSIG
 Per-zone
-.B tsig
+**tsig**
 and shared
-.B discovery.tsig
+**discovery.tsig**
 support signed zone transfers.
 
-.B allow_xfr_from
+**allow_xfr_from**
 accepts:
-.IP \[bu] 2
 exact IPv4 addresses
-.IP \[bu] 2
 exact IPv6 addresses
-.IP \[bu] 2
 IPv4 CIDRs
-.IP \[bu] 2
 IPv6 CIDRs
 
 Use
-.B xfr_source
+**xfr_source**
 only when the chosen source IP is actually configured on the local host.
 
-.SH ALIAS, CNAME, AND OTHER RECORDS
+# ALIAS, CNAME, AND OTHER RECORDS
 The current schema supports:
-.IP \[bu] 2
 zone apex
-.B alias
-.IP \[bu] 2
+**alias**
 host
-.B alias
-.IP \[bu] 2
+**alias**
 map-based host ALIAS through
-.B alias_host
-.IP \[bu] 2
+**alias_host**
 named host
-.B A
+**A**
 and
-.B AAAA
+**AAAA**
 through
-.B hosts
+**hosts**
 and
-.B pools
-.IP \[bu] 2
+**pools**
 static
-.BR TXT ,
-.BR MX ,
-.BR CAA ,
-.BR RP ,
-.BR SSHFP ,
-.BR SRV ,
-.BR NAPTR ,
+TXT ,
+MX ,
+CAA ,
+RP ,
+SSHFP ,
+SRV ,
+NAPTR ,
 and
-.BR PTR
+PTR
 
 There is not currently a first-class
-.B cname
+**cname**
 section in the zone schema.
 
 Use:
-.IP \[bu] 2
-.B hosts
+**hosts**
 for real in-zone
-.B A
+**A**
 and
-.B AAAA
-.IP \[bu] 2
-.B alias
+**AAAA**
+**alias**
 or
-.B alias_host
+**alias_host**
 for ALIAS-style behavior
-.IP \[bu] 2
-.B lightup
+**lightup**
 for deterministic synthetic names
 
-.SH FILES
-.TP
-.B /etc/breathgslb/config.yaml
+# FILES
+## /etc/breathgslb/config.yaml
 Main config.
-.TP
-.B /etc/breathgslb/zones/
+## /etc/breathgslb/zones/
 Forward zone files.
-.TP
-.B /etc/breathgslb/reverse/
+## /etc/breathgslb/reverse/
 Reverse zone files.
-.TP
-.B /etc/breathgslb/keys/
+## /etc/breathgslb/keys/
 DNSSEC key material.
-.TP
-.B /etc/breathgslb/tsig/
+## /etc/breathgslb/tsig/
 TSIG key material.
-.TP
-.B /etc/breathgslb/serials/
+## /etc/breathgslb/serials/
 Persisted SOA serial state.
 
-.SH SEE ALSO
-.BR breathgslb (8)
+# SEE ALSO
+breathgslb (8)

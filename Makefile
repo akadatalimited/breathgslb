@@ -50,7 +50,9 @@ SHA256  := $(shell command -v sha256sum 2>/dev/null || command -v shasum 2>/dev/
 SHA256FLAGS := $(shell [ "$$(basename $(SHA256))" = "shasum" ] && echo -a || echo )
 
 # Documentation paths
-DOC_PDF := doc/breathgslb.pdf
+DOCSRC  := src/doc
+DOCDIR  := doc
+DOC_PDF := $(DOCDIR)/breathgslb.pdf
 DEMO_SRC := demo/lightitup
 DEMO_DEST ?= $(CFGDIR)
 
@@ -107,14 +109,20 @@ licensegen:
 	$(GO) -C src build -tags tools -o ../licensegen ./cmd/licensegen
 
 # -------------------- documentation --------------------
-doc/man/%.md: man/% scripts/man2md.py
+$(DOCDIR)/man/breathgslb.md: man/breathgslb.8 scripts/man2md.py
+	$(MKDIR_P) $(DOCDIR)/man
 	scripts/man2md.py $< $@
 
-doc/breathgslb.md: doc/breathgslb-book.md doc/man/breathgslb.md doc/man/breathgslb.conf.md
-	sed -e '/{{breathgslb_manual}}/r doc/man/breathgslb.md' -e '/{{breathgslb_manual}}/d' -e '/{{breathgslb_conf_manual}}/r doc/man/breathgslb.conf.md' -e '/{{breathgslb_conf_manual}}/d' doc/breathgslb-book.md > $@
+$(DOCDIR)/man/breathgslb.conf.md: man/breathgslb.conf.5 scripts/man2md.py
+	$(MKDIR_P) $(DOCDIR)/man
+	scripts/man2md.py $< $@
 
-$(DOC_PDF): doc/breathgslb.md scripts/md2pdf.py
-	scripts/md2pdf.py doc/breathgslb.md $(DOC_PDF)
+$(DOCDIR)/breathgslb.md: $(DOCSRC)/breathgslb-book.md $(DOCDIR)/man/breathgslb.md $(DOCDIR)/man/breathgslb.conf.md
+	$(MKDIR_P) $(DOCDIR)
+	sed -e '/{{breathgslb_manual}}/r $(DOCDIR)/man/breathgslb.md' -e '/{{breathgslb_manual}}/d' -e '/{{breathgslb_conf_manual}}/r $(DOCDIR)/man/breathgslb.conf.md' -e '/{{breathgslb_conf_manual}}/d' $(DOCSRC)/breathgslb-book.md > $@
+
+$(DOC_PDF): $(DOCDIR)/breathgslb.md scripts/md2pdf.py
+	scripts/md2pdf.py $(DOCDIR)/breathgslb.md $(DOC_PDF)
 
 # -------------------- release matrices --------------------
 release: clean release-linux release-musl release-macos release-freebsd release-bsd release-windows

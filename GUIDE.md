@@ -1,319 +1,258 @@
-# BreathGSLB — AI Guide (Operator + Developer)
+# BreathGSLB Guide
 
-A compact authoritative **GSLB (Global Server Load Balancer)** written in Go using `miekg/dns`. BreathGSLB serves A/AAAA (plus TXT/MX/CAA/RP/SSHFP/SRV/NAPTR), steers traffic by **health** and optional **GeoIP**, supports **local/private views** (RFC1918/ULA), hot **SIGHUP reload**, **DNSSEC (alpha)** signing, EDNS/ECS, and multi-address binding.
+This guide is the short operator/developer orientation. The detailed config
+reference is:
 
-This guide orients AI coding assistants (e.g., Codex, qwen3‑coder‑plus) and human operators. It explains how things work, how to run it, and the roadmap for multi‑tenant API, JWT, billing, and GDPR controls.
+- [Configuration](src/doc/configuration.md)
 
----
+The current design documents are:
 
-## 1) Core Concepts
+- [POOLS](POOLS.md)
+- [Zone Replication](ZONE_REPLICATION.md)
+- [Lightup Plan](LIGHTITUP.md)
 
-### Zones & Answers
+## Runtime Model
 
-* Each delegated zone (e.g., `gslb‑example.example.`) is defined in YAML.
-* Answers at the **apex** (owner == zone name) are health‑steered across three tiers:
+BreathGSLB is authoritative only.
 
-  * **master** → preferred (fast site)
-  * **standby** → secondary (reliable site)
-  * **fallback** → last resort (optional)
-* Per‑tier **private answers** and **CIDR allowlists** let local clients receive RFC1918/ULA while Internet clients receive public IPs.
+It is configured from:
 
-### Health Model
+- one main config
+- forward zone files in `zones_dir`
+- reverse zone files in `reverse_dir`
+- local key, TSIG, and serial state under `/etc/breathgslb`
 
-* HTTPS probe to each configured IP (v4/v6 lists per tier).
-* **rise / fall** counters, with **cooldown** (minimum dwell time before flipping state), and jittered intervals.
-* Family‑specific: v4 can be UP while v6 is DOWN, and vice‑versa.
+Resolution order is:
 
-### Views (Global vs Local)
+1. exact host match in `hosts:`
+2. host `alias` or zone `alias_host`
+3. lightup synthesis
+4. apex pools or legacy apex fields
+5. static records
 
-* `serve: "global"` → always public answers.
-* `serve: "local"` → if client (or ECS subnet) is inside tier‑specific RFC/ULA CIDRs, return `*_private`; otherwise public.
+For a discovery-based secondary:
 
-### Geo Steering (Optional)
+1. load main config only
+2. transfer the shared catalog zone
+3. reconstruct full zone intent from the catalog payload
+4. AXFR each discovered zone
+5. persist node-local secondary snapshots
 
-* If `geoip.enabled: true` with a MaxMind Country DB:
+## Zone Model
 
-  * **Policy** (`geo:`) gates which tier is eligible per country/continent.
-  * **Overrides** (`geo_answers:`) can directly return per‑country/continent A/AAAA and private answers (with their own RFC/ULA CIDRs).
-* ECS (`+subnet` in `dig`) is honored when present.
+The current model is no longer apex-only.
 
-### DNSSEC (Beta) - NSEC and NSEC3 fully supported
+There are now three layers:
 
-* Loads BIND‑style KSK/ZSK from disk and signs DNSKEY + answer RRsets.
-* Minimal NSEC for NXRRSET at the apex (full NXDOMAIN/NSEC3 is complete).
+- zone defaults
+- apex pools
+- named hosts with their own pools
 
-### Reload/Logging/Binding
+That means:
 
-* **Reload:** `SIGHUP` (OpenRC `reload` / systemd `ExecReload=`).
-* **Logs:** file + stderr with simple, clean lines.
-* **Binding:** `listen`, `listen_addrs`, or `interfaces` (auto‑discover addresses) across UDP/TCP, v4/v6.
+- the apex can answer through `pools:`
+- named hosts such as `app.example.net.` can also answer through `hosts:`
+- legacy `a_master` / `aaaa_master` style fields still work, but are
+  compatibility input
 
----
+## Pools
 
-## 2) Minimal YAML (annotated)
+Pools are the current answer-selection unit.
+
+A pool contains:
+
+- `name`
+- `family`
+- `class`
+- `role`
+- `members`
+- optional `client_nets`
+
+Why pools exist:
+
+- one host may have many candidate IPs
+- public and private answers need separate eligibility
+- geo routing wants to select named answer groups
+- the same model should work for apex and non-apex hosts
+
+Current direction:
+
+- use pools for new configs
+- keep legacy apex fields as compatibility only
+
+## Hosts
+
+`hosts:` provides first-class in-zone names.
+
+Example intent:
+
+- `name: "@"` for the apex
+- `name: "app"` for `app.zone.`
+- `name: "api"` for `api.zone.`
+
+Each host can carry:
+
+- `pools`
+- `geo`
+- `health`
+- `alias`
+
+Current health inheritance is:
+
+1. host `health`
+2. otherwise zone `health`
+
+Pool/member health overrides are intentionally not in use yet.
+
+## Geo Routing
+
+Geo routing is driven by MaxMind MMDB country data.
+
+The code reads:
+
+- `country.iso_code`
+- `registered_country.iso_code`
+- `continent.code`
+
+Then it compares those ISO codes directly against config:
+
+- `allow_countries`
+- `allow_continents`
+
+Current preferred geo model is named-pool geo, for example:
 
 ```yaml
-listen: ":53"
-listen_addrs: ["0.0.0.0:53", "[::]:53"]
-interfaces: ["eth0", "ppp0"]
-
-# Probes / EDNS
-timeout_sec: 5
-interval_sec: 8
-rise: 2
-fall: 4
-cooldown_sec: 25
-jitter_ms: 600
-edns_buf: 1232
-log_queries: true
-log_file: "/var/log/breathgslb/breathgslb.log"
-
-# Optional GeoIP
-geoip:
-  enabled: true
-  database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
-  prefer_field: "registered"   # or "country"
-  cache_ttl_sec: 600
-
-zones:
-  - name: "gslb-sitetest.akadata.ltd."
-    ns: ["ns-gslb.akadata.ltd."]
-    admin: "hostmaster.akadata.ltd."
-    ttl_soa: 60
-    ttl_answer: 20
-
-    serve: "local"
-    private_allow_when_isolated: true
-
-    # Public tiered answers
-    a_master: ["217.155.241.55"]
-    aaaa_master: ["2a02:8012:bc57::1"]
-    a_standby: ["13.41.102.86"]
-    aaaa_standby: ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]
-
-    # Local/private answers and their CIDRs per tier
-    a_master_private:    ["172.16.0.1"]
-    aaaa_master_private: ["2a02:8012:bc57:1::2"]
-    rfc_master: ["172.16.0.0/24"]
-    ula_master: ["2a02:8012:bc57:1::/64"]
-
-    # Optional Geo policy (tier eligibility)
-    geo:
-      master:
-        allow_countries: ["GB"]
-        allow_continents: ["EU"]
-      standby:
-        allow_countries: ["US", "CA"]
-      fallback:
-        allow_all: true
-
-    # Optional Geo per‑region answers
-    geo_answers:
-      country:
-        GB:
-          a: ["217.155.241.55"]
-          aaaa: ["2a02:8012:bc57::1"]
-          a_private: ["172.16.0.1"]
-          aaaa_private: ["2a02:8012:bc57:1::2"]
-          rfc: ["172.16.0.0/24"]
-          ula: ["2a02:8012:bc57:1::/64"]
-      continent:
-        NA:
-          a: ["13.41.102.86"]
-          aaaa: ["2a05:d01c:65b:7100:f50:5bf:250c:dc5f"]
-
-    # Shared/static records
-    txt:
-      - text: ["Breath Technology - a DNS Zone by BreathGSLB - In YHVH we trust"]
-    mx:
-      - preference: 1  exchange: "aspmx.l.google.com."
-      - preference: 5  exchange: "alt1.aspmx.l.google.com."
-    caa:
-      - flag: 128 tag: issue value: "letsencrypt.org"
-
-    # Health
-    health:
-      host_header: "gslb-sitetest.akadata.ltd"
-      sni: "gslb-sitetest.akadata.ltd"
-      path: "/health"
-      insecure_tls: false
-
-    # DNSSEC (Alpha)
-    dnssec:
-      enable: true
-      zsk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+38151"
-      ksk_keyfile: "/etc/breathgslb/keys/Kgslb-sitetest.akadata.ltd.+013+12218"
+geo:
+  eu-v6:
+    allow_countries: ["GB", "FR", "DE"]
+    allow_continents: ["EU"]
+  us-v6:
+    allow_countries: ["US", "CA"]
+    allow_continents: ["NA"]
+  fallback-v6:
+    allow_all: true
 ```
 
----
+Legacy `geo.master`, `geo.standby`, and `geo.fallback` still exist for older
+configs.
 
-## 3) Operating Cheatsheet
+`geo_answers` is separate. It does direct answer override, not just pool
+selection.
 
-**Start/Reload/Stop**
+## Lightup
+
+`lightup` is deterministic synthesis for owned address space.
+
+It is for:
+
+- synthetic forward names
+- synthetic reverse PTRs
+- round-trip naming in test or internal address space
+
+Current behavior:
+
+- explicit records always win
+- exact-template forward names return the embedded IP
+- exclusions deny synthesis inside the owned prefix
+- arbitrary names only synthesize when the config allows it
+- with an explicit `forward_template`, only matching names synthesize
+
+Lightup supports:
+
+- IPv6 public families
+- IPv6 private families
+- IPv4 private families
+
+## Reverse Zones
+
+Reverse zones are first-class YAML in `reverse_dir`.
+
+They may contain:
+
+- explicit PTRs
+- generated PTRs requested by `reverse: true`
+- lightup synthetic PTRs for owned prefixes
+
+Files use:
+
+- `*.rev.yaml`
+
+Delegated reverse zones should be served directly from `reverse_dir`.
+
+## DNSSEC
+
+Current DNSSEC behavior:
+
+- generated or manual keys
+- plain NSEC or NSEC3
+- signed primary answers
+- signed secondary answers using transferred signed data
+- query-aware denial logic so NSEC/NSEC3 matches what is actually served
+
+Generated key mode persists keys on disk. The same zone keys must exist on
+every node that is expected to serve the same signed zone data.
+
+## Replication
+
+Primary/secondary replication now supports:
+
+- TSIG-protected AXFR
+- discovery bootstrap
+- `xfr_source`
+- IPv4 and IPv6 `allow_xfr_from` CIDRs
+- persisted local secondary snapshots
+
+Important boundary:
+
+- shared material between nodes is keys and TSIG
+- persisted `serve: secondary` snapshots are node-local runtime state
+- do not blindly copy one node’s secondary snapshots onto another host
+
+## Records Inside a Zone
+
+The current options are:
+
+- apex `A` / `AAAA` through pools or legacy apex fields
+- host `A` / `AAAA` through `hosts:` plus `pools:`
+- host and apex ALIAS behavior through `alias`, `hosts[].alias`, and
+  `alias_host`
+- static `TXT`, `MX`, `CAA`, `RP`, `SSHFP`, `SRV`, `NAPTR`, `PTR`
+
+There is not currently a first-class `cname:` section.
+
+Use:
+
+- `hosts:` for real in-zone `A` / `AAAA`
+- `alias` / `alias_host` for ALIAS-style behavior
+- `lightup` for deterministic synthetic names
+
+## Operations
+
+Build:
 
 ```sh
-breathgslb -config /etc/breathgslb/config.yaml &
-kill -HUP $(pidof breathgslb)    # reload
-kill -TERM $(pidof breathgslb)   # stop
+make build
 ```
 
-**Ask the auth directly**
+Run:
 
 ```sh
-dig @ns-gslb.akadata.ltd A gslb-sitetest.akadata.ltd +norecurse
-dig @ns-gslb.akadata.ltd AAAA gslb-sitetest.akadata.ltd +dnssec +norecurse
+./breathgslb -config /etc/breathgslb/config.yaml
 ```
 
-**Demonstrate ECS/local view**
+Reload:
 
 ```sh
-dig @ns-gslb.akadata.ltd +subnet=172.16.0.1/24 A gslb-sitetest.akadata.ltd +norecurse
+kill -HUP "$(pidof breathgslb)"
 ```
 
-**Trace**
+Tests:
 
 ```sh
-dig +trace AAAA gslb-sitetest.akadata.ltd
+make test
+go -C src test -run TestName ./...
 ```
 
----
+Live demo:
 
-## 4) Replication & Multi‑Master (Design)
-
-BreathGSLB focuses on **authoritative answering with local health**. For broad HA:
-
-* **Two independent authorities** (e.g., FTTP site + Cloud) both serve the delegated zone. Each follows the *same* YAML and keys (DNSSEC) and performs its own health probes.
-* Public resolvers cache based on your TTLs; keep `ttl_soa` modest during maintenance.
-* To minimize window during binary replacement, use a **secondary node** to keep serving while the primary restarts; prefer **reload** over restart when changing config.
-
-**Multi‑Master considerations**
-
-* SOA serials will diverge if each node unilaterally sets `Serial: now()`. For classic AXFR/IXFR masters/slaves you’d maintain a single writable zonefile. BreathGSLB signs dynamically and does not rely on BIND‑style zonefile serial arithmetic yet.
-* Roadmap includes: optional **status/replication channel** (gRPC/HTTPS) to coordinate **shared serial**, health, and CSR‑style DNSSEC key rotation.
-
-**Many slaves**
-
-* If you still run BIND/Knot/NSD as secondaries, you can delegate to BreathGSLB as **hidden primary** and have a separate unsigned or pre‑signed zone for XFR. (Roadmap: TSIG‑signed XFRs with in‑memory keys.)
-
----
-
-## 5) RFC1918/ULA, Public/Private Views
-
-* Per‑tier `rfc_*` and `ula_*` (CIDR arrays) declare **where local answers are allowed**.
-* If `serve: "local"` and client (or ECS subnet) is inside those CIDRs, return `*_private` records for that tier; otherwise return public.
-* `private_allow_when_isolated: true` allows private answers even if that tier’s health is DOWN (useful during WAN isolation).
-
----
-
-## 6) Record Types Supported
-
-* **A**, **AAAA** (health/GEO steered at apex)
-* **TXT**, **MX**, **CAA**, **RP**, **SSHFP**, **SRV**, **NAPTR** (static/shared; per‑name via `name:`)
-* **ALIAS‑like** behavior via `alias:` (BreathGSLB resolves A/AAAA of the target and returns them at apex).
-
----
-
-## 7) DNSSEC Notes (Alpha)
-
-* Load KSK/ZSK from files (`.key` + `.private`), algorithm 13 recommended (ECDSAP256SHA256).
-* Signs DNSKEY with KSK; other RRsets with ZSK.
-* Minimal NSEC at apex for NXRRSET (full NXDOMAIN later).
-* For the public Internet to validate with DO=1, **publish DS** at parent. Until then, use `delv` with a local trust anchor.
-
----
-
-## 8) Security & Networking
-
-* Bind UDP+TCP/53; open firewall accordingly (optionally by interface).
-* No recursion (authoritative only). Refuses to act as a resolver.
-* Health checks use HTTPS; can set SNI/Host for proper cert validation. `insecure_tls: false` is recommended in production.
-
----
-
-## 9) Roadmap — Multi‑Tenant API, JWT, Billing, GDPR
-
-### Goals
-
-* Host many customer zones securely with per‑tenant isolation and access control.
-* Automate onboarding, billing, and suspension/reinstatement without data loss.
-* Provide full **GDPR** features: data export (portability) and right‑to‑erasure workflows.
-
-### API Surface (proposed)
-
-* **Auth**: OAuth2 Client Credentials or direct **JWT** signed by provider.
-
-  * Tenants get a **Client ID** and **Client Secret**; exchange for JWT or sign JWT with per‑tenant key.
-* **Resources**:
-
-  * `/v1/tenants` (create/update/suspend/reactivate)
-  * `/v1/zones` (CRUD; zone YAML; validation; dry‑run; staged apply with SIGHUP)
-  * `/v1/keys/dnssec` (upload, list, rotate, attest)
-  * `/v1/keys/tsig` (on‑the‑fly HMAC key minting, rotation; memory or disk persistence)
-  * `/v1/health` (probe results, rise/fall counters, current state)
-  * `/v1/geo` (MMDB status/version, cache metrics)
-  * `/v1/metrics/queries` (per‑zone/tenant query counts, RCODEs, QTYPEs; rollups)
-  * `/v1/audit` (who changed what, when; immutable logs)
-
-### Authorization Model
-
-* **JWT claims**: `sub` (tenant), `scope` (e.g., `zones:write zones:read keys:write metrics:read`), `exp`, `iat`.
-* **RBAC**: roles like `owner`, `admin`, `billing`, `readOnly` with scope mapping.
-* **Key Management**: Per‑tenant signing keys (JWK/JWKS). Optionally provider‑issued access tokens.
-
-### Multi‑Tenancy & Data Isolation
-
-* Each zone belongs to a tenant ID; configs, keys, and logs partitioned by tenant namespace on disk and in memory.
-* API server and DNS engine processes separated; DNS runs least‑privileged with read‑only view of staged configs.
-* **Staged Apply**: API writes a new versioned config under tenant/zone; engine reloads that version atomically.
-
-### Billing & Suspension
-
-* **Meters**: query counts, bandwidth estimates, health probe counts.
-* **Plans**: tiered thresholds; overage alerts.
-* **Suspension**: API flag per zone → engine returns `NXDOMAIN` or a suspension TXT at apex (operator choice). No config is deleted.
-* **Reactivation**: clear flag; engine reloads; state resumes.
-
-### GDPR Workflows
-
-* **Right of Access/Portability**: `/v1/export` → signed ZIP with zone YAML, keys (if allowed), and logs filtered by tenant.
-* **Right to Erasure**: `/v1/erase` → marks tenant for deletion; retention policy window elapses; secure wipe of data at rest; DS/delegation guidance provided to tenant.
-* **Data Minimization**: query logs can be **IP‑hashed** or truncated; ECS details optional and redacted by default.
-
-### API Security Hardening
-
-* mTLS between API gateway and engine; JWT audience checking; short token TTLs; refresh via client credentials.
-* Strict input validation (zone names FQDN, TXT length limits, CIDR parsing, etc.).
-* Structured audit logs; tamper‑evident store (hash‑chained records).
-
----
-
-## 10) Persistence & Load Balancing (Planned)
-
-* **Persistence**: hash client subnet (from ECS when available, else source /24 or /56) to pick a stable IP within a tier’s list. Ensures session stickiness without server‑side state.
-* **Weighted RR / Round‑Robin**: per‑address weights within a tier; health‑aware shuffling.
-
----
-
-## 11) Tips for AI Coding Assistants
-
-* Because it's 2026 and if we did not tell you your AI can help we would be living in the past.
-* Keep examples **deterministic**: single‑line YAML changes per example.
-* Prefer **small PR‑sized** patches; compile frequently (`go build`).
-* Respect the current file split (`types.go`, `main.go`, etc.) when adding features; avoid canvas overflows by moving large helpers into new files (e.g., `geo.go`, `dnssec.go`).
-* Use explicit imports; vendor third‑party modules if building in restricted environments.
-
----
-
-## 12) License
-
-We recommend **MIT License** for the core project; optional enterprise packaging can remain free while offering support SLAs.
-
----
-
-## 13) Acknowledgments
-
-* `miekg/dns` for DNS building blocks.
-* MaxMind GeoLite2 for free Country database.
-
-> Ship simply. Keep it observable. Glory to YHVH.
-
+- [Lightitup Demo](demo/lightitup/README.md)
