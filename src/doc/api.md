@@ -10,9 +10,9 @@ Add the following to `config.yaml`:
 api: true
 api-listen: 9443
 api-interface: ["eth0"]          # optional
-api-token: "/etc/breathgslb/token"   # Windows: C:\\breathgslb\\token
-api-cert: "/etc/breathgslb/cert.pem" # Windows: C:\\breathgslb\\cert.pem
-api-key: "/etc/breathgslb/key.pem"   # Windows: C:\\breathgslb\\key.pem
+api-token: "/etc/breathgslb/api.token"   # Windows: C:\\breathgslb\\api.token
+api-cert: "/etc/breathgslb/api.crt"      # Windows: C:\\breathgslb\\api.crt
+api-key: "/etc/breathgslb/api.key"       # Windows: C:\\breathgslb\\api.key
 ```
 
 Start the server with:
@@ -26,9 +26,9 @@ breathgslb -config /etc/breathgslb/config.yaml
 ```sh
 breathgslb -config /etc/breathgslb/config.yaml \
   -api-listen :9443 \
-  -api-token $(cat /etc/breathgslb/token) \
-  -api-cert /etc/breathgslb/cert.pem \
-  -api-key /etc/breathgslb/key.pem
+  -api-token /etc/breathgslb/api.token \
+  -api-cert /etc/breathgslb/api.crt \
+  -api-key /etc/breathgslb/api.key
 ```
 
 On Windows PowerShell:
@@ -36,9 +36,9 @@ On Windows PowerShell:
 ```powershell
 breathgslb.exe -config C:\breathgslb\config.yaml `
   -api-listen :9443 `
-  -api-token (Get-Content C:\breathgslb\token) `
-  -api-cert C:\breathgslb\cert.pem `
-  -api-key C:\breathgslb\key.pem
+  -api-token C:\breathgslb\api.token `
+  -api-cert C:\breathgslb\api.crt `
+  -api-key C:\breathgslb\api.key
 ```
 
 ## Using the API

@@ -36,6 +36,9 @@ func loadRuntimeConfig(cfgPath string) (*Config, string, error) {
 		return nil, "", err
 	}
 	appendCatalogZone(cfg)
+	for _, warn := range config.RecordSizeWarnings(cfg) {
+		log.Printf("warn: %s", warn)
+	}
 	sig, err := runtimeConfigSignature(cfg)
 	if err != nil {
 		return nil, "", err

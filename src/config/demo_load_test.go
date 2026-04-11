@@ -133,6 +133,11 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 		if c.GeoIP == nil || c.GeoIP.Database == "" {
 			t.Fatalf("%s: expected demo GeoIP config, got %#v", tc.name, c.GeoIP)
 		}
+		if tc.name == "primary" {
+			if !c.API || c.APIListen != 9443 || c.APIToken != "/etc/breathgslb/api.token" || c.APICert != "/etc/breathgslb/api.crt" || c.APIKey != "/etc/breathgslb/api.key" {
+				t.Fatalf("%s: expected demo API config, got api=%v listen=%d token=%q cert=%q key=%q", tc.name, c.API, c.APIListen, c.APIToken, c.APICert, c.APIKey)
+			}
+		}
 		if c.Discovery == nil || c.Discovery.CatalogZone == "" {
 			t.Fatalf("%s: expected demo discovery config, got %#v", tc.name, c.Discovery)
 		}

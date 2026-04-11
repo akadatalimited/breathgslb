@@ -698,3 +698,81 @@ func TestValidateRejectsAmbiguousHostAndGeoOverlaps(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRejectsMixedTTLsWithinRRSet(t *testing.T) {
+	baseZone := func() Zone {
+		return Zone{
+			Name:      "example.org.",
+			NS:        []string{"ns.example.org."},
+			Admin:     "hostmaster.example.org.",
+			TTLSOA:    300,
+			TTLAnswer: 60,
+			Refresh:   60,
+			Retry:     30,
+			Expire:    600,
+			Minttl:    60,
+		}
+	}
+
+	tests := []struct {
+		name    string
+		zone    Zone
+		wantErr string
+	}{
+		{
+			name: "TXT",
+			zone: func() Zone {
+				z := baseZone()
+				z.TXT = []TXTRecord{
+					{Name: "txt.example.org.", Text: []string{"one"}, TTL: 60},
+					{Name: "txt.example.org.", Text: []string{"two"}, TTL: 120},
+				}
+				return z
+			}(),
+			wantErr: "TXT",
+		},
+		{
+			name: "MX",
+			zone: func() Zone {
+				z := baseZone()
+				z.MX = []MXRecord{
+					{Name: "mail.example.org.", Preference: 10, Exchange: "mx1.example.org.", TTL: 60},
+					{Name: "mail.example.org.", Preference: 20, Exchange: "mx2.example.org.", TTL: 120},
+				}
+				return z
+			}(),
+			wantErr: "MX",
+		},
+		{
+			name: "PTR",
+			zone: func() Zone {
+				z := Zone{
+					Name:      "0.2.0.192.in-addr.arpa.",
+					NS:        []string{"ns.example.org."},
+					Admin:     "hostmaster.example.org.",
+					TTLSOA:    300,
+					TTLAnswer: 60,
+					Refresh:   60,
+					Retry:     30,
+					Expire:    600,
+					Minttl:    60,
+				}
+				z.PTR = []PTRRecord{
+					{Name: "1.0.2.0.192.in-addr.arpa.", PTR: "one.example.org.", TTL: 60},
+					{Name: "1.0.2.0.192.in-addr.arpa.", PTR: "two.example.org.", TTL: 120},
+				}
+				return z
+			}(),
+			wantErr: "PTR",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateZone(&tt.zone)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected TTL RRSet error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

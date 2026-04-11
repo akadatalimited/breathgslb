@@ -221,6 +221,9 @@ func ValidateZone(z *Zone) error {
 			return fmt.Errorf("ptr[%d]: %w", i, err)
 		}
 	}
+	if err := validateUniformRRSetTTLs(z); err != nil {
+		return err
+	}
 
 	// Geo answer overrides
 	if z.GeoAnswers != nil {
@@ -534,6 +537,78 @@ func validateLightupPrefixAndExcludes(family, prefixField, prefix string, exclud
 		seen = append(seen, exNet)
 	}
 	return nil
+}
+
+func validateUniformRRSetTTLs(z *Zone) error {
+	seen := map[string]uint32{}
+	check := func(owner string, rrtype uint16, ttl uint32, field string) error {
+		key := strings.ToLower(owner) + "|" + fmt.Sprintf("%d", rrtype)
+		if prev, ok := seen[key]; ok {
+			if prev != ttl {
+				return fmt.Errorf("%s: TTL %d conflicts with TTL %d for RRSet %s/%s", field, ttl, prev, owner, dns.TypeToString[rrtype])
+			}
+			return nil
+		}
+		seen[key] = ttl
+		return nil
+	}
+	defaultTTL := z.TTLAnswer
+	for i, r := range z.TXT {
+		if err := check(recordOwnerName(z.Name, r.Name), dns.TypeTXT, effectiveTTL(r.TTL, defaultTTL), fmt.Sprintf("txt[%d]", i)); err != nil {
+			return err
+		}
+	}
+	for i, r := range z.MX {
+		if err := check(recordOwnerName(z.Name, r.Name), dns.TypeMX, effectiveTTL(r.TTL, defaultTTL), fmt.Sprintf("mx[%d]", i)); err != nil {
+			return err
+		}
+	}
+	for i, r := range z.CAA {
+		if err := check(recordOwnerName(z.Name, r.Name), dns.TypeCAA, effectiveTTL(r.TTL, defaultTTL), fmt.Sprintf("caa[%d]", i)); err != nil {
+			return err
+		}
+	}
+	if z.RP != nil {
+		if err := check(recordOwnerName(z.Name, z.RP.Name), dns.TypeRP, effectiveTTL(z.RP.TTL, defaultTTL), "rp"); err != nil {
+			return err
+		}
+	}
+	for i, r := range z.SSHFP {
+		if err := check(recordOwnerName(z.Name, r.Name), dns.TypeSSHFP, effectiveTTL(r.TTL, defaultTTL), fmt.Sprintf("sshfp[%d]", i)); err != nil {
+			return err
+		}
+	}
+	for i, r := range z.SRV {
+		if err := check(recordOwnerName(z.Name, r.Name), dns.TypeSRV, effectiveTTL(r.TTL, defaultTTL), fmt.Sprintf("srv[%d]", i)); err != nil {
+			return err
+		}
+	}
+	for i, r := range z.NAPTR {
+		if err := check(recordOwnerName(z.Name, r.Name), dns.TypeNAPTR, effectiveTTL(r.TTL, defaultTTL), fmt.Sprintf("naptr[%d]", i)); err != nil {
+			return err
+		}
+	}
+	for i, r := range z.PTR {
+		if err := check(recordOwnerName(z.Name, r.Name), dns.TypePTR, effectiveTTL(r.TTL, defaultTTL), fmt.Sprintf("ptr[%d]", i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func effectiveTTL(ttl, def uint32) uint32 {
+	if ttl != 0 {
+		return ttl
+	}
+	return def
+}
+
+func recordOwnerName(zone, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == "@" {
+		return EnsureDot(zone)
+	}
+	return EnsureDot(name)
 }
 
 func cidrOverlap(a, b *net.IPNet) bool {

@@ -57,7 +57,7 @@ DEMO_SRC := demo/lightitup
 DEMO_DEST ?= $(CFGDIR)
 
 # -------------------- standard targets --------------------
-.PHONY: all build vendor clean fmt vet test help web \
+.PHONY: all build vendor clean fmt vet test help web certs \
         release release-linux release-musl release-macos release-freebsd release-bsd release-windows \
         package docs licensegen install install-man install-systemd install-openrc uninstall demodata sync-demodata
 
@@ -68,6 +68,7 @@ docs: $(DOC_PDF)
 help:
 	@echo "Available targets:"
 	@echo "  build            build the $(BINARY) binary"
+	@echo "  certs            generate API demo TLS/token files under $(CFGDIR)"
 	@echo "  test             run tests with the race detector"
 	@echo "  release          build release binaries for all supported platforms"
 	@echo "  release-linux    build release binaries for Linux"
@@ -83,6 +84,10 @@ help:
 build:
 	@echo "==> building ($(BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) -C src build -trimpath -ldflags "$(BUILD_LDFLAGS)" $(MODFLAG) $(GOFLAGS) -o ../$(BINARY) .
+
+certs:
+	install -d -m 0750 $(DESTDIR)$(CFGDIR)
+	sh scripts/gen-demo-api-credentials.sh $(DESTDIR)$(CFGDIR)
 
 web:
 	@echo "==> building ($(WEB_BINARY)) with GOFLAGS='$(GOFLAGS)' CGO_ENABLED=$(CGO_ENABLED)"
@@ -240,9 +245,14 @@ demodata:
 	install -m 0644 $(DEMO_SRC)/README.md $(DESTDIR)$(DEMO_DEST)/README.lightitup.md
 	install -m 0644 $(DEMO_SRC)/zones/*.fwd.yaml $(DESTDIR)$(DEMO_DEST)/zones/
 	install -m 0644 $(DEMO_SRC)/reverse/*.rev.yaml $(DESTDIR)$(DEMO_DEST)/reverse/
+	sh scripts/gen-demo-api-credentials.sh $(DESTDIR)$(DEMO_DEST)
 	@echo "==> installed demo data to $(DESTDIR)$(DEMO_DEST)"
 	@echo "Run with:"
 	@echo "  $(BINARY) -config $(DEMO_DEST)/config.yaml"
+	@echo "Demo API credentials:"
+	@echo "  token: $(DEMO_DEST)/api.token"
+	@echo "  cert:  $(DEMO_DEST)/api.crt"
+	@echo "  key:   $(DEMO_DEST)/api.key"
 	@echo "Secondary replica config:"
 	@echo "  $(BINARY) -config $(DEMO_DEST)/config.gslb2.yaml"
 

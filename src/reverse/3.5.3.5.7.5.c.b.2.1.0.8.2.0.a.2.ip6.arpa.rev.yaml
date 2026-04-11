@@ -10,4 +10,4 @@
   minttl: 60
   serve: secondary
   masters:
-    - 127.0.0.1:43321
+    - 127.0.0.1:44135

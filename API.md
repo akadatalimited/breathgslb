@@ -507,14 +507,31 @@ security:
 
 ## Starting the API Server
 
-To start the API server:
+There is no separate `breathgslb-api` binary in the current architecture.
+The API server is started by the normal `breathgslb` binary when API settings
+are enabled.
+
+Build the integrated binary:
 
 ```bash
-# Using default configuration
-./breathgslb-api
+make build
+```
 
-# Using custom configuration
-./breathgslb-api -config /path/to/api_config.yaml
+Then start `breathgslb` with API enabled in the main config:
+
+```bash
+./breathgslb -config /etc/breathgslb/config.yaml
+```
+
+Or override the API settings on startup:
+
+```bash
+./breathgslb \
+  -config /etc/breathgslb/config.yaml \
+  -api-listen :8443 \
+  -api-token /etc/breathgslb/api.token \
+  -api-cert /etc/breathgslb/api.crt \
+  -api-key /etc/breathgslb/api.key
 ```
 
 ## Manager Workflow

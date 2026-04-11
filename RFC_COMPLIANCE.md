@@ -3,6 +3,9 @@
 This document is the tracked RFC audit for the current authoritative DNS
 feature set in BreathGSLB.
 
+For the detailed clause-by-clause answer-path audit of the core authoritative
+behavior, see [RFC_1035_2181_AUDIT.md](RFC_1035_2181_AUDIT.md).
+
 It is intentionally narrower than "all of DNS". BreathGSLB is an
 authoritative-only server with product-specific configuration policy. This
 matrix therefore distinguishes between:
@@ -38,7 +41,7 @@ every standards-track DNS transport.
 | --- | --- | --- | --- | --- |
 | [RFC 1034](https://www.rfc-editor.org/rfc/rfc1034.html) | Core DNS concepts, authoritative operation | Partial | BreathGSLB behaves as an authoritative-only server and does not recurse. It serves configured zones, enforces AA/authoritative behavior, and uses a stricter product policy to keep forward and reverse zones separate. It is not a generic full-featured RFC 1034 implementation for every DNS feature. | `src/dns_functions.go`, `src/recursion_test.go` (`TestRecursionDisabled`), `src/config/validate.go`, `src/config/validate_test.go` (`TestValidateForwardAndReverseZoneSeparation`) |
 | [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035.html) | DNS message format, RR types, SOA/NS/A/PTR/TXT, AXFR base behavior | Partial | Core authoritative RR serving is implemented for the RR types BreathGSLB exposes. AXFR support exists. BreathGSLB intentionally rejects direct `PTR` in forward zones and rejects forward-style policy in reverse zones, even though bare DNS syntax is broader. The project is not yet audited as a complete RFC 1035 server for every RR and every zone-file behavior. | `src/dns_functions.go`, `src/config/validate.go`, `src/reverse_ptr_test.go`, `src/lightup_ptr_test.go`, `src/replication_test.go` (`TestAXFRUnsignedAllowedAndSigned`) |
-| [RFC 2181](https://www.rfc-editor.org/rfc/rfc2181.html) | Clarifications to core DNS behavior | Partial | The project follows important clarifications in practice, especially around authoritative answer consistency and negative-answer behavior, but there is not yet a clause-by-clause RFC 2181 audit. The recent NSEC bitmap fixes moved the server materially closer to correct type-existence behavior. | `src/dnssec_functions.go`, `src/nsec_test.go` (`TestApexNSECBitmapMatchesServedAddressFamilies`, `TestMakeNSECTypeFiltering`), `src/dnssec_nxdomain_test.go` |
+| [RFC 2181](https://www.rfc-editor.org/rfc/rfc2181.html) | Clarifications to core DNS behavior | Partial | The clause-by-clause answer-path audit now exists, including RRSet truncation and TTL-uniformity checks, but some areas remain partial, especially zone cuts, reply-source testing on multi-homed listeners, and general duplicate-RRSet auditing. | [RFC_1035_2181_AUDIT.md](RFC_1035_2181_AUDIT.md), `src/dnssec_functions.go`, `src/nsec_test.go`, `src/dnssec_nxdomain_test.go`, `src/rfc_1035_2181_test.go`, `src/config/validate_test.go` |
 | [RFC 1912](https://www.rfc-editor.org/rfc/rfc1912.html) | Operational DNS guidance | Partial | This is operational guidance rather than a protocol spec. BreathGSLB now enforces a stronger separation between forward and reverse zones and supports forward/reverse symmetry for lightup names, which aligns with the spirit of RFC 1912. It is still guidance, not a binary compliance target. | `src/config/validate.go`, `src/lightup_forward_test.go`, `src/lightup_ptr_test.go` |
 | [RFC 3596](https://www.rfc-editor.org/rfc/rfc3596.html) | AAAA and `ip6.arpa` IPv6 reverse DNS | Compliant | AAAA serving and IPv6 reverse under `ip6.arpa.` are first-class features. BreathGSLB supports explicit IPv6 reverse zones, synthetic IPv6 PTRs, and exact forward/reverse template round-tripping for lightup IPv6 names. | `src/dns_functions.go`, `src/lightup_functions.go`, `src/reverse_ptr_test.go`, `src/lightup_ptr_test.go`, `src/lightup_forward_test.go` |
 | [RFC 1995](https://www.rfc-editor.org/rfc/rfc1995.html) | IXFR | Partial | IXFR exists and is tested, and the server is allowed to fall back to AXFR when an incremental diff is unavailable. The current implementation is practical rather than exhaustively audited against every IXFR transport and history-retention corner case. | `src/dns_functions.go`, `src/mux_functions.go`, `src/integration_test.go` (`TestIntegrationIXFR`) |
@@ -76,8 +79,9 @@ coherent. It is stricter than bare DNS syntax by design.
 These are the most obvious standards-related gaps still visible after the
 current audit:
 
-1. Add a clause-by-clause RFC 2181 review rather than relying on behavior-level
-   confidence.
+1. Extend the clause-by-clause audit in
+   [RFC_1035_2181_AUDIT.md](RFC_1035_2181_AUDIT.md) into the remaining
+   partial areas, especially zone cuts and multi-homed reply-source testing.
 2. Decide whether authoritative EDE should be emitted for selected failure
    cases, or remain intentionally absent.
 3. Decide whether NOTIFY is needed, or whether polling plus reload plus IXFR is

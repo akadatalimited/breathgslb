@@ -14,6 +14,12 @@ edns_buf: 1232
 log_queries: true
 log_syslog: false
 
+api: true
+api-listen: 9443
+api-token: "/etc/breathgslb/api.token"
+api-cert: "/etc/breathgslb/api.crt"
+api-key: "/etc/breathgslb/api.key"
+
 tsig:
   path: "/etc/breathgslb/tsig"
 
@@ -35,4 +41,3 @@ geoip:
   database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
   prefer_field: "country"
   cache_ttl_sec: 600
-

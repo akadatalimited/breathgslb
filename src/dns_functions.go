@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,7 +39,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 	m.Authoritative = true
 
 	if len(r.Question) == 0 {
-		_ = w.WriteMsg(m)
+		a.writeResponse(w, r, m, nil)
 		return
 	}
 	q := r.Question[0]
@@ -123,7 +124,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 			}
 		}
 		a.mu.RUnlock()
-		_ = w.WriteMsg(m)
+		a.writeResponse(w, r, m, cIP)
 		return
 	}
 
@@ -132,7 +133,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		if wantDNSSEC(r) && a.keys != nil && a.keys.enabled {
 			m.Answer = a.signAll(m.Answer)
 		}
-		_ = w.WriteMsg(m)
+		a.writeResponse(w, r, m, nil)
 		return
 	}
 
@@ -259,7 +260,7 @@ func (a *authority) handle(w dns.ResponseWriter, r *dns.Msg) {
 		m.Answer = a.signAll(m.Answer)
 		m.Ns = a.signAll(m.Ns)
 	}
-	_ = w.WriteMsg(m)
+	a.writeResponse(w, r, m, cIP)
 }
 
 func (a *authority) xfrAllowed(w dns.ResponseWriter, r *dns.Msg) bool {
@@ -396,18 +397,18 @@ func (a *authority) axfrRecords() []dns.RR {
 	for _, ns := range a.zone.NS {
 		rrs = append(rrs, &dns.NS{Hdr: hdr(z, dns.TypeNS, a.zone.TTLSOA), Ns: ensureDot(ns)})
 	}
-	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAMaster))...)
-	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAStandby))...)
-	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAFallback))...)
-	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAMasterPrivate))...)
-	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAStandbyPrivate))...)
-	rrs = append(rrs, a.buildAAAA(config.IPsFrom(a.zone.AAAAFallbackPrivate))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AMaster))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AStandby))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AFallback))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AMasterPrivate))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AStandbyPrivate))...)
-	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AFallbackPrivate))...)
+	rrs = append(rrs, buildAAAAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AAAAMaster), 0, 0)...)
+	rrs = append(rrs, buildAAAAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AAAAStandby), 0, 0)...)
+	rrs = append(rrs, buildAAAAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AAAAFallback), 0, 0)...)
+	rrs = append(rrs, buildAAAAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AAAAMasterPrivate), 0, 0)...)
+	rrs = append(rrs, buildAAAAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AAAAStandbyPrivate), 0, 0)...)
+	rrs = append(rrs, buildAAAAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AAAAFallbackPrivate), 0, 0)...)
+	rrs = append(rrs, buildAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AMaster), 0, 0)...)
+	rrs = append(rrs, buildAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AStandby), 0, 0)...)
+	rrs = append(rrs, buildAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AFallback), 0, 0)...)
+	rrs = append(rrs, buildAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AMasterPrivate), 0, 0)...)
+	rrs = append(rrs, buildAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AStandbyPrivate), 0, 0)...)
+	rrs = append(rrs, buildAForOwner(z, a.zone.TTLAnswer, config.IPsFrom(a.zone.AFallbackPrivate), 0, 0)...)
 	for _, h := range a.zone.Hosts {
 		owner := hostOwnerName(a.zone.Name, h.Name)
 		var aaaaAddrs, aAddrs []string
@@ -419,8 +420,8 @@ func (a *authority) axfrRecords() []dns.RR {
 				aAddrs = append(aAddrs, config.IPsFrom(p.Members)...)
 			}
 		}
-		rrs = append(rrs, buildAAAAForOwner(owner, a.zone.TTLAnswer, aaaaAddrs, a.cfg.MaxRecords, a.cfg.EDNSBuf)...)
-		rrs = append(rrs, buildAForOwner(owner, a.zone.TTLAnswer, aAddrs, a.cfg.MaxRecords, a.cfg.EDNSBuf)...)
+		rrs = append(rrs, buildAAAAForOwner(owner, a.zone.TTLAnswer, aaaaAddrs, 0, 0)...)
+		rrs = append(rrs, buildAForOwner(owner, a.zone.TTLAnswer, aAddrs, 0, 0)...)
 	}
 	for _, t := range a.zone.TXT {
 		name := ownerName(a.zone.Name, t.Name)
@@ -895,10 +896,7 @@ func (a *authority) buildA(addrs []string) []dns.RR {
 }
 
 func buildAForOwner(owner string, ttl uint32, addrs []string, maxRecords, ednsBuf int) []dns.RR {
-	var (
-		rrs []dns.RR
-		m   dns.Msg
-	)
+	var rrs []dns.RR
 	for _, ip := range addrs {
 		p := net.ParseIP(ip)
 		if p == nil || p.To4() == nil {
@@ -909,12 +907,9 @@ func buildAForOwner(owner string, ttl uint32, addrs []string, maxRecords, ednsBu
 		if maxRecords > 0 && len(candidate) > maxRecords {
 			break
 		}
-		m.Answer = candidate
-		if ednsBuf > 0 && m.Len() > ednsBuf {
-			break
-		}
 		rrs = candidate
 	}
+	_ = ednsBuf
 	return rrs
 }
 
@@ -923,10 +918,7 @@ func (a *authority) buildAAAA(addrs []string) []dns.RR {
 }
 
 func buildAAAAForOwner(owner string, ttl uint32, addrs []string, maxRecords, ednsBuf int) []dns.RR {
-	var (
-		rrs []dns.RR
-		m   dns.Msg
-	)
+	var rrs []dns.RR
 	for _, ip := range addrs {
 		p := net.ParseIP(ip)
 		if p == nil || p.To4() != nil {
@@ -937,13 +929,113 @@ func buildAAAAForOwner(owner string, ttl uint32, addrs []string, maxRecords, edn
 		if maxRecords > 0 && len(candidate) > maxRecords {
 			break
 		}
-		m.Answer = candidate
-		if ednsBuf > 0 && m.Len() > ednsBuf {
-			break
-		}
 		rrs = candidate
 	}
+	_ = ednsBuf
 	return rrs
+}
+
+func (a *authority) writeResponse(w dns.ResponseWriter, r, m *dns.Msg, src net.IP) {
+	a.appendAdditionalAddressRecords(m, r, src)
+	moveOPTToEnd(m)
+	truncateForTransport(w, r, m)
+	_ = w.WriteMsg(m)
+}
+
+func truncateForTransport(w dns.ResponseWriter, r, m *dns.Msg) {
+	if m == nil {
+		return
+	}
+	size := dns.MaxMsgSize
+	if addr := w.RemoteAddr(); addr != nil && strings.HasPrefix(strings.ToLower(addr.Network()), "udp") {
+		size = dns.MinMsgSize
+		if opt := r.IsEdns0(); opt != nil {
+			size = int(opt.UDPSize())
+		}
+	}
+	m.Truncate(size)
+}
+
+func moveOPTToEnd(m *dns.Msg) {
+	if m == nil || len(m.Extra) < 2 {
+		return
+	}
+	var opt []dns.RR
+	var other []dns.RR
+	for _, rr := range m.Extra {
+		if rr.Header().Rrtype == dns.TypeOPT {
+			opt = append(opt, rr)
+			continue
+		}
+		other = append(other, rr)
+	}
+	if len(opt) == 0 {
+		return
+	}
+	m.Extra = append(other, opt...)
+}
+
+func (a *authority) appendAdditionalAddressRecords(m *dns.Msg, r *dns.Msg, src net.IP) {
+	if m == nil || len(m.Answer) == 0 {
+		return
+	}
+	seen := make(map[string]struct{}, len(m.Answer)+len(m.Ns)+len(m.Extra))
+	for _, rr := range m.Answer {
+		seen[rrSetIdentity(rr)] = struct{}{}
+	}
+	for _, rr := range m.Ns {
+		seen[rrSetIdentity(rr)] = struct{}{}
+	}
+	for _, rr := range m.Extra {
+		seen[rrSetIdentity(rr)] = struct{}{}
+	}
+	addTarget := func(target string) {
+		target = ensureDot(target)
+		var extras []dns.RR
+		if strings.EqualFold(a.zone.Serve, "secondary") {
+			extras = a.secondaryAddressRecords(target)
+		} else {
+			extras = append(extras, a.addrA(target, src, r)...)
+			extras = append(extras, a.addrAAAA(target, src, r)...)
+		}
+		for _, rr := range extras {
+			key := rrSetIdentity(rr)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			m.Extra = append(m.Extra, rr)
+			seen[key] = struct{}{}
+		}
+	}
+	for _, rr := range m.Answer {
+		switch v := rr.(type) {
+		case *dns.MX:
+			addTarget(v.Mx)
+		case *dns.NS:
+			addTarget(v.Ns)
+		case *dns.SRV:
+			addTarget(v.Target)
+		}
+	}
+}
+
+func (a *authority) secondaryAddressRecords(owner string) []dns.RR {
+	owner = strings.ToLower(ensureDot(owner))
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	var out []dns.RR
+	for _, rr := range a.records[owner] {
+		switch rr.Header().Rrtype {
+		case dns.TypeA, dns.TypeAAAA:
+			out = append(out, rr)
+		}
+	}
+	return out
+}
+
+func rrSetIdentity(rr dns.RR) string {
+	h := rr.Header()
+	return strings.ToLower(ensureDot(h.Name)) + "|" + strconv.Itoa(int(h.Rrtype)) + "|" + rr.String()
 }
 
 // Shared/static helpers

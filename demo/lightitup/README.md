@@ -18,6 +18,8 @@ It installs directly into `/etc/breathgslb` via `sudo make demodata`.
 - generated DNSSEC key material under `/etc/breathgslb/keys`
 - transfer key material under `/etc/breathgslb/tsig`
 - serial snapshots under `/etc/breathgslb/serials`
+- demo API token under `/etc/breathgslb/api.token`
+- demo API TLS certificate and key under `/etc/breathgslb/api.crt` and `/etc/breathgslb/api.key`
 
 The primary remains explicit and deterministic. The secondary is a true
 replica, but it no longer needs its own forward/reverse zone YAML. It
@@ -26,6 +28,11 @@ bootstraps from the shared catalog zone `_catalog.breathgslb.` using the shared
 `[2a02:8012:bc57:53::1]:53` with `xfr_source: "2a02:8012:bc57:53a::1"` so the
 transfer comes from the nameserver address rather than whatever source the
 kernel picks. There is no promotion or election logic in this demo step.
+
+The primary demo config also enables the HTTPS admin API on port `9443`.
+`make demodata` generates a self-signed demo certificate and a random demo
+token if they do not already exist. The generator is idempotent and keeps any
+existing API token/certificate/key in place.
 
 Both the forward and delegated reverse zones use `dnssec.mode: generated` with
 stable key paths under `/etc/breathgslb/keys/` and default to plain NSEC with
@@ -96,6 +103,7 @@ dig @2a02:8012:bc57:53::1 PTR 1.1.1.3.0.0.0.0.0.0.0.0.0.0.0.0.3.5.3.5.7.5.c.b.2.
 dig @2a02:8012:bc57:53::1 PTR 42.0.16.172.in-addr.arpa.
 dig @2a02:8012:bc57:53::1 A templated-172-16-0-42.lightitup.zerodns.co.uk.
 dig +dnssec @2a02:8012:bc57:53a::1 DNSKEY lightitup.zerodns.co.uk.
+curl --cacert /etc/breathgslb/api.crt https://localhost:9443/health
 ```
 
 `alltest` runs the tracked `scripts/lightitup-smoketest` pass/fail suite
@@ -118,6 +126,31 @@ scripts/slavesync --check /etc/breathgslb /srv/breathgslb-gslb2
 
 `slavesync` copies `keys/`, `tsig/`, and `serials/`. AXFR and IXFR remain the
 authoritative source of RR content.
+
+## Demo API
+
+The primary demo config contains:
+
+```yaml
+api: true
+api-listen: 9443
+api-token: "/etc/breathgslb/api.token"
+api-cert: "/etc/breathgslb/api.crt"
+api-key: "/etc/breathgslb/api.key"
+```
+
+After `sudo make demodata`, start the primary and test the API with:
+
+```sh
+TOKEN="$(cat /etc/breathgslb/api.token)"
+curl --cacert /etc/breathgslb/api.crt https://localhost:9443/health
+curl --cacert /etc/breathgslb/api.crt \
+  -H "Authorization: Bearer ${TOKEN}" \
+  https://localhost:9443/zones
+```
+
+The certificate is self-signed for demo use only. Replace it with a real
+certificate on any non-demo deployment.
 
 ## Parent Zone Note
 
