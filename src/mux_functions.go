@@ -18,7 +18,10 @@ func buildMux(cfg *Config, gr *geoResolver, sup *supervisor, prev map[string]*au
 		zname := ensureDot(z.Name)
 		ctx, cancel := context.WithCancel(context.Background())
 		st := &state{cooldown: time.Duration(cfg.CooldownSec) * time.Second}
-		auth := &authority{cfg: cfg, zone: z, state: st, ctx: ctx, cancel: cancel, geo: gr, lightup: lightup, sigCache: make(map[string]sigCacheEntry)}
+		auth := &authority{cfg: cfg, zone: z, state: st, ctx: ctx, cancel: cancel, geo: gr, lightup: lightup, sigCache: make(map[string]sigCacheEntry), hostStates: make(map[string]*state)}
+		for _, h := range z.Hosts {
+			auth.hostStates[strings.ToLower(hostOwnerName(z.Name, h.Name))] = &state{cooldown: time.Duration(cfg.CooldownSec) * time.Second}
+		}
 		if strings.ToLower(z.Serve) == "secondary" {
 			auth.serial = 0
 			auth.zidx = nil

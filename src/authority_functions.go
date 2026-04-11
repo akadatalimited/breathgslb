@@ -187,6 +187,11 @@ func (a *authority) purgeLoop() {
 
 // localAnswers decides per-tier private/public answers for local sources.
 func (a *authority) localAnswers(ipv6 bool, src net.IP) []dns.RR {
+	if len(a.zone.Pools) > 0 {
+		if rr := a.privatePoolAnswersFrom(a.zone.Pools, ipv6, src); rr != nil {
+			return rr
+		}
+	}
 	// tier order master -> standby -> fallback
 	if a.isLocal("master", src) {
 		// if isolated and allowed, serve private regardless of health
@@ -272,6 +277,11 @@ func (a *authority) privateFor(tier string, ipv6 bool) []dns.RR {
 }
 
 func (a *authority) publicFor(tier string, ipv6 bool) []dns.RR {
+	if len(a.zone.Pools) > 0 {
+		if rr := a.publicPoolAnswersByRoleFrom(a.zone.Pools, tier, ipv6); rr != nil {
+			return rr
+		}
+	}
 	switch tier {
 	case "master":
 		if !ipv6 {
@@ -288,6 +298,92 @@ func (a *authority) publicFor(tier string, ipv6 bool) []dns.RR {
 			return a.buildA(config.IPsFrom(a.zone.AFallback))
 		}
 		return a.buildAAAA(config.IPsFrom(a.zone.AAAAFallback))
+	}
+}
+
+func (a *authority) publicPoolAnswersByRole(role string, ipv6 bool) []dns.RR {
+	return a.publicPoolAnswersByRoleFrom(a.zone.Pools, role, ipv6)
+}
+
+func (a *authority) publicPoolAnswersByRoleFrom(pools []Pool, role string, ipv6 bool) []dns.RR {
+	return a.publicPoolAnswersByRoleWithState(pools, a.state, role, ipv6)
+}
+
+func (a *authority) publicPoolAnswersByRoleWithState(pools []Pool, st *state, role string, ipv6 bool) []dns.RR {
+	for _, p := range pools {
+		if !a.poolMatches(&p, ipv6, "public") {
+			continue
+		}
+		if !roleMatchesPool(role, p.Role) || !a.poolUpWithState(st, &p, ipv6) {
+			continue
+		}
+		return a.buildPoolAnswers(&p, ipv6)
+	}
+	return nil
+}
+
+func (a *authority) buildPoolAnswers(p *Pool, ipv6 bool) []dns.RR {
+	if p == nil {
+		return nil
+	}
+	if ipv6 {
+		return a.buildAAAA(config.IPsFrom(p.Members))
+	}
+	return a.buildA(config.IPsFrom(p.Members))
+}
+
+func (a *authority) poolMatches(p *Pool, ipv6 bool, class string) bool {
+	if p == nil {
+		return false
+	}
+	family := strings.ToLower(strings.TrimSpace(p.Family))
+	wantFamily := "ipv4"
+	if ipv6 {
+		wantFamily = "ipv6"
+	}
+	if family != wantFamily {
+		return false
+	}
+	if class == "" {
+		return true
+	}
+	pClass := strings.ToLower(strings.TrimSpace(p.Class))
+	if pClass == "" {
+		pClass = "public"
+	}
+	return pClass == class
+}
+
+func roleMatchesPool(expected, actual string) bool {
+	expected = strings.ToLower(strings.TrimSpace(expected))
+	actual = strings.ToLower(strings.TrimSpace(actual))
+	switch expected {
+	case "master", "primary":
+		return actual == "master" || actual == "primary"
+	case "standby", "secondary":
+		return actual == "standby" || actual == "secondary"
+	case "fallback":
+		return actual == "fallback"
+	default:
+		return expected == actual
+	}
+}
+
+func (a *authority) poolUp(p *Pool, ipv6 bool) bool {
+	return a.poolUpWithState(a.state, p, ipv6)
+}
+
+func (a *authority) poolUpWithState(st *state, p *Pool, ipv6 bool) bool {
+	if p == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(p.Role)) {
+	case "master", "primary":
+		return tierUpState(st, "master", ipv6)
+	case "standby", "secondary":
+		return tierUpState(st, "standby", ipv6)
+	default:
+		return true
 	}
 }
 
@@ -346,16 +442,26 @@ func (a *authority) isLocal(tier string, ip net.IP) bool {
 
 // Geo steering helpers
 func (a *authority) pickTierByGeo(src net.IP, ipv6 bool) string {
-	if a.geo == nil || a.zone.Geo == nil || src == nil {
+	return a.pickTargetByGeo(a.zone.Geo, a.zone.Pools, src, ipv6)
+}
+
+func (a *authority) pickTargetByGeo(geo *GeoPolicy, pools []Pool, src net.IP, ipv6 bool) string {
+	if a.geo == nil || geo == nil || src == nil {
 		return ""
 	}
 	cc, cont, ok := a.geo.lookup(src)
 	if !ok {
 		return ""
 	}
+	if geo != nil && len(geo.Named) > 0 {
+		if pool := a.pickPoolByGeoFrom(geo, pools, cc, cont, ipv6); pool != "" {
+			return pool
+		}
+		return ""
+	}
 	// Check in order: master -> standby -> fallback, but only if policy allows
 	check := func(tier string, famV6 bool) bool {
-		if !a.policyAllows(tier, cc, cont) {
+		if !a.policyAllowsFor(geo, tier, cc, cont) {
 			return false
 		}
 		// also require health for master/standby
@@ -370,26 +476,13 @@ func (a *authority) pickTierByGeo(src net.IP, ipv6 bool) string {
 	if check("standby", ipv6) {
 		return "standby"
 	}
-	if a.policyAllows("fallback", cc, cont) {
+	if a.policyAllowsFor(geo, "fallback", cc, cont) {
 		return "fallback"
 	}
 	return ""
 }
 
-func (a *authority) policyAllows(tier string, country, continent string) bool {
-	g := a.zone.Geo
-	if g == nil {
-		return false
-	}
-	var tp GeoTierPolicy
-	switch tier {
-	case "master":
-		tp = g.Master
-	case "standby":
-		tp = g.Standby
-	default:
-		tp = g.Fallback
-	}
+func geoPolicyAllows(tp GeoTierPolicy, country, continent string) bool {
 	if tp.AllowAll {
 		return true
 	}
@@ -408,6 +501,187 @@ func (a *authority) policyAllows(tier string, country, continent string) bool {
 	}
 	if len(tp.AllowContinents) > 0 && contains(tp.AllowContinents, continent) {
 		return true
+	}
+	return false
+}
+
+func (a *authority) policyAllows(tier string, country, continent string) bool {
+	return a.policyAllowsFor(a.zone.Geo, tier, country, continent)
+}
+
+func (a *authority) policyAllowsFor(g *GeoPolicy, tier string, country, continent string) bool {
+	if g == nil {
+		return false
+	}
+	var tp GeoTierPolicy
+	switch tier {
+	case "master":
+		tp = g.Master
+	case "standby":
+		tp = g.Standby
+	default:
+		tp = g.Fallback
+	}
+	return geoPolicyAllows(tp, country, continent)
+}
+
+func (a *authority) pickPoolByGeo(country, continent string, ipv6 bool) string {
+	return a.pickPoolByGeoFrom(a.zone.Geo, a.zone.Pools, country, continent, ipv6)
+}
+
+func (a *authority) pickPoolByGeoFrom(geo *GeoPolicy, pools []Pool, country, continent string, ipv6 bool) string {
+	if geo == nil {
+		return ""
+	}
+	for _, gp := range geo.Named {
+		if !geoPolicyAllows(gp.Policy, country, continent) {
+			continue
+		}
+		if rr := a.poolAnswersByNameFrom(pools, gp.Name, ipv6); rr != nil {
+			return gp.Name
+		}
+	}
+	return ""
+}
+
+func (a *authority) poolAnswersByName(name string, ipv6 bool) []dns.RR {
+	return a.poolAnswersByNameFrom(a.zone.Pools, name, ipv6)
+}
+
+func (a *authority) poolAnswersByNameFrom(pools []Pool, name string, ipv6 bool) []dns.RR {
+	return a.poolAnswersByNameWithState(pools, a.state, name, ipv6)
+}
+
+func (a *authority) poolAnswersByNameWithState(pools []Pool, st *state, name string, ipv6 bool) []dns.RR {
+	for i := range pools {
+		p := &pools[i]
+		if !strings.EqualFold(strings.TrimSpace(p.Name), strings.TrimSpace(name)) {
+			continue
+		}
+		if !a.poolMatches(p, ipv6, "public") || !a.poolUpWithState(st, p, ipv6) {
+			return nil
+		}
+		return a.buildPoolAnswers(p, ipv6)
+	}
+	return nil
+}
+
+func (a *authority) privatePoolAnswers(ipv6 bool, src net.IP) []dns.RR {
+	return a.privatePoolAnswersFrom(a.zone.Pools, ipv6, src)
+}
+
+func (a *authority) privatePoolAnswersFrom(pools []Pool, ipv6 bool, src net.IP) []dns.RR {
+	return a.privatePoolAnswersWithState(pools, a.state, ipv6, src)
+}
+
+func (a *authority) privatePoolAnswersWithState(pools []Pool, st *state, ipv6 bool, src net.IP) []dns.RR {
+	if src == nil {
+		return nil
+	}
+	for rank := 0; rank <= 3; rank++ {
+		for i := range pools {
+			p := &pools[i]
+			if poolRoleRank(p.Role) != rank || !a.poolMatches(p, ipv6, "private") || !a.poolClientAllowed(p, src) {
+				continue
+			}
+			if !a.zone.PrivateAllowWhenIsolated && !a.poolUpWithState(st, p, ipv6) {
+				continue
+			}
+			if rr := a.buildPoolAnswers(p, ipv6); rr != nil {
+				return rr
+			}
+		}
+	}
+	return nil
+}
+
+func poolRoleRank(role string) int {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "master", "primary":
+		return 0
+	case "standby", "secondary":
+		return 1
+	case "fallback":
+		return 2
+	default:
+		return 3
+	}
+}
+
+func (a *authority) publicPoolAnswers(ipv6 bool) []dns.RR {
+	return a.publicPoolAnswersFrom(a.zone.Pools, ipv6)
+}
+
+func (a *authority) publicPoolAnswersFrom(pools []Pool, ipv6 bool) []dns.RR {
+	return a.publicPoolAnswersWithState(pools, a.state, ipv6)
+}
+
+func (a *authority) publicPoolAnswersWithState(pools []Pool, st *state, ipv6 bool) []dns.RR {
+	bestRank := 99
+	for i := range pools {
+		p := &pools[i]
+		if !a.poolMatches(p, ipv6, "public") || !a.poolUpWithState(st, p, ipv6) {
+			continue
+		}
+		rank := poolRoleRank(p.Role)
+		if rank > bestRank {
+			continue
+		}
+		if rr := a.buildPoolAnswers(p, ipv6); rr != nil {
+			bestRank = rank
+			return rr
+		}
+	}
+	return nil
+}
+
+func hostOwnerName(apex, s string) string {
+	s = strings.TrimSpace(s)
+	switch s {
+	case "", ".", "@":
+		return ensureDot(apex)
+	}
+	if strings.Contains(s, ".") {
+		return ensureDot(s)
+	}
+	apex = ensureDot(apex)
+	return ensureDot(strings.TrimSuffix(s, ".") + "." + strings.TrimSuffix(apex, "."))
+}
+
+func (a *authority) serviceHost(owner string) *Host {
+	owner = strings.ToLower(ensureDot(owner))
+	for i := range a.zone.Hosts {
+		h := &a.zone.Hosts[i]
+		if strings.ToLower(hostOwnerName(a.zone.Name, h.Name)) == owner {
+			return h
+		}
+	}
+	return nil
+}
+
+func (a *authority) serviceState(owner string) *state {
+	if a == nil {
+		return nil
+	}
+	owner = strings.ToLower(ensureDot(owner))
+	if st := a.hostStates[owner]; st != nil {
+		return st
+	}
+	return a.state
+}
+
+func (a *authority) poolClientAllowed(p *Pool, src net.IP) bool {
+	if p == nil || src == nil {
+		return false
+	}
+	if len(p.ClientNets) == 0 {
+		return strings.EqualFold(strings.TrimSpace(p.Class), "public")
+	}
+	for _, raw := range p.ClientNets {
+		_, n, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err == nil && n.Contains(src) {
+			return true
+		}
 	}
 	return false
 }
@@ -543,18 +817,134 @@ func (a *authority) checkOnce() {
 	defer cancel()
 
 	hc := healthcheck.Effective(a.zone.Name, a.zone.Health)
+	if len(a.zone.Pools) > 0 {
+		a.probePoolRoles(ctx, a.state, a.zone.Pools, hc)
+	} else {
+		// master v4
+		m4 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AMaster), hc)
+		a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
+		// master v6
+		m6 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AAAAMaster), hc)
+		a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
+		// standby v4
+		s4 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AStandby), hc)
+		a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
+		// standby v6
+		s6 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AAAAStandby), hc)
+		a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
+	}
+	for i := range a.zone.Hosts {
+		h := &a.zone.Hosts[i]
+		if len(h.Pools) == 0 {
+			continue
+		}
+		st := a.serviceState(hostOwnerName(a.zone.Name, h.Name))
+		if st == nil || st == a.state {
+			continue
+		}
+		hostHC := healthcheck.Effective(hostOwnerName(a.zone.Name, h.Name), mergeHealthConfig(a.zone.Health, h.Health))
+		a.probePoolRoles(ctx, st, h.Pools, hostHC)
+	}
+}
 
-	// master v4
+func (a *authority) probePoolRoles(ctx context.Context, st *state, pools []Pool, hc config.HealthConfig) {
+	m4 := healthcheck.ProbeAny(ctx, poolRoleIPsFrom(pools, "primary", false), hc)
+	st.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
+	m6 := healthcheck.ProbeAny(ctx, poolRoleIPsFrom(pools, "primary", true), hc)
+	st.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
+	s4 := healthcheck.ProbeAny(ctx, poolRoleIPsFrom(pools, "secondary", false), hc)
+	st.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
+	s6 := healthcheck.ProbeAny(ctx, poolRoleIPsFrom(pools, "secondary", true), hc)
+	st.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
+}
 
-	m4 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AMaster), hc)
-	a.state.set("master", false, m4, a.cfg.Rise, a.cfg.Fall)
-	// master v6
-	m6 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AAAAMaster), hc)
-	a.state.set("master", true, m6, a.cfg.Rise, a.cfg.Fall)
-	// standby v4
-	s4 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AStandby), hc)
-	a.state.set("standby", false, s4, a.cfg.Rise, a.cfg.Fall)
-	// standby v6
-	s6 := healthcheck.ProbeAny(ctx, config.IPsFrom(a.zone.AAAAStandby), hc)
-	a.state.set("standby", true, s6, a.cfg.Rise, a.cfg.Fall)
+func mergeHealthConfig(base, override *config.HealthConfig) *config.HealthConfig {
+	if base == nil && override == nil {
+		return nil
+	}
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	merged := *base
+	if override.Kind != "" {
+		merged.Kind = override.Kind
+	}
+	if override.HostHeader != "" {
+		merged.HostHeader = override.HostHeader
+	}
+	if override.Path != "" {
+		merged.Path = override.Path
+	}
+	if override.SNI != "" {
+		merged.SNI = override.SNI
+	}
+	if override.InsecureTLS {
+		merged.InsecureTLS = true
+	}
+	if override.Scheme != "" {
+		merged.Scheme = override.Scheme
+	}
+	if override.Method != "" {
+		merged.Method = override.Method
+	}
+	if override.Port != 0 {
+		merged.Port = override.Port
+	}
+	if override.Expect != "" {
+		merged.Expect = override.Expect
+	}
+	if override.TLSEnable {
+		merged.TLSEnable = true
+	}
+	if override.ALPN != "" {
+		merged.ALPN = override.ALPN
+	}
+	if len(override.ALPNProtos) > 0 {
+		merged.ALPNProtos = append([]string(nil), override.ALPNProtos...)
+	}
+	if override.UDPPayloadB64 != "" {
+		merged.UDPPayloadB64 = override.UDPPayloadB64
+	}
+	if override.UDPExpectRE != "" {
+		merged.UDPExpectRE = override.UDPExpectRE
+	}
+	if override.ICMPPayloadB64 != "" {
+		merged.ICMPPayloadB64 = override.ICMPPayloadB64
+	}
+	if override.Protocol != 0 {
+		merged.Protocol = override.Protocol
+	}
+	return &merged
+}
+
+func poolRoleIPsFrom(pools []Pool, role string, ipv6 bool) []string {
+	var ips []string
+	for _, p := range pools {
+		if !roleMatchesPool(role, p.Role) {
+			continue
+		}
+		family := strings.ToLower(strings.TrimSpace(p.Family))
+		if ipv6 && family != "ipv6" {
+			continue
+		}
+		if !ipv6 && family != "ipv4" {
+			continue
+		}
+		ips = append(ips, config.IPsFrom(p.Members)...)
+	}
+	return ips
+}
+
+func (a *authority) poolRoleIPs(role string, ipv6 bool) []string {
+	var out []string
+	for _, p := range a.zone.Pools {
+		if !roleMatchesPool(role, p.Role) || !a.poolMatches(&p, ipv6, "") {
+			continue
+		}
+		out = append(out, config.IPsFrom(p.Members)...)
+	}
+	return out
 }

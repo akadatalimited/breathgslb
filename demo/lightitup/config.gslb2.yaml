@@ -16,3 +16,9 @@ log_syslog: false
 
 tsig:
   path: "/etc/breathgslb/tsig"
+
+geoip:
+  enabled: true
+  database: "/etc/breathgslb/geoip/GeoLite2-Country.mmdb"
+  prefer_field: "country"
+  cache_ttl_sec: 600

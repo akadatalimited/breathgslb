@@ -1,5 +1,6 @@
 package config
 
+import "fmt"
 import "strings"
 import "gopkg.in/yaml.v3"
 
@@ -53,10 +54,48 @@ type GeoTierPolicy struct {
 	AllowAll        bool     `yaml:"allow_all,omitempty"`
 }
 
+type NamedGeoPolicy struct {
+	Name   string
+	Policy GeoTierPolicy
+}
+
 type GeoPolicy struct {
-	Master   GeoTierPolicy `yaml:"master,omitempty"`
-	Standby  GeoTierPolicy `yaml:"standby,omitempty"`
-	Fallback GeoTierPolicy `yaml:"fallback,omitempty"`
+	Master   GeoTierPolicy    `yaml:"master,omitempty"`
+	Standby  GeoTierPolicy    `yaml:"standby,omitempty"`
+	Fallback GeoTierPolicy    `yaml:"fallback,omitempty"`
+	Named    []NamedGeoPolicy `yaml:"-"`
+}
+
+func (g *GeoPolicy) UnmarshalYAML(value *yaml.Node) error {
+	type geoTierPolicy GeoTierPolicy
+	g.Master = GeoTierPolicy{}
+	g.Standby = GeoTierPolicy{}
+	g.Fallback = GeoTierPolicy{}
+	g.Named = nil
+	if value == nil || value.Kind == 0 {
+		return nil
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("geo must be a mapping")
+	}
+	for i := 0; i < len(value.Content); i += 2 {
+		k := strings.ToLower(strings.TrimSpace(value.Content[i].Value))
+		var pol geoTierPolicy
+		if err := value.Content[i+1].Decode(&pol); err != nil {
+			return err
+		}
+		switch k {
+		case "master":
+			g.Master = GeoTierPolicy(pol)
+		case "standby":
+			g.Standby = GeoTierPolicy(pol)
+		case "fallback":
+			g.Fallback = GeoTierPolicy(pol)
+		default:
+			g.Named = append(g.Named, NamedGeoPolicy{Name: strings.TrimSpace(value.Content[i].Value), Policy: GeoTierPolicy(pol)})
+		}
+	}
+	return nil
 }
 
 type GeoAnswerSet struct {
@@ -299,6 +338,23 @@ func (a *IPAddr) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+type Pool struct {
+	Name       string   `yaml:"name"`
+	Family     string   `yaml:"family,omitempty"`
+	Class      string   `yaml:"class,omitempty"`
+	Role       string   `yaml:"role,omitempty"`
+	Members    []IPAddr `yaml:"members,omitempty"`
+	ClientNets []string `yaml:"client_nets,omitempty"`
+}
+
+type Host struct {
+	Name   string        `yaml:"name"`
+	Alias  string        `yaml:"alias,omitempty"`
+	Pools  []Pool        `yaml:"pools,omitempty"`
+	Geo    *GeoPolicy    `yaml:"geo,omitempty"`
+	Health *HealthConfig `yaml:"health,omitempty"`
+}
+
 // Zone defines a single authoritative child zone served here.
 type Zone struct {
 	Name      string   `yaml:"name"`
@@ -341,6 +397,8 @@ type Zone struct {
 
 	Alias     string            `yaml:"alias,omitempty"`
 	AliasHost map[string]string `yaml:"alias_host,omitempty"`
+	Hosts     []Host            `yaml:"hosts,omitempty"`
+	Pools     []Pool            `yaml:"pools,omitempty"`
 
 	TXT   []TXTRecord   `yaml:"txt,omitempty"`
 	MX    []MXRecord    `yaml:"mx,omitempty"`

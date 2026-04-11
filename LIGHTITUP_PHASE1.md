@@ -1,5 +1,14 @@
 # Light-Up Phase 1 Design Note
 
+## Status Note
+
+This design note is historical context from the first mapping phase. Several
+items here are now implemented and no longer describe the current runtime
+exactly.
+
+Use [POOLS.md](./POOLS.md) as the current architecture plan, and
+[LIGHTITUP.md](./LIGHTITUP.md) as the broader staged lightup roadmap.
+
 ## Current AAAA Path
 
 `authority.handle()` dispatches AAAA queries in [src/dns_functions.go](/tank/breathtechnology/breathgslb/src/dns_functions.go#L149) by calling `a.addrAAAA(name, cIP, r)`. Inside `addrAAAA()`, the live order is:

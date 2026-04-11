@@ -1,5 +1,14 @@
 # BreathGSLB Light-Up DNS Implementation Plan for Codex
 
+## Status Note
+
+This document describes the original lightup staging plan. Parts of phases 1
+through 7 are now implemented, and the future architecture is no longer purely
+apex-centric.
+
+For the current host and pool direction, see [POOLS.md](./POOLS.md).
+For replication implications, see [ZONE_REPLICATION.md](./ZONE_REPLICATION.md).
+
 ## Purpose
 
 Add a light-up DNS layer to BreathGSLB so it can synthesize forward and reverse IPv6 answers for chosen prefixes while preserving the current strengths of the platform:
@@ -578,4 +587,3 @@ The old honeyDNS / networklightdns code already proved the lamp can be lit.
 BreathGSLB is where the lamp becomes part of a real system.
 
 The path is clear. The work is staged. The task is ready.
-

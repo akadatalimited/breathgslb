@@ -23,6 +23,113 @@
       - name: "lightitup-xfr."
         secret: ""
 
+  pools:
+    - name: "public-v6-primary"
+      family: "ipv6"
+      class: "public"
+      role: "primary"
+      members:
+        - ip: "2a02:8012:bc57:5353::1"
+    - name: "public-v4-primary"
+      family: "ipv4"
+      class: "public"
+      role: "primary"
+      members:
+        - ip: "217.155.241.55"
+    - name: "public-v6-secondary"
+      family: "ipv6"
+      class: "public"
+      role: "secondary"
+      members:
+        - ip: "2a02:8012:bc57:5353::2"
+    - name: "public-v4-secondary"
+      family: "ipv4"
+      class: "public"
+      role: "secondary"
+      members:
+        - ip: "13.41.102.86"
+    - name: "public-v6-fallback"
+      family: "ipv6"
+      class: "public"
+      role: "fallback"
+      members:
+        - ip: "2a02:8012:bc57:5353::53"
+    - name: "private-v6-primary"
+      family: "ipv6"
+      class: "private"
+      role: "primary"
+      members:
+        - ip: "2a02:8012:bc57:5353::2"
+      client_nets:
+        - "2a02:8012:bc57:5353::/64"
+    - name: "private-v4-primary"
+      family: "ipv4"
+      class: "private"
+      role: "primary"
+      members:
+        - ip: "172.16.0.1"
+      client_nets:
+        - "172.16.0.0/24"
+
+  hosts:
+    - name: "app"
+      health:
+        kind: http
+        host_header: "articles.akadata.ltd"
+        path: "/health"
+        scheme: https
+        method: GET
+        port: 443
+        expect: "OK"
+        insecure_tls: false
+      pools:
+        - name: "app-v6-primary"
+          family: "ipv6"
+          class: "public"
+          role: "primary"
+          members:
+            - ip: "2a02:8012:bc57:5353::10"
+        - name: "app-v4-primary"
+          family: "ipv4"
+          class: "public"
+          role: "primary"
+          members:
+            - ip: "217.155.241.60"
+        - name: "app-v6-private"
+          family: "ipv6"
+          class: "private"
+          role: "primary"
+          members:
+            - ip: "2a02:8012:bc57:5353::10"
+          client_nets:
+            - "2a02:8012:bc57:5353::/64"
+        - name: "app-v4-private"
+          family: "ipv4"
+          class: "private"
+          role: "primary"
+          members:
+            - ip: "172.16.0.10"
+          client_nets:
+            - "172.16.0.0/24"
+
+  geo:
+    public-v6-primary:
+      allow_countries: ["GB", "FR", "DE"]
+      allow_continents: ["EU"]
+    public-v4-primary:
+      allow_countries: ["GB", "FR", "DE"]
+      allow_continents: ["EU"]
+    public-v6-secondary:
+      allow_countries: ["US", "CA"]
+      allow_continents: ["NA"]
+    public-v4-secondary:
+      allow_countries: ["US", "CA"]
+      allow_continents: ["NA"]
+    public-v6-fallback:
+      allow_all: true
+    fallback:
+      allow_all: true
+
   lightup:
     enabled: true
     ttl: 60

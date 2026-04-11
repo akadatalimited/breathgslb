@@ -49,6 +49,17 @@ func buildIndex(z config.Zone) *zoneIndex {
 	if len(z.AAAAMaster)+len(z.AAAAStandby)+len(z.AAAAFallback) > 0 || z.Alias != "" || hasGeoAAAA {
 		add(zname, dns.TypeAAAA)
 	}
+	for _, p := range z.Pools {
+		if len(p.Members) == 0 {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(p.Family)) {
+		case "ipv4":
+			add(zname, dns.TypeA)
+		case "ipv6":
+			add(zname, dns.TypeAAAA)
+		}
+	}
 	for h := range z.AliasHost {
 		fqdn := ensureDot(h)
 		if !strings.HasSuffix(strings.ToLower(fqdn), strings.ToLower(zname)) {
@@ -56,6 +67,24 @@ func buildIndex(z config.Zone) *zoneIndex {
 		}
 		add(fqdn, dns.TypeA)
 		add(fqdn, dns.TypeAAAA)
+	}
+	for _, h := range z.Hosts {
+		name := strings.ToLower(hostOwnerName(z.Name, h.Name))
+		if h.Alias != "" {
+			add(name, dns.TypeA)
+			add(name, dns.TypeAAAA)
+		}
+		for _, p := range h.Pools {
+			if len(p.Members) == 0 {
+				continue
+			}
+			switch strings.ToLower(strings.TrimSpace(p.Family)) {
+			case "ipv4":
+				add(name, dns.TypeA)
+			case "ipv6":
+				add(name, dns.TypeAAAA)
+			}
+		}
 	}
 
 	// static records

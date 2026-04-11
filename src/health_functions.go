@@ -5,8 +5,6 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	
 )
 
 // Health check functions
@@ -16,6 +14,27 @@ func (s *state) snapshot() (mV4, mV6, sV4, sV6 bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.master.v4.up, s.master.v6.up, s.standby.v4.up, s.standby.v6.up
+}
+
+func tierUpState(s *state, tier string, ipv6 bool) bool {
+	if s == nil {
+		return false
+	}
+	mV4, mV6, sV4, sV6 := s.snapshot()
+	switch tier {
+	case "master":
+		if ipv6 {
+			return mV6
+		}
+		return mV4
+	case "standby":
+		if ipv6 {
+			return sV6
+		}
+		return sV4
+	default:
+		return true
+	}
 }
 
 // set updates the up/down state for a specific tier and address family.
@@ -56,10 +75,6 @@ func (s *state) set(tier string, ipv6 bool, obsUp bool, riseTarget, fallTarget i
 		f.lastChange = time.Now()
 	}
 }
-
-
-
-
 
 // aliasLookup resolves a hostname to a list of IP addresses.
 func aliasLookup(ctx context.Context, target string) []net.IP {

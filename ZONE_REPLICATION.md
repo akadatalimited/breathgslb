@@ -1,5 +1,14 @@
 # BreathGSLB Zone Replication Guide
 
+## Status Note
+
+This guide covers the current primary/secondary replication model.
+
+For the planned host and pool runtime model that replication must carry
+forward, see [POOLS.md](./POOLS.md).
+For lightup-specific staging and historical notes, see
+[LIGHTITUP.md](./LIGHTITUP.md) and [LIGHTITUP_PHASE1.md](./LIGHTITUP_PHASE1.md).
+
 This document explains how to configure zone replication between BreathGSLB servers to achieve high availability and redundancy.
 
 ## Overview

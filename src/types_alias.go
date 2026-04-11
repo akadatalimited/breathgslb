@@ -9,9 +9,12 @@ type (
 	IPAddr           = configpkg.IPAddr
 	GeoIPConfig      = configpkg.GeoIPConfig
 	GeoTierPolicy    = configpkg.GeoTierPolicy
+	NamedGeoPolicy   = configpkg.NamedGeoPolicy
 	GeoPolicy        = configpkg.GeoPolicy
 	GeoAnswerSet     = configpkg.GeoAnswerSet
 	GeoAnswers       = configpkg.GeoAnswers
+	Host             = configpkg.Host
+	Pool             = configpkg.Pool
 	LightupFamily    = configpkg.LightupFamily
 	LightupConfig    = configpkg.LightupConfig
 	DNSSECMode       = configpkg.DNSSECMode

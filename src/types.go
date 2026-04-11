@@ -134,6 +134,8 @@ type authority struct {
 	axfrRRs []dns.RR
 	soaRR   *dns.SOA
 
+	hostStates map[string]*state
+
 	// parsed CIDRs for geo_answers
 	geoCIDR struct {
 		country   map[string]parsedCIDRs

@@ -375,6 +375,20 @@ func (a *authority) axfrRecords() []dns.RR {
 	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AMasterPrivate))...)
 	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AStandbyPrivate))...)
 	rrs = append(rrs, a.buildA(config.IPsFrom(a.zone.AFallbackPrivate))...)
+	for _, h := range a.zone.Hosts {
+		owner := hostOwnerName(a.zone.Name, h.Name)
+		var aaaaAddrs, aAddrs []string
+		for _, p := range h.Pools {
+			switch strings.ToLower(strings.TrimSpace(p.Family)) {
+			case "ipv6":
+				aaaaAddrs = append(aaaaAddrs, config.IPsFrom(p.Members)...)
+			case "ipv4":
+				aAddrs = append(aAddrs, config.IPsFrom(p.Members)...)
+			}
+		}
+		rrs = append(rrs, buildAAAAForOwner(owner, a.zone.TTLAnswer, aaaaAddrs, a.cfg.MaxRecords, a.cfg.EDNSBuf)...)
+		rrs = append(rrs, buildAForOwner(owner, a.zone.TTLAnswer, aAddrs, a.cfg.MaxRecords, a.cfg.EDNSBuf)...)
+	}
 	for _, t := range a.zone.TXT {
 		name := ownerName(a.zone.Name, t.Name)
 		ttl := t.TTL
@@ -505,6 +519,9 @@ func clientIP(w dns.ResponseWriter, r *dns.Msg) net.IP {
 func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	owner = strings.ToLower(ensureDot(owner))
 	zone := strings.ToLower(ensureDot(a.zone.Name))
+	if rr, ok := a.hostAddressAnswers(owner, src, false); ok {
+		return rr
+	}
 	if strings.HasSuffix(owner, zone) {
 		host := strings.TrimSuffix(owner, zone)
 		host = strings.TrimSuffix(host, ".")
@@ -541,6 +558,18 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 			return a.persistRR(rr, src, false)
 		}
 	}
+	if len(a.zone.Pools) > 0 {
+		if src != nil {
+			if pool := a.pickTierByGeo(src, false); pool != "" {
+				if rr := a.poolAnswersByName(pool, false); rr != nil {
+					return a.persistRR(rr, src, false)
+				}
+			}
+		}
+		if rr := a.publicPoolAnswers(false); rr != nil {
+			return a.persistRR(rr, src, false)
+		}
+	}
 	// Geo steering (policy-only) if configured
 	if src != nil {
 		if tier := a.pickTierByGeo(src, false); tier != "" {
@@ -572,6 +601,9 @@ func (a *authority) addrA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	owner = strings.ToLower(ensureDot(owner))
 	zone := strings.ToLower(ensureDot(a.zone.Name))
+	if rr, ok := a.hostAddressAnswers(owner, src, true); ok {
+		return rr
+	}
 	if strings.HasSuffix(owner, zone) {
 		host := strings.TrimSuffix(owner, zone)
 		host = strings.TrimSuffix(host, ".")
@@ -604,6 +636,18 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 	// Geo answer overrides first
 	if src != nil {
 		if rr := a.answersByGeo(owner, src, true); rr != nil {
+			return a.persistRR(rr, src, true)
+		}
+	}
+	if len(a.zone.Pools) > 0 {
+		if src != nil {
+			if pool := a.pickTierByGeo(src, true); pool != "" {
+				if rr := a.poolAnswersByName(pool, true); rr != nil {
+					return a.persistRR(rr, src, true)
+				}
+			}
+		}
+		if rr := a.publicPoolAnswers(true); rr != nil {
 			return a.persistRR(rr, src, true)
 		}
 	}
@@ -652,6 +696,93 @@ func (a *authority) addrAAAA(owner string, src net.IP, r *dns.Msg) []dns.RR {
 		return a.lightupAAAARecords(owner, src)
 	}
 	return a.persistRR(a.buildAAAA(addrs), src, true)
+}
+
+func (a *authority) hostAddressAnswers(owner string, src net.IP, ipv6 bool) ([]dns.RR, bool) {
+	h := a.serviceHost(owner)
+	if h == nil {
+		return nil, false
+	}
+	st := a.serviceState(owner)
+	if h.Alias != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.TimeoutSec)*time.Second)
+		defer cancel()
+		ips := aliasLookup(ctx, h.Alias)
+		var addrs []string
+		for _, ip := range ips {
+			if ipv6 && ip.To4() == nil {
+				addrs = append(addrs, ip.String())
+			}
+			if !ipv6 && ip.To4() != nil {
+				addrs = append(addrs, ip.String())
+			}
+		}
+		if ipv6 {
+			return buildAAAAForOwner(owner, a.zone.TTLAnswer, addrs, a.cfg.MaxRecords, a.cfg.EDNSBuf), true
+		}
+		return buildAForOwner(owner, a.zone.TTLAnswer, addrs, a.cfg.MaxRecords, a.cfg.EDNSBuf), true
+	}
+	if strings.ToLower(a.zone.Serve) == "local" && src != nil {
+		if rr := a.privatePoolAnswersWithState(h.Pools, st, ipv6, src); rr != nil {
+			return reownerRRs(owner, rr), true
+		}
+	}
+	if len(h.Pools) == 0 {
+		return nil, true
+	}
+	geo := h.Geo
+	if geo == nil {
+		geo = a.zone.Geo
+	}
+	if src != nil && geo != nil {
+		if len(geo.Named) > 0 {
+			if cc, cont, ok := countryContinent(a.geo, src); ok {
+				if pool := a.pickPoolByGeoFrom(geo, h.Pools, cc, cont, ipv6); pool != "" {
+					if rr := a.poolAnswersByNameWithState(h.Pools, st, pool, ipv6); rr != nil {
+						return reownerRRs(owner, rr), true
+					}
+				}
+			}
+		} else if tier := a.pickTargetByGeo(geo, h.Pools, src, ipv6); tier != "" {
+			if rr := a.publicPoolAnswersByRoleWithState(h.Pools, st, tier, ipv6); rr != nil {
+				return reownerRRs(owner, rr), true
+			}
+		}
+	}
+	if rr := a.publicPoolAnswersWithState(h.Pools, st, ipv6); rr != nil {
+		return reownerRRs(owner, rr), true
+	}
+	return nil, true
+}
+
+func countryContinent(gr *geoResolver, src net.IP) (string, string, bool) {
+	if gr == nil || src == nil {
+		return "", "", false
+	}
+	return gr.lookup(src)
+}
+
+func reownerRRs(owner string, rrs []dns.RR) []dns.RR {
+	if len(rrs) == 0 {
+		return nil
+	}
+	out := make([]dns.RR, 0, len(rrs))
+	owner = ensureDot(owner)
+	for _, rr := range rrs {
+		switch v := rr.(type) {
+		case *dns.A:
+			cp := *v
+			cp.Hdr.Name = owner
+			out = append(out, &cp)
+		case *dns.AAAA:
+			cp := *v
+			cp.Hdr.Name = owner
+			out = append(out, &cp)
+		default:
+			out = append(out, dns.Copy(rr))
+		}
+	}
+	return out
 }
 
 func pickAddr(addrs []string, mode string, ctr *atomic.Uint64) string {

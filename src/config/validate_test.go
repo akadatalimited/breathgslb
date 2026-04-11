@@ -345,3 +345,107 @@ func TestValidatePTRRecord(t *testing.T) {
 		t.Fatalf("expected invalid PTR target to fail validation")
 	}
 }
+
+func TestValidatePools(t *testing.T) {
+	baseZone := func() Zone {
+		return Zone{
+			Name:      "example.org.",
+			NS:        []string{"ns1.example.org."},
+			Admin:     "hostmaster.example.org.",
+			TTLSOA:    60,
+			TTLAnswer: 20,
+			Refresh:   60,
+			Retry:     30,
+			Expire:    600,
+			Minttl:    60,
+		}
+	}
+
+	tests := []struct {
+		name    string
+		zone    func() Zone
+		wantErr string
+	}{
+		{
+			name: "ValidNamedGeoPool",
+			zone: func() Zone {
+				z := baseZone()
+				z.Pools = []Pool{
+					{Name: "eu-v6", Family: "ipv6", Class: "public", Role: "primary", Members: []IPAddr{{IP: "2001:db8::1"}}},
+					{Name: "us-v4", Family: "ipv4", Class: "public", Role: "secondary", Members: []IPAddr{{IP: "198.51.100.1"}}},
+				}
+				z.Geo = &GeoPolicy{Named: []NamedGeoPolicy{{Name: "eu-v6", Policy: GeoTierPolicy{AllowContinents: []string{"EU"}}}}}
+				return z
+			},
+		},
+		{
+			name: "MissingPoolMembersRejected",
+			zone: func() Zone {
+				z := baseZone()
+				z.Pools = []Pool{{Name: "eu-v6", Family: "ipv6"}}
+				return z
+			},
+			wantErr: "members is required",
+		},
+		{
+			name: "WrongFamilyMemberRejected",
+			zone: func() Zone {
+				z := baseZone()
+				z.Pools = []Pool{{Name: "bad", Family: "ipv4", Members: []IPAddr{{IP: "2001:db8::1"}}}}
+				return z
+			},
+			wantErr: "is not IPv4",
+		},
+		{
+			name: "UnknownGeoPoolRejected",
+			zone: func() Zone {
+				z := baseZone()
+				z.Pools = []Pool{{Name: "eu-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::1"}}}}
+				z.Geo = &GeoPolicy{Named: []NamedGeoPolicy{{Name: "missing", Policy: GeoTierPolicy{AllowAll: true}}}}
+				return z
+			},
+			wantErr: "unknown pool",
+		},
+		{
+			name: "HostGeoPoolRejectedWhenMissing",
+			zone: func() Zone {
+				z := baseZone()
+				z.Hosts = []Host{{
+					Name:  "app",
+					Pools: []Pool{{Name: "app-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::10"}}}},
+					Geo:   &GeoPolicy{Named: []NamedGeoPolicy{{Name: "missing", Policy: GeoTierPolicy{AllowAll: true}}}},
+				}}
+				return z
+			},
+			wantErr: "hosts[0].geo[missing]: unknown pool",
+		},
+		{
+			name: "HostOutsideZoneRejected",
+			zone: func() Zone {
+				z := baseZone()
+				z.Hosts = []Host{{
+					Name:  "app.example.net.",
+					Pools: []Pool{{Name: "app-v6", Family: "ipv6", Members: []IPAddr{{IP: "2001:db8::10"}}}},
+				}}
+				return z
+			},
+			wantErr: "outside zone",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			z := tt.zone()
+			err := ValidateZone(&z)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateZone() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

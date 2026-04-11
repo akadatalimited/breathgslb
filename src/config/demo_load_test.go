@@ -130,6 +130,9 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load(%q) error = %v", cfgPath, err)
 		}
+		if c.GeoIP == nil || c.GeoIP.Database == "" {
+			t.Fatalf("%s: expected demo GeoIP config, got %#v", tc.name, c.GeoIP)
+		}
 		if len(c.Zones) != 3 {
 			t.Fatalf("%s: expected 3 demo zones, got %d", tc.name, len(c.Zones))
 		}
@@ -141,6 +144,21 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 			switch z.Name {
 			case "lightitup.zerodns.co.uk.":
 				sawForward = true
+				if z.Geo == nil {
+					t.Fatalf("%s: expected demo forward zone geo policy", tc.name)
+				}
+				if len(z.Pools) == 0 {
+					t.Fatalf("%s: expected demo forward zone pools, got %#v", tc.name, z.Pools)
+				}
+				if len(z.Hosts) == 0 {
+					t.Fatalf("%s: expected demo forward zone hosts, got %#v", tc.name, z.Hosts)
+				}
+				if z.Hosts[0].Health == nil {
+					t.Fatalf("%s: expected demo forward host health override, got %#v", tc.name, z.Hosts[0])
+				}
+				if len(z.Geo.Named) == 0 {
+					t.Fatalf("%s: expected demo forward zone named geo policies, got %#v", tc.name, z.Geo)
+				}
 			case "3.5.3.5.7.5.c.b.2.1.0.8.2.0.a.2.ip6.arpa.":
 				sawReverseV6 = true
 				if tc.name == "primary" && len(z.PTR) < 4 {

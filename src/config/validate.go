@@ -74,6 +74,23 @@ func ValidateZone(z *Zone) error {
 	if err := validatePersistenceMode(z.PersistenceMode); err != nil {
 		return fmt.Errorf("persistence_mode: %w", err)
 	}
+	if err := validatePools(z.Pools); err != nil {
+		return err
+	}
+	if err := validateHosts(z); err != nil {
+		return err
+	}
+	if z.Geo != nil && len(z.Geo.Named) > 0 {
+		poolNames := map[string]bool{}
+		for _, p := range z.Pools {
+			poolNames[strings.ToLower(strings.TrimSpace(p.Name))] = true
+		}
+		for _, gp := range z.Geo.Named {
+			if !poolNames[strings.ToLower(strings.TrimSpace(gp.Name))] {
+				return fmt.Errorf("geo[%s]: unknown pool", gp.Name)
+			}
+		}
+	}
 
 	const maxSOA = 2147483647
 	if z.Refresh == 0 || z.Refresh > maxSOA {
@@ -184,6 +201,101 @@ func ValidateZone(z *Zone) error {
 	}
 
 	return nil
+}
+
+func validatePools(pools []Pool) error {
+	for i, p := range pools {
+		if strings.TrimSpace(p.Name) == "" {
+			return fmt.Errorf("pools[%d].name is required", i)
+		}
+		family := strings.ToLower(strings.TrimSpace(p.Family))
+		if family != "ipv4" && family != "ipv6" {
+			return fmt.Errorf("pools[%d].family: unsupported value %q", i, p.Family)
+		}
+		class := strings.ToLower(strings.TrimSpace(p.Class))
+		if class != "" && class != "public" && class != "private" {
+			return fmt.Errorf("pools[%d].class: unsupported value %q", i, p.Class)
+		}
+		if len(p.Members) == 0 {
+			return fmt.Errorf("pools[%d].members is required", i)
+		}
+		if err := ValidateIPAddrList(p.Members, family == "ipv6", fmt.Sprintf("pools[%d].members", i)); err != nil {
+			return err
+		}
+		for j, raw := range p.ClientNets {
+			_, n, err := net.ParseCIDR(strings.TrimSpace(raw))
+			if err != nil {
+				return fmt.Errorf("pools[%d].client_nets[%d]: invalid CIDR %q", i, j, raw)
+			}
+			if family == "ipv4" {
+				if n.IP.To4() == nil {
+					return fmt.Errorf("pools[%d].client_nets[%d]: %q is not IPv4", i, j, raw)
+				}
+			} else if n.IP.To4() != nil {
+				return fmt.Errorf("pools[%d].client_nets[%d]: %q is not IPv6", i, j, raw)
+			}
+		}
+	}
+	return nil
+}
+
+func validateHosts(z *Zone) error {
+	seen := map[string]bool{}
+	for i, h := range z.Hosts {
+		owner, err := validateHostName(z.Name, h.Name)
+		if err != nil {
+			return fmt.Errorf("hosts[%d].name: %w", i, err)
+		}
+		key := strings.ToLower(owner)
+		if seen[key] {
+			return fmt.Errorf("hosts[%d].name: duplicate host %q", i, h.Name)
+		}
+		seen[key] = true
+		if h.Alias != "" {
+			if err := validateDomain(h.Alias); err != nil {
+				return fmt.Errorf("hosts[%d].alias: %w", i, err)
+			}
+		}
+		if err := validatePools(h.Pools); err != nil {
+			return fmt.Errorf("hosts[%d]: %w", i, err)
+		}
+		if h.Geo != nil && len(h.Geo.Named) > 0 {
+			poolNames := map[string]bool{}
+			for _, p := range h.Pools {
+				poolNames[strings.ToLower(strings.TrimSpace(p.Name))] = true
+			}
+			for _, gp := range h.Geo.Named {
+				if !poolNames[strings.ToLower(strings.TrimSpace(gp.Name))] {
+					return fmt.Errorf("hosts[%d].geo[%s]: unknown pool", i, gp.Name)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateHostName(apex, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	switch name {
+	case "", ".", "@":
+		return EnsureDot(apex), nil
+	}
+	base := strings.TrimSuffix(EnsureDot(apex), ".")
+	if strings.Contains(name, ".") {
+		fqdn := EnsureDot(name)
+		if err := validateDomain(fqdn); err != nil {
+			return "", err
+		}
+		if !strings.HasSuffix(strings.ToLower(fqdn), "."+strings.ToLower(base)+".") && strings.ToLower(fqdn) != strings.ToLower(EnsureDot(apex)) {
+			return "", fmt.Errorf("%q is outside zone %q", name, apex)
+		}
+		return fqdn, nil
+	}
+	fqdn := EnsureDot(name + "." + base)
+	if err := validateDomain(fqdn); err != nil {
+		return "", err
+	}
+	return fqdn, nil
 }
 
 func validateLightup(l *LightupConfig) error {
