@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PRIMARY="${PRIMARY:-2a02:8012:bc57:53::1}"
+SECONDARY="${SECONDARY:-2a02:8012:bc57:53a::1}"
+ZONE="${ZONE:-lightitup.zerodns.co.uk.}"
+HOST_APP="${HOST_APP:-app.lightitup.zerodns.co.uk.}"
+V6_IP="${V6_IP:-2a02:8012:bc57:5353::abc1:abc1}"
+V4_IP="${V4_IP:-172.16.0.42}"
+INVALID_HOST="${INVALID_HOST:-trash.lightitup.zerodns.co.uk.}"
+DIG_OPTS="${DIG_OPTS:-+norecurse +dnssec +time=2 +tries=1 +bufsize=1232}"
+CHECK_IPV4="${CHECK_IPV4:-0}"
+
+if [[ "${1:-}" == "--roundtrip" ]]; then
+  shift
+  if [[ $# -ne 1 ]]; then
+    echo "usage: $0 --roundtrip <ip>" >&2
+    exit 2
+  fi
+  target_ip="$1"
+  out="$(dig @"$PRIMARY" $DIG_OPTS -x "$target_ip")"
+  ptr="$(printf '%s\n' "$out" | awk '$4=="PTR"{print $5; exit}')"
+  if [[ -z "$ptr" ]]; then
+    echo "FAIL: no PTR for $target_ip"
+    exit 1
+  fi
+  if [[ "$target_ip" == *:* ]]; then
+    fwd="$(dig @"$PRIMARY" $DIG_OPTS AAAA "$ptr" | awk '$4=="AAAA"{print $5; exit}')"
+  else
+    fwd="$(dig @"$PRIMARY" $DIG_OPTS A "$ptr" | awk '$4=="A"{print $5; exit}')"
+  fi
+  echo "Reverse lookup for: $target_ip"
+  echo "PTR: ${ptr:-<none>}"
+  echo "Forward: ${fwd:-<none>}"
+  if [[ "$fwd" == "$target_ip" ]]; then
+    echo "PASS: round-trip matches"
+    exit 0
+  fi
+  echo "FAIL: round-trip mismatch"
+  exit 1
+fi
+
+pass_count=0
+fail_count=0
+
+pass() {
+  printf 'PASS: %s\n' "$1"
+  pass_count=$((pass_count + 1))
+}
+
+fail() {
+  printf 'FAIL: %s\n' "$1"
+  fail_count=$((fail_count + 1))
+}
+
+dig_out() {
+  local server="$1"
+  shift
+  dig @"$server" $DIG_OPTS "$@"
+}
+
+status_of() {
+  sed -n 's/.*status: \([^,]*\),.*/\1/p' | head -n1
+}
+
+answer_values() {
+  local qtype="$1"
+  awk -v want="$qtype" '$4==want {print $5}'
+}
+
+answer_count() {
+  local qtype="$1"
+  awk -v want="$qtype" '$4==want {c++} END{print c+0}'
+}
+
+first_answer() {
+  local qtype="$1"
+  awk -v want="$qtype" '$4==want {print $5; exit}'
+}
+
+assert_status() {
+  local name="$1" expect="$2" out="$3"
+  local got
+  got="$(printf '%s\n' "$out" | status_of)"
+  if [[ "$got" == "$expect" ]]; then
+    pass "$name"
+  else
+    fail "$name (status=$got want=$expect)"
+  fi
+}
+
+assert_has_answer() {
+  local name="$1" qtype="$2" out="$3"
+  local count
+  count="$(printf '%s\n' "$out" | answer_count "$qtype")"
+  if [[ "$count" -gt 0 ]]; then
+    pass "$name"
+  else
+    fail "$name (no $qtype answer)"
+  fi
+}
+
+assert_same_first_answer() {
+  local name="$1" qtype="$2" out1="$3" out2="$4"
+  local a1 a2
+  a1="$(printf '%s\n' "$out1" | first_answer "$qtype")"
+  a2="$(printf '%s\n' "$out2" | first_answer "$qtype")"
+  if [[ -n "$a1" && "$a1" == "$a2" ]]; then
+    pass "$name"
+  else
+    fail "$name (primary=$a1 secondary=$a2)"
+  fi
+}
+
+assert_same_soa_serial() {
+  local name="$1" out1="$2" out2="$3"
+  local s1 s2
+  s1="$(printf '%s\n' "$out1" | awk '$4=="SOA"{print $7; exit}')"
+  s2="$(printf '%s\n' "$out2" | awk '$4=="SOA"{print $7; exit}')"
+  if [[ -n "$s1" && "$s1" == "$s2" ]]; then
+    pass "$name"
+  else
+    fail "$name (primary=$s1 secondary=$s2)"
+  fi
+}
+
+assert_rrset_contains() {
+  local name="$1" qtype="$2" needle="$3" out="$4"
+  if printf '%s\n' "$out" | answer_values "$qtype" | grep -Fxq "$needle"; then
+    pass "$name"
+  else
+    fail "$name (missing $needle)"
+  fi
+}
+
+assert_dnskey_present() {
+  local name="$1" out="$2"
+  if printf '%s\n' "$out" | awk '$4=="DNSKEY"{found=1} END{exit !found}'; then
+    pass "$name"
+  else
+    fail "$name (no DNSKEY)"
+  fi
+}
+
+assert_rrsig_present() {
+  local name="$1" covered="$2" out="$3"
+  if printf '%s\n' "$out" | awk -v want="$covered" '$4=="RRSIG" && $5==want {found=1} END{exit !found}'; then
+    pass "$name"
+  else
+    fail "$name (no RRSIG $covered)"
+  fi
+}
+
+assert_roundtrip() {
+  local name="$1" ip="$2" server="$3" ptr_type="$4" fwd_type="$5"
+  local rev ptr fwd
+  rev="$(dig @"$server" $DIG_OPTS -x "$ip")"
+  ptr="$(printf '%s\n' "$rev" | first_answer PTR)"
+  if [[ -z "$ptr" ]]; then
+    fail "$name (no PTR)"
+    return
+  fi
+  fwd="$(dig @"$server" $DIG_OPTS "$fwd_type" "$ptr" | first_answer "$fwd_type")"
+  if [[ "$fwd" == "$ip" ]]; then
+    pass "$name"
+  else
+    fail "$name (ptr=$ptr forward=$fwd want=$ip)"
+  fi
+}
+
+printf 'Lightitup smoke test\n'
+printf 'Primary:   %s\n' "$PRIMARY"
+printf 'Secondary: %s\n' "$SECONDARY"
+printf 'Zone:      %s\n' "$ZONE"
+
+primary_soa="$(dig_out "$PRIMARY" SOA "$ZONE")"
+secondary_soa="$(dig_out "$SECONDARY" SOA "$ZONE")"
+assert_status "primary SOA status" "NOERROR" "$primary_soa"
+assert_status "secondary SOA status" "NOERROR" "$secondary_soa"
+assert_same_soa_serial "SOA serial parity" "$primary_soa" "$secondary_soa"
+
+primary_ns="$(dig_out "$PRIMARY" NS "$ZONE")"
+secondary_ns="$(dig_out "$SECONDARY" NS "$ZONE")"
+assert_rrset_contains "primary NS has gslb" NS "gslb.zerodns.co.uk." "$primary_ns"
+assert_rrset_contains "primary NS has gslb2" NS "gslb2.zerodns.co.uk." "$primary_ns"
+assert_rrset_contains "secondary NS has gslb" NS "gslb.zerodns.co.uk." "$secondary_ns"
+assert_rrset_contains "secondary NS has gslb2" NS "gslb2.zerodns.co.uk." "$secondary_ns"
+
+primary_aaaa="$(dig_out "$PRIMARY" AAAA "$ZONE")"
+secondary_aaaa="$(dig_out "$SECONDARY" AAAA "$ZONE")"
+assert_status "primary apex AAAA status" "NOERROR" "$primary_aaaa"
+assert_status "secondary apex AAAA status" "NOERROR" "$secondary_aaaa"
+assert_has_answer "primary apex AAAA answer" AAAA "$primary_aaaa"
+assert_has_answer "secondary apex AAAA answer" AAAA "$secondary_aaaa"
+assert_same_first_answer "apex AAAA parity" AAAA "$primary_aaaa" "$secondary_aaaa"
+assert_rrsig_present "primary apex AAAA signed" AAAA "$primary_aaaa"
+
+primary_a="$(dig_out "$PRIMARY" A "$ZONE")"
+secondary_a="$(dig_out "$SECONDARY" A "$ZONE")"
+if [[ "$CHECK_IPV4" == "1" ]]; then
+  assert_status "primary apex A status" "NOERROR" "$primary_a"
+  assert_status "secondary apex A status" "NOERROR" "$secondary_a"
+  assert_has_answer "primary apex A answer" A "$primary_a"
+  assert_has_answer "secondary apex A answer" A "$secondary_a"
+  assert_same_first_answer "apex A parity" A "$primary_a" "$secondary_a"
+  assert_rrsig_present "primary apex A signed" A "$primary_a"
+else
+  printf 'SKIP: apex A checks disabled (set CHECK_IPV4=1 to enforce)\n'
+fi
+
+primary_host_aaaa="$(dig_out "$PRIMARY" AAAA "$HOST_APP")"
+secondary_host_aaaa="$(dig_out "$SECONDARY" AAAA "$HOST_APP")"
+assert_status "primary host AAAA status" "NOERROR" "$primary_host_aaaa"
+assert_status "secondary host AAAA status" "NOERROR" "$secondary_host_aaaa"
+assert_has_answer "primary host AAAA answer" AAAA "$primary_host_aaaa"
+assert_has_answer "secondary host AAAA answer" AAAA "$secondary_host_aaaa"
+assert_same_first_answer "host AAAA parity" AAAA "$primary_host_aaaa" "$secondary_host_aaaa"
+
+primary_host_a="$(dig_out "$PRIMARY" A "$HOST_APP")"
+secondary_host_a="$(dig_out "$SECONDARY" A "$HOST_APP")"
+if [[ "$CHECK_IPV4" == "1" ]]; then
+  assert_status "primary host A status" "NOERROR" "$primary_host_a"
+  assert_status "secondary host A status" "NOERROR" "$secondary_host_a"
+  assert_has_answer "primary host A answer" A "$primary_host_a"
+  assert_has_answer "secondary host A answer" A "$secondary_host_a"
+  assert_same_first_answer "host A parity" A "$primary_host_a" "$secondary_host_a"
+else
+  printf 'SKIP: host A checks disabled (set CHECK_IPV4=1 to enforce)\n'
+fi
+
+invalid_aaaa="$(dig_out "$PRIMARY" AAAA "$INVALID_HOST")"
+assert_status "invalid template AAAA rejected" "NXDOMAIN" "$invalid_aaaa"
+
+assert_roundtrip "IPv6 round-trip" "$V6_IP" "$PRIMARY" PTR AAAA
+assert_roundtrip "IPv4 round-trip" "$V4_IP" "$PRIMARY" PTR A
+
+primary_dnskey="$(dig_out "$PRIMARY" DNSKEY "$ZONE")"
+secondary_dnskey="$(dig_out "$SECONDARY" DNSKEY "$ZONE")"
+assert_dnskey_present "primary DNSKEY present" "$primary_dnskey"
+assert_dnskey_present "secondary DNSKEY present" "$secondary_dnskey"
+assert_rrsig_present "primary DNSKEY signed" DNSKEY "$primary_dnskey"
+assert_rrsig_present "secondary DNSKEY signed" DNSKEY "$secondary_dnskey"
+
+printf '\nSummary: %d passed, %d failed\n' "$pass_count" "$fail_count"
+if [[ "$fail_count" -ne 0 ]]; then
+  exit 1
+fi

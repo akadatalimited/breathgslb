@@ -372,6 +372,7 @@ type Zone struct {
 
 	Serve                    string   `yaml:"serve,omitempty"`
 	Masters                  []string `yaml:"masters,omitempty"`
+	XFRSource                string   `yaml:"xfr_source,omitempty"`
 	PrivateAllowWhenIsolated bool     `yaml:"private_allow_when_isolated,omitempty"`
 
 	AMaster      []IPAddr `yaml:"a_master,omitempty"`

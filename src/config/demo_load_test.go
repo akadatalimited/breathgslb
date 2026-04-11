@@ -144,6 +144,9 @@ func TestLoadLightitupDemoConfig(t *testing.T) {
 			switch z.Name {
 			case "lightitup.zerodns.co.uk.":
 				sawForward = true
+				if tc.name == "secondary" && z.XFRSource == "" {
+					t.Fatalf("%s: expected demo forward secondary xfr_source, got empty", tc.name)
+				}
 				if z.Geo == nil {
 					t.Fatalf("%s: expected demo forward zone geo policy", tc.name)
 				}

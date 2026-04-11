@@ -1,0 +1,18 @@
+# Source this file from the repository root:
+#   source aliases
+
+restest() {
+  if [ "$#" -ne 1 ]; then
+    echo "usage: restest <ip>" >&2
+    return 2
+  fi
+  "$(pwd)/scripts/lightitup-smoketest" --roundtrip "$1"
+}
+
+lightituptest() {
+  "$(pwd)/scripts/lightitup-smoketest" "$@"
+}
+
+alltest() {
+  "$(pwd)/scripts/lightitup-smoketest" "$@"
+}

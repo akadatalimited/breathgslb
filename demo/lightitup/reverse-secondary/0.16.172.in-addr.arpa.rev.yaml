@@ -10,6 +10,7 @@
   serve: "secondary"
   masters:
     - "[2a02:8012:bc57:53::1]:53"
+  xfr_source: "2a02:8012:bc57:53a::1"
 
   dnssec:
     mode: generated

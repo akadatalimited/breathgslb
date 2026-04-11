@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -212,6 +213,58 @@ func TestAXFRDisallowedIP(t *testing.T) {
 	// further records.
 	if _, ok := <-env; ok {
 		t.Fatalf("expected channel to close after error")
+	}
+}
+
+func TestAllowXFRFromMatchesCIDR(t *testing.T) {
+	tests := []struct {
+		name  string
+		ip    string
+		allow string
+		want  bool
+	}{
+		{name: "IPv4CIDR", ip: "172.16.0.10", allow: "172.16.0.0/24", want: true},
+		{name: "IPv4CIDRReject", ip: "172.16.1.10", allow: "172.16.0.0/24", want: false},
+		{name: "IPv6CIDR64", ip: "2a02:8012:bc57:53a::1", allow: "2a02:8012:bc57:53a::/64", want: true},
+		{name: "IPv6CIDR48", ip: "2a02:8012:bc57:53a::1", allow: "2a02:8012:bc57::/48", want: true},
+		{name: "IPv6CIDRReject", ip: "2a02:8012:bc58:53a::1", allow: "2a02:8012:bc57::/48", want: false},
+		{name: "ExactIPv6", ip: "2a02:8012:bc57:3::2", allow: "2a02:8012:bc57:3::2", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := allowXFRFromMatches(net.ParseIP(tt.ip), tt.allow)
+			if got != tt.want {
+				t.Fatalf("allowXFRFromMatches(%q, %q) = %v want %v", tt.ip, tt.allow, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSecondaryTransferUsesXFRSource(t *testing.T) {
+	ensureIPv4(t)
+	cfg := &Config{Zones: []Zone{{
+		Name:      "example.org.",
+		NS:        []string{"ns.example.org."},
+		Admin:     "hostmaster.example.org.",
+		TTLSOA:    3600,
+		TTLAnswer: 300,
+		AMaster:   []IPAddr{{IP: "192.0.2.1"}},
+		TSIG:      &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, AllowXFRFrom: []string{"127.0.0.2"}}}},
+	}}}
+	_, addr, _ := startTestServer(t, cfg, map[string]string{"axfr-key.": testSecret}, nil)
+
+	secondary := &authority{
+		ctx:    context.Background(),
+		cfg:    &Config{TimeoutSec: 1},
+		zone:   Zone{Name: "example.org.", Masters: []string{addr}, XFRSource: "127.0.0.2", TSIG: &TSIGZoneConfig{Keys: []TSIGKey{{Name: "axfr-key.", Secret: testSecret, Algorithm: "hmac-sha256"}}}},
+		state:  &state{},
+		cancel: func() {},
+	}
+	if err := secondary.transferFromMasters(); err != nil {
+		t.Fatalf("transferFromMasters with xfr_source failed: %v", err)
+	}
+	if secondary.soaRR == nil {
+		t.Fatalf("expected successful AXFR with xfr_source")
 	}
 }
 

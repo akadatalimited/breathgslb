@@ -67,6 +67,20 @@ func (a *authority) transferFromMasters() error {
 		m := new(dns.Msg)
 		m.SetAxfr(a.zone.Name)
 		var tr *dns.Transfer
+		if a.zone.XFRSource != "" {
+			srcIP := net.ParseIP(strings.TrimSpace(a.zone.XFRSource))
+			if srcIP == nil {
+				lastErr = fmt.Errorf("invalid xfr_source %q", a.zone.XFRSource)
+				continue
+			}
+			dialer := &net.Dialer{Timeout: 2 * time.Second, LocalAddr: &net.TCPAddr{IP: srcIP}}
+			conn, err := dialer.DialContext(a.ctx, "tcp", addr)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			tr = &dns.Transfer{Conn: &dns.Conn{Conn: conn}}
+		}
 		if a.zone.TSIG != nil && len(a.zone.TSIG.Keys) > 0 {
 			k := a.zone.TSIG.Keys[0]
 			name := ensureDot(k.Name)
@@ -74,9 +88,12 @@ func (a *authority) transferFromMasters() error {
 			if alg == "" {
 				alg = dns.HmacSHA256
 			}
-			tr = &dns.Transfer{TsigSecret: map[string]string{name: k.Secret}}
+			if tr == nil {
+				tr = &dns.Transfer{}
+			}
+			tr.TsigSecret = map[string]string{name: k.Secret}
 			m.SetTsig(name, alg, 300, time.Now().Unix())
-		} else {
+		} else if tr == nil {
 			tr = &dns.Transfer{}
 		}
 		env, err := tr.In(m, addr)

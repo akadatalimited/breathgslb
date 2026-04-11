@@ -62,6 +62,12 @@ func ValidateZone(z *Zone) error {
 			return fmt.Errorf("alias: %w", err)
 		}
 	}
+	if z.XFRSource != "" {
+		ip := net.ParseIP(strings.TrimSpace(z.XFRSource))
+		if ip == nil {
+			return fmt.Errorf("xfr_source: invalid IP %q", z.XFRSource)
+		}
+	}
 	for h, tgt := range z.AliasHost {
 		base := strings.TrimSuffix(z.Name, ".")
 		if err := validateDomain(h + "." + base); err != nil {
@@ -197,6 +203,15 @@ func ValidateZone(z *Zone) error {
 	if z.Lightup != nil {
 		if err := validateLightup(z.Lightup); err != nil {
 			return fmt.Errorf("lightup: %w", err)
+		}
+	}
+	if z.TSIG != nil {
+		for i, k := range z.TSIG.Keys {
+			for j, raw := range k.AllowXFRFrom {
+				if !validateAllowXFRFrom(strings.TrimSpace(raw)) {
+					return fmt.Errorf("tsig.keys[%d].allow_xfr_from[%d]: invalid IP or CIDR %q", i, j, raw)
+				}
+			}
 		}
 	}
 
@@ -415,6 +430,18 @@ func validateLightupPrefixAndExcludes(family, prefixField, prefix string, exclud
 
 func cidrOverlap(a, b *net.IPNet) bool {
 	return a.Contains(b.IP) || b.Contains(a.IP)
+}
+
+func validateAllowXFRFrom(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	if strings.Contains(raw, "/") {
+		_, _, err := net.ParseCIDR(raw)
+		return err == nil
+	}
+	return net.ParseIP(raw) != nil
 }
 
 func validatePersistenceMode(m string) error {

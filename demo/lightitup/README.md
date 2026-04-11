@@ -23,8 +23,9 @@ It installs directly into `/etc/breathgslb` via `sudo make demodata`.
 
 The primary remains explicit and deterministic. The secondary is a true
 `serve: "secondary"` replica with `masters:` pointing at
-`[2a02:8012:bc57:53::1]:53`. There is no promotion or election logic in this
-demo step.
+`[2a02:8012:bc57:53::1]:53` and `xfr_source: "2a02:8012:bc57:53a::1"` so AXFR
+comes from the nameserver address rather than whatever source the kernel picks.
+There is no promotion or election logic in this demo step.
 
 Both the forward and delegated reverse zones use `dnssec.mode: generated` with
 stable key paths under `/etc/breathgslb/keys/` and default to plain NSEC with
@@ -82,6 +83,10 @@ template.
 sudo make demodata
 breathgslb -config /etc/breathgslb/config.yaml
 breathgslb -config /etc/breathgslb/config.gslb2.yaml
+source aliases
+alltest
+restest 2a02:8012:bc57:5353::abc1:abc1
+CHECK_IPV4=1 alltest
 
 dig @2a02:8012:bc57:53::1 NS lightitup.zerodns.co.uk.
 dig @2a02:8012:bc57:53a::1 NS lightitup.zerodns.co.uk.
@@ -92,6 +97,12 @@ dig @2a02:8012:bc57:53::1 PTR 42.0.16.172.in-addr.arpa.
 dig @2a02:8012:bc57:53::1 A templated-172-16-0-42.lightitup.zerodns.co.uk.
 dig +dnssec @2a02:8012:bc57:53a::1 DNSKEY lightitup.zerodns.co.uk.
 ```
+
+`alltest` runs the tracked `scripts/lightitup-smoketest` pass/fail suite
+against both authoritative servers. `restest` is the focused reverse/forward
+round-trip check for a single IP. By default the smoke test is IPv6-first and
+skips direct `A` answer enforcement; set `CHECK_IPV4=1` to require apex and
+host `A` parity too.
 
 The current geo model is still anchored around the apex pools. Host-level
 `A`/`AAAA` records now exist through `hosts:` with per-host pools, and the demo

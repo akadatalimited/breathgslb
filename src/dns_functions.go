@@ -283,17 +283,28 @@ func (a *authority) xfrAllowed(w dns.ResponseWriter, r *dns.Msg) bool {
 			return true
 		}
 		for _, allow := range k.AllowXFRFrom {
-			if strings.Contains(allow, "/") {
-				if _, n, err := net.ParseCIDR(allow); err == nil && n.Contains(ip) {
-					return true
-				}
-			} else if ip.Equal(net.ParseIP(allow)) {
+			if allowXFRFromMatches(ip, allow) {
 				return true
 			}
 		}
 		return false
 	}
 	return false
+}
+
+func allowXFRFromMatches(ip net.IP, allow string) bool {
+	if ip == nil {
+		return false
+	}
+	allow = strings.TrimSpace(allow)
+	if allow == "" {
+		return false
+	}
+	if strings.Contains(allow, "/") {
+		_, n, err := net.ParseCIDR(allow)
+		return err == nil && n.Contains(ip)
+	}
+	return ip.Equal(net.ParseIP(allow))
 }
 
 func (a *authority) xfr(w dns.ResponseWriter, r *dns.Msg, ixfr bool) {
