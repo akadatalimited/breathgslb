@@ -695,14 +695,11 @@ Run `./src/web/web` and visit `http://localhost:8080` to manage accounts and lic
 Use `licensegen` with `-type` presets or a `-config` file to create payloads and
 `licensectl` to manage stored keys.
 
-### Support tiers (pricing placeholders)
+### Licensing
 
-| Tier       | Annual price |
-|------------|--------------|
-| Community  | $0 |
-| Basic      | $X |
-| Pro        | $Y |
-| Enterprise | $Z |
-
-See [doc/support.md](doc/support.md) for full details.
+This is FREE. We have licensed with BSL 1.1 to prevent code being taken
+and resold as a product. It is 100% free to use on its own, as part of
+your infra, even make money from its use — however take the code outside
+Saphira Linux and have it somewhere else then talk to AKADATA LIMITED
+about licensing costs. See `LICENSE` for full details.
 
