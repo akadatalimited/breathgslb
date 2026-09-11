@@ -85,6 +85,13 @@ Recommended fields:
 
 Important: `client_nets` are not answer data. They are policy matchers.
 
+Important: pools with a tiered `role` (`primary`, `secondary`, `standby`)
+only answer while health state for that tier is passing. A pool with no
+health configuration never gains passing state, so a tiered pool without
+health checks answers nothing — silently. For static infrastructure
+records that must always answer, omit `role` entirely (unroled pools
+are always eligible).
+
 ## Selection Model
 
 The runtime answer engine should do this:

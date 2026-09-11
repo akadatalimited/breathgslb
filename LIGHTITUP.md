@@ -306,6 +306,20 @@ lightup:
   forward_template: "{addr}.lit.gslb-sitetest.akadata.ltd."
   ptr_template: "lit-{net}-{region}-{host}.gslb-sitetest.akadata.ltd."
 
+The `{addr}` label is derived per family: IPv4 as `a-b-c-d`
+(e.g. `172.16.0.42` → `templated-172-16-0-42.`), IPv6 as eight
+zero-padded lowercase hextets joined with dashes (e.g.
+`2a02:8012:bc57:5353::abc1:abc1` →
+`templated-2a02-8012-bc57-5353-0000-0000-abc1-abc1.`). The reverse
+synthesis uses the same label, so forward and reverse answers for a
+synthesized address always agree.
+
+Note for validator-facing signatures: kernels and other strict PKCS#7
+verifiers reject signatures carrying S/MIME capabilities — sign
+regulatory or DNSSEC-adjacent artifacts with `openssl cms -nosmimecap`
+(Authenticode-style or bare attributes) or verification fails despite
+valid content and trust.
+
   ns_aaaa:
     - "2a02:8012:bc57:9000::1"
     - "2a02:8012:bc57:a000::1"

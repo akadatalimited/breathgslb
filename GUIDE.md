@@ -306,7 +306,9 @@ BreathGSLB focuses on **authoritative answering with local health**. For broad H
 
 ## 12) License
 
-We recommend **MIT License** for the core project; optional enterprise packaging can remain free while offering support SLAs.
+Business Source License 1.1 — see `LICENSE`. Free for use as part of
+Saphira Linux; reselling the code itself as a product needs a commercial
+licence. Converts to GPL-2.0-or-later on the Change Date.
 
 ---
 
